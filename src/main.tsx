@@ -17,8 +17,12 @@ if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
   });
 }
 
+import { ClerkAppWrapper } from './lib/clerk.tsx';
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <ClerkAppWrapper>
+      <App />
+    </ClerkAppWrapper>
   </StrictMode>,
 );

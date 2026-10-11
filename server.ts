@@ -31,6 +31,8 @@ import {
 
 // Middlewares
 import { authenticateToken } from './server/middlewares/auth';
+import { clerkAuth } from './server/middlewares/clerkAuth';
+import { clerkWebhookRouter } from './server/routes/clerkWebhookRoutes';
 
 // Modular Route Handlers
 import authRoutes from './server/routes/authRoutes';
@@ -65,9 +67,12 @@ import { checkoutRouter } from './server/routes/checkoutRoutes';
 import { outreachSystemRouter } from './server/routes/outreach/systemRoutes';
 import { mailboxesRouter } from './server/routes/outreach/mailboxes';
 import { campaignsRouter } from './server/routes/outreach/campaigns';
+import { trackingRouter } from './server/routes/outreach/tracking';
+import { outreachInboxRouter } from './server/routes/outreach/inbox';
 import { ensureOutreachSchema, getOutreachPool } from './server/services/outreach/schema';
 import { startQueueWorker, stopQueueWorker } from './server/services/outreach/queue';
 import { initSequencer } from './server/services/outreach/sequencer';
+import { inboxSyncManager } from './server/services/outreach/inboxSync';
 
 dotenv.config();
 
@@ -109,6 +114,7 @@ app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 app.use(requestCorrelationMiddleware);
 app.use(authenticateToken);
+app.use(clerkAuth);
 
 // Health & Observability Check Endpoints (Railway, Kubernetes & Load Balancers)
 const handleHealthCheck = (req: Request, res: Response) => {
@@ -199,6 +205,8 @@ app.use('/api/commissions', commissionRouter);
 app.use('/api/analytics', analyticsRouter);
 
 // Webhooks & Gateway Connectors
+app.use('/api/webhooks/clerk', clerkWebhookRouter);
+app.use('/api/webhooks', clerkWebhookRouter);
 app.use('/api/webhooks', webhookRouter);
 app.use('/api/integrations', integrationRouter);
 
@@ -213,6 +221,14 @@ app.use('/api', generalRouter);
 app.use('/api/outreach/system', outreachSystemRouter);
 app.use('/api/outreach', mailboxesRouter);
 app.use('/api/outreach', campaignsRouter);
+app.use('/api/outreach', trackingRouter);
+app.use('/api/outreach', outreachInboxRouter);
+
+// Aliases for direct endpoint paths
+app.use('/api', outreachInboxRouter);
+app.use('/api/domains', trackingRouter);
+app.use('/domains', trackingRouter);
+app.use('/inbox', outreachInboxRouter);
 
 // Export shared database functions for any legacy external bindings
 export { readDB, writeDB, INITIAL_DB };
@@ -236,6 +252,11 @@ async function startServer() {
       if (process.env.OUTREACH_WORKER !== 'off') {
         startQueueWorker(outreachPool);
         initSequencer(outreachPool);
+        inboxSyncManager.start().catch((syncErr: any) => {
+          logger.warn(`InboxSyncManager background start warning: ${syncErr?.message}`, {
+            context: 'InboxSync'
+          });
+        });
       }
     } else {
       logger.info('Outreach Suite: PostgreSQL not configured. Operating in PostgreSQL-required mode.', {

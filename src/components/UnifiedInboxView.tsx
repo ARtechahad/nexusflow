@@ -57,14 +57,45 @@ export const UnifiedInboxView: React.FC = () => {
   const fetchMessages = async () => {
     try {
       setLoading(true);
-      const res = await fetch('/api/inbox/messages');
-      const data = await res.json();
-      if (data.success && data.messages) {
-        setMessages(data.messages);
-        if (data.messages.length > 0 && !selectedMessage) {
-          setSelectedMessage(data.messages[0]);
-          if (data.messages[0].aiSuggestedReply) {
-            setReplyText(data.messages[0].aiSuggestedReply.body);
+      const [inboxRes, outreachRes] = await Promise.allSettled([
+        fetch('/api/inbox/messages').then(r => r.json()),
+        fetch('/api/outreach/inbox/threads').then(r => r.json())
+      ]);
+
+      let combined: ClientCommunicationMessage[] = [];
+
+      // 1. Live Cold Outreach Threads
+      if (outreachRes.status === 'fulfilled' && outreachRes.value?.success && Array.isArray(outreachRes.value.threads)) {
+        const mappedOutreach: ClientCommunicationMessage[] = outreachRes.value.threads.map((t: any) => ({
+          id: t.id,
+          tenantId: t.tenant_id,
+          clientName: t.prospect_email.split('@')[0],
+          clientEmail: t.prospect_email,
+          clientCompany: t.campaign_name || 'Cold Outreach Campaign',
+          channel: 'email' as CommunicationChannel,
+          subject: t.subject || 'Outreach Reply',
+          content: t.snippet || t.subject || 'Inbound reply from campaign recipient',
+          timestamp: t.last_message_at || t.created_at,
+          status: t.is_unread ? ('unread' as const) : ('read' as const),
+          sentiment: (t.label === 'interested' ? 'positive' : t.label === 'not_interested' ? 'negative' : 'neutral') as MessageSentiment,
+          sentimentScore: t.label === 'interested' ? 95 : t.label === 'not_interested' ? 20 : 75,
+          urgency: t.label === 'interested' ? ('high' as const) : ('medium' as const),
+          replies: []
+        }));
+        combined = [...mappedOutreach];
+      }
+
+      // 2. Client Inquiries
+      if (inboxRes.status === 'fulfilled' && inboxRes.value?.success && Array.isArray(inboxRes.value.messages)) {
+        combined = [...combined, ...inboxRes.value.messages];
+      }
+
+      if (combined.length > 0) {
+        setMessages(combined);
+        if (!selectedMessage) {
+          setSelectedMessage(combined[0]);
+          if (combined[0].aiSuggestedReply) {
+            setReplyText(combined[0].aiSuggestedReply.body);
           }
         }
       }

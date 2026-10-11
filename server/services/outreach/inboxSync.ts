@@ -158,16 +158,30 @@ export function isAutoReplyMessage(
  * Core processor for parsing a single incoming RFC 822 email message
  */
 export async function processInboundEmail(
-  rawEmailSource: string | Buffer,
+  rawEmailSource: string | Buffer | any,
   mailbox: any,
   pool: pg.Pool
 ): Promise<{ handled: boolean; type: string; details?: any }> {
-  const parsed: ParsedMail = await simpleParser(rawEmailSource);
+  let parsed: ParsedMail;
+  if (typeof rawEmailSource === 'string' || Buffer.isBuffer(rawEmailSource)) {
+    parsed = await simpleParser(rawEmailSource);
+  } else {
+    parsed = rawEmailSource as ParsedMail;
+  }
+
+  const getHeader = (name: string): string => {
+    if (!parsed?.headers) return '';
+    if (typeof (parsed.headers as any).get === 'function') {
+      return String((parsed.headers as any).get(name.toLowerCase()) || '');
+    }
+    return String((parsed.headers as any)[name.toLowerCase()] || (parsed.headers as any)[name] || '');
+  };
 
   // 1. FILTER: Ignore warmup network messages carrying X-Warmup-Tag
   const hasWarmupHeader =
-    parsed.headers.has('x-warmup-tag') ||
-    parsed.headers.has('x-warmup-id') ||
+    (typeof parsed?.headers?.has === 'function' && (parsed.headers.has('x-warmup-tag') || parsed.headers.has('x-warmup-id'))) ||
+    Boolean(getHeader('x-warmup-tag')) ||
+    Boolean(getHeader('x-warmup-id')) ||
     (parsed.subject || '').includes('__WARMUP_TOKEN_');
 
   if (hasWarmupHeader) {
@@ -443,7 +457,11 @@ export async function processInboundEmail(
       messageIdHeader,
       inReplyTo,
       references,
-      JSON.stringify(Object.fromEntries(parsed.headers.entries()))
+      JSON.stringify(
+        parsed?.headers && typeof (parsed.headers as any).entries === 'function'
+          ? Object.fromEntries(parsed.headers.entries())
+          : (parsed?.headers || {})
+      )
     ]
   );
 
@@ -672,6 +690,7 @@ export class InboxSyncManager {
       try {
         // Fetch last 10 messages from INBOX to inspect for replies / bounces
         const status = await client.status('INBOX', { messages: true });
+        if (!status || typeof status !== 'object') return;
         const total = status.messages || 0;
         if (total === 0) return;
 

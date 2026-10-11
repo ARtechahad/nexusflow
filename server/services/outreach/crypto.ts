@@ -117,7 +117,7 @@ export function signToken(payload: Record<string, any>, expiresInSeconds: number
 /**
  * Verifies and decodes an HMAC-SHA256 signed token.
  */
-export function verifyToken(token: string): { valid: boolean; payload?: any; error?: string } {
+export function verifyToken(token: string): { valid: boolean; payload?: any; error?: string; expired?: boolean } {
   if (!token || typeof token !== 'string') {
     return { valid: false, error: 'Token must be a non-empty string' };
   }
@@ -146,11 +146,11 @@ export function verifyToken(token: string): { valid: boolean; payload?: any; err
     if (payload.exp && typeof payload.exp === 'number') {
       const now = Math.floor(Date.now() / 1000);
       if (now > payload.exp) {
-        return { valid: false, error: 'Token has expired', payload };
+        return { valid: false, expired: true, error: 'Token has expired', payload };
       }
     }
 
-    return { valid: true, payload };
+    return { valid: true, expired: false, payload };
   } catch (err: any) {
     return { valid: false, error: err.message || 'Failed to verify token' };
   }

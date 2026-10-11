@@ -121,7 +121,11 @@ export interface DomainItem {
 }
 
 function getAuthHeader(): Record<string, string> {
-  const token = localStorage.getItem('agency_jwt_token') || sessionStorage.getItem('agency_jwt_token');
+  const token =
+    localStorage.getItem('clerk_token') ||
+    localStorage.getItem('agency_jwt_token') ||
+    sessionStorage.getItem('agency_jwt_token') ||
+    localStorage.getItem('alm_nexus_token');
   const headers: Record<string, string> = {
     'Content-Type': 'application/json'
   };
@@ -539,3 +543,165 @@ export async function sendCampaignTestEmail(
   return body.message || 'Test email dispatched';
 }
 
+// ----------------------------------------------------
+// PHASE 3: THREADS, INBOUND REPLIES & TRACKING DOMAINS
+// ----------------------------------------------------
+export type ThreadLabel =
+  | 'interested'
+  | 'not_interested'
+  | 'question'
+  | 'out_of_office'
+  | 'unsubscribe'
+  | 'wrong_person';
+
+export interface ThreadItem {
+  id: string;
+  tenant_id: string;
+  mailbox_id: string;
+  prospect_email: string;
+  subject: string;
+  last_message_at: string;
+  status: 'open' | 'closed';
+  label: ThreadLabel;
+  is_unread: boolean;
+  is_archived: boolean;
+  campaign_id?: string;
+  enrollment_id?: string;
+  snippet?: string;
+  created_at: string;
+  updated_at: string;
+  mailbox_email?: string;
+  mailbox_sender_name?: string;
+  campaign_name?: string;
+  message_count?: number;
+}
+
+export interface MessageItem {
+  id: string;
+  thread_id: string;
+  mailbox_id: string;
+  direction: 'inbound' | 'outbound';
+  from_email: string;
+  to_email: string;
+  subject: string;
+  body_text?: string;
+  body_html?: string;
+  message_id_header?: string;
+  received_at: string;
+  created_at: string;
+}
+
+export interface ThreadStats {
+  total: number;
+  unread: number;
+  interested: number;
+  question: number;
+  notInterested: number;
+}
+
+export async function getOutreachThreads(params?: {
+  label?: string;
+  mailboxId?: string;
+  campaignId?: string;
+  unread?: boolean;
+  search?: string;
+  archived?: boolean;
+}): Promise<{ threads: ThreadItem[]; stats: ThreadStats }> {
+  const query = new URLSearchParams();
+  if (params?.label && params.label !== 'all') query.set('label', params.label);
+  if (params?.mailboxId && params.mailboxId !== 'all') query.set('mailboxId', params.mailboxId);
+  if (params?.campaignId && params.campaignId !== 'all') query.set('campaignId', params.campaignId);
+  if (params?.unread) query.set('unread', 'true');
+  if (params?.search) query.set('search', params.search);
+  if (params?.archived) query.set('archived', 'true');
+
+  const res = await fetch(`/api/outreach/inbox/threads?${query.toString()}`, {
+    headers: getAuthHeader()
+  });
+  const body = await res.json();
+  if (!res.ok || !body.success) throw new Error(body.error || 'Failed to fetch inbox threads');
+  return { threads: body.threads || [], stats: body.stats || { total: 0, unread: 0, interested: 0, question: 0, notInterested: 0 } };
+}
+
+export async function getOutreachThread(id: string): Promise<{ thread: ThreadItem; messages: MessageItem[] }> {
+  const res = await fetch(`/api/outreach/inbox/threads/${id}`, {
+    headers: getAuthHeader()
+  });
+  const body = await res.json();
+  if (!res.ok || !body.success) throw new Error(body.error || 'Failed to fetch thread detail');
+  return { thread: body.thread, messages: body.messages || [] };
+}
+
+export async function sendThreadReply(
+  threadId: string,
+  data: { bodyText: string; subject?: string }
+): Promise<{ messageId: string }> {
+  const res = await fetch(`/api/outreach/inbox/threads/${threadId}/reply`, {
+    method: 'POST',
+    headers: getAuthHeader(),
+    body: JSON.stringify(data)
+  });
+  const body = await res.json();
+  if (!res.ok || !body.success) throw new Error(body.error || 'Failed to send reply');
+  return { messageId: body.messageId };
+}
+
+export async function updateThread(
+  threadId: string,
+  data: { label?: ThreadLabel; is_unread?: boolean; is_archived?: boolean }
+): Promise<ThreadItem> {
+  const res = await fetch(`/api/outreach/inbox/threads/${threadId}`, {
+    method: 'PATCH',
+    headers: getAuthHeader(),
+    body: JSON.stringify(data)
+  });
+  const body = await res.json();
+  if (!res.ok || !body.success) throw new Error(body.error || 'Failed to update thread');
+  return body.thread;
+}
+
+export async function suggestAIReply(threadId: string): Promise<{ suggestions: string[]; isFallback: boolean }> {
+  const res = await fetch(`/api/outreach/inbox/threads/${threadId}/suggest-reply`, {
+    method: 'POST',
+    headers: getAuthHeader()
+  });
+  const body = await res.json();
+  if (!res.ok || !body.success) throw new Error(body.error || 'Failed to generate AI suggestions');
+  return { suggestions: body.suggestions || [], isFallback: !!body.isFallback };
+}
+
+export async function createLeadFromThread(threadId: string): Promise<{ leadId: string; message: string }> {
+  const res = await fetch(`/api/outreach/inbox/threads/${threadId}/create-lead`, {
+    method: 'POST',
+    headers: getAuthHeader()
+  });
+  const body = await res.json();
+  if (!res.ok || !body.success) throw new Error(body.error || 'Failed to create CRM lead');
+  return { leadId: body.leadId, message: body.message };
+}
+
+export async function setDomainTracking(
+  domainId: string,
+  trackingDomain: string
+): Promise<{ trackingDomain: string; cnameRecord: { host: string; type: string; target: string }; instructions: string }> {
+  const res = await fetch(`/api/outreach/domains/${domainId}/tracking`, {
+    method: 'POST',
+    headers: getAuthHeader(),
+    body: JSON.stringify({ domain: trackingDomain })
+  });
+  const body = await res.json();
+  if (!res.ok || !body.success) throw new Error(body.error || 'Failed to set tracking domain');
+  return body;
+}
+
+export async function verifyDomainTracking(
+  domainId: string
+): Promise<{ verified: boolean; message: string; dnsLookupResult?: any }> {
+  const res = await fetch(`/api/outreach/domains/${domainId}/tracking/verify`, {
+    method: 'POST',
+    headers: getAuthHeader()
+  });
+  const body = await res.json();
+  if (!res.ok || !body.success) throw new Error(body.error || 'Failed to verify tracking domain');
+  return body;
+}

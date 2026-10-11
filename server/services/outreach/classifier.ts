@@ -79,7 +79,7 @@ export function classifyReplyWithRules(body: string, subject: string = ''): Clas
 
   // 5. Positive / Interested / Meeting Request
   if (
-    /interested|sounds (good|great|interesting)|let's chat|let's connect|hop on a call|book a time|send (over )?a (deck|quote|proposal|pricing)|free (next|this) week|calendar link|grab 15 minutes|schedule time|set up a demo/i.test(
+    /interested|sounds (good|great|interesting)|let's chat|let's connect|hop on a call|book a time|send (over )?(a |the |your )?(deck|quote|proposal|pricing|case studies|info)|free (next|this) week|calendar link|grab 15 minutes|schedule time|set up a demo/i.test(
       combined
     )
   ) {

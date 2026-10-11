@@ -28,6 +28,7 @@ import {
 import { useApp } from '../../context/AppContext';
 import { MailboxesTab } from './MailboxesTab';
 import { CampaignsTab } from './CampaignsTab';
+import { InboxTab } from './InboxTab';
 import {
   getOutreachHealth,
   getOutreachQueueStats,
@@ -432,13 +433,15 @@ export const OutreachSuiteView: React.FC = () => {
       {/* CAMPAIGNS TAB CONTENT */}
       {activeTab === 'campaigns' && <CampaignsTab />}
 
+      {/* INBOX TAB CONTENT (PHASE 3) */}
+      {activeTab === 'inbox' && <InboxTab />}
+
       {/* PLACEHOLDERS FOR SUBSEQUENT PHASES */}
-      {activeTab !== 'dashboard' && activeTab !== 'mailboxes' && activeTab !== 'campaigns' && (
+      {activeTab !== 'dashboard' && activeTab !== 'mailboxes' && activeTab !== 'campaigns' && activeTab !== 'inbox' && (
         <div className="p-12 text-center rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-3">
           <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 mx-auto flex items-center justify-center">
             {activeTab === 'warmup' && <Flame className="w-6 h-6" />}
             {activeTab === 'prospects' && <Users className="w-6 h-6" />}
-            {activeTab === 'inbox' && <Inbox className="w-6 h-6" />}
             {activeTab === 'verifier' && <ShieldCheck className="w-6 h-6" />}
             {activeTab === 'analytics' && <BarChart3 className="w-6 h-6" />}
             {activeTab === 'settings' && <Settings className="w-6 h-6" />}
@@ -449,7 +452,6 @@ export const OutreachSuiteView: React.FC = () => {
           <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
             {activeTab === 'warmup' && 'Peer-to-peer peer inbox exchange network to build positive spam filter reputation.'}
             {activeTab === 'prospects' && 'Lead list management with custom variables, CSV import, and suppression filtering.'}
-            {activeTab === 'inbox' && 'Unified response triage with positive lead classification and reply tracking.'}
             {activeTab === 'verifier' && 'Real-time MX, SPF, DKIM, and deliverability health monitor.'}
             {activeTab === 'analytics' && 'Open, click, reply, and meeting conversion funnel telemetry.'}
             {activeTab === 'settings' && 'Tracking domains, API keys, and outbound tenant configuration.'}

@@ -35,6 +35,31 @@ databaseRouter.get('/status', async (req: Request, res: Response) => {
   }
 });
 
+databaseRouter.get(['/neon-test', '/neon/test', '/neon/status'], async (req: Request, res: Response) => {
+  try {
+    const { testNeonConnection } = await import('../services/db');
+    const result = await testNeonConnection();
+    res.json({ success: true, result });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+databaseRouter.post(['/neon/init-schema', '/neon/migrate'], async (req: Request, res: Response) => {
+  try {
+    const { initNeonSchema } = await import('../services/db');
+    const migrated = await initNeonSchema();
+    res.json({
+      success: migrated,
+      message: migrated
+        ? 'Neon database schema verified and essential tables/columns migrated successfully.'
+        : 'Schema migration skipped or database pool not connected.'
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 databaseRouter.post('/test-connection', async (req: Request, res: Response) => {
   const { url } = req.body;
   if (!url) {

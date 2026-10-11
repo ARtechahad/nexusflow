@@ -16,7 +16,7 @@ export const outreachInboxRouter = express.Router();
 // ----------------------------------------------------
 // 1. GET /inbox/threads — List threads with filters & search
 // ----------------------------------------------------
-outreachInboxRouter.get('/inbox/threads', authenticateToken, async (req: Request, res: Response) => {
+outreachInboxRouter.get(['/inbox/threads', '/threads'], authenticateToken, async (req: Request, res: Response) => {
   const tenantId = (req as any).user?.tenant_id || (req as any).user?.tenantId || 'tenant-alm-nexus';
   const pool = getOutreachPool();
   if (!pool) {
@@ -112,7 +112,7 @@ outreachInboxRouter.get('/inbox/threads', authenticateToken, async (req: Request
 // ----------------------------------------------------
 // 2. GET /inbox/threads/:id — Thread detail with all messages
 // ----------------------------------------------------
-outreachInboxRouter.get('/inbox/threads/:id', authenticateToken, async (req: Request, res: Response) => {
+outreachInboxRouter.get(['/inbox/threads/:id', '/threads/:id'], authenticateToken, async (req: Request, res: Response) => {
   const threadId = req.params.id;
   const tenantId = (req as any).user?.tenant_id || (req as any).user?.tenantId || 'tenant-alm-nexus';
   const pool = getOutreachPool();
@@ -171,7 +171,7 @@ outreachInboxRouter.get('/inbox/threads/:id', authenticateToken, async (req: Req
 // ----------------------------------------------------
 // 3. POST /inbox/threads/:id/reply — Send manual reply through Cap Guard
 // ----------------------------------------------------
-outreachInboxRouter.post('/inbox/threads/:id/reply', authenticateToken, async (req: Request, res: Response) => {
+outreachInboxRouter.post(['/inbox/threads/:id/reply', '/threads/:id/reply'], authenticateToken, async (req: Request, res: Response) => {
   const threadId = req.params.id;
   const tenantId = (req as any).user?.tenant_id || (req as any).user?.tenantId || 'tenant-alm-nexus';
   const pool = getOutreachPool();
@@ -331,7 +331,7 @@ outreachInboxRouter.post('/inbox/threads/:id/reply', authenticateToken, async (r
 // ----------------------------------------------------
 // 4. PATCH /inbox/threads/:id — Update label, read/unread, archive
 // ----------------------------------------------------
-outreachInboxRouter.patch('/inbox/threads/:id', authenticateToken, async (req: Request, res: Response) => {
+outreachInboxRouter.patch(['/inbox/threads/:id', '/threads/:id'], authenticateToken, async (req: Request, res: Response) => {
   const threadId = req.params.id;
   const tenantId = (req as any).user?.tenant_id || (req as any).user?.tenantId || 'tenant-alm-nexus';
   const pool = getOutreachPool();
@@ -400,7 +400,7 @@ outreachInboxRouter.patch('/inbox/threads/:id', authenticateToken, async (req: R
 // ----------------------------------------------------
 // 5. POST /inbox/threads/:id/suggest-reply — AI Suggest Reply (Gemini)
 // ----------------------------------------------------
-outreachInboxRouter.post('/inbox/threads/:id/suggest-reply', authenticateToken, async (req: Request, res: Response) => {
+outreachInboxRouter.post(['/inbox/threads/:id/suggest-reply', '/threads/:id/suggest-reply'], authenticateToken, async (req: Request, res: Response) => {
   const threadId = req.params.id;
   const tenantId = (req as any).user?.tenant_id || (req as any).user?.tenantId || 'tenant-alm-nexus';
   const pool = getOutreachPool();
@@ -493,7 +493,7 @@ Respond ONLY with valid JSON in this format:
 // ----------------------------------------------------
 // 6. POST /inbox/threads/:id/create-lead — Convert interested thread to CRM lead
 // ----------------------------------------------------
-outreachInboxRouter.post('/inbox/threads/:id/create-lead', authenticateToken, async (req: Request, res: Response) => {
+outreachInboxRouter.post(['/inbox/threads/:id/create-lead', '/threads/:id/create-lead'], authenticateToken, async (req: Request, res: Response) => {
   const threadId = req.params.id;
   const tenantId = (req as any).user?.tenant_id || (req as any).user?.tenantId || 'tenant-alm-nexus';
   const pool = getOutreachPool();

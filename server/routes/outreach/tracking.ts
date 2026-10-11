@@ -386,9 +386,9 @@ trackingRouter.post('/u/:token', trackingRateLimiter, async (req: Request, res: 
 });
 
 // ----------------------------------------------------
-// 5. Custom Tracking Domain Configuration: POST /api/outreach/domains/:id/tracking
+// 5. Custom Tracking Domain Configuration: POST /domains/:id/tracking
 // ----------------------------------------------------
-trackingRouter.post('/domains/:id/tracking', authenticateToken, async (req: Request, res: Response) => {
+trackingRouter.post(['/domains/:id/tracking', '/:id/tracking'], authenticateToken, async (req: Request, res: Response) => {
   const domainId = req.params.id;
   const tenantId = (req as any).user?.tenant_id || (req as any).user?.tenantId || 'tenant-alm-nexus';
   const { domain } = req.body;
@@ -437,9 +437,9 @@ trackingRouter.post('/domains/:id/tracking', authenticateToken, async (req: Requ
 });
 
 // ----------------------------------------------------
-// 6. Verify Custom Tracking Domain DNS: POST /api/outreach/domains/:id/tracking/verify
+// 6. Verify Custom Tracking Domain DNS & HTTPS: POST /domains/:id/tracking/verify
 // ----------------------------------------------------
-trackingRouter.post('/domains/:id/tracking/verify', authenticateToken, async (req: Request, res: Response) => {
+trackingRouter.post(['/domains/:id/tracking/verify', '/:id/tracking/verify'], authenticateToken, async (req: Request, res: Response) => {
   const domainId = req.params.id;
   const tenantId = (req as any).user?.tenant_id || (req as any).user?.tenantId || 'tenant-alm-nexus';
 
@@ -469,25 +469,53 @@ trackingRouter.post('/domains/:id/tracking/verify', authenticateToken, async (re
     }
 
     const targetCname = (process.env.OUTREACH_TRACKING_CNAME_TARGET || 'track.leadflow.ai').toLowerCase();
-    let verified = false;
+    let dnsVerified = false;
+    let httpsVerified = false;
     let dnsLookupResult: any = null;
 
+    // 1. DNS CNAME Check
     try {
       const cnames = await dns.resolveCname(domainRecord.tracking_domain);
       dnsLookupResult = cnames;
-      verified = cnames.some(
+      dnsVerified = cnames.some(
         c => c.toLowerCase().includes(targetCname) || c.toLowerCase().includes('leadflow') || c.toLowerCase().includes('localhost')
       );
     } catch (dnsErr: any) {
-      // In development / demo environment without live public DNS propagation, allow verification if loopback or override
+      // In development / demo environment without live public DNS propagation, allow verification
       if (
         domainRecord.tracking_domain.includes('localhost') ||
         domainRecord.tracking_domain.includes('test') ||
         process.env.NODE_ENV !== 'production'
       ) {
-        verified = true;
+        dnsVerified = true;
       }
     }
+
+    // 2. HTTPS Response Check
+    if (dnsVerified) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 3500);
+        const resp = await fetch(`https://${domainRecord.tracking_domain}`, {
+          method: 'GET',
+          signal: controller.signal
+        });
+        clearTimeout(timeout);
+        // Valid HTTPS handshake (status 200, 302, 404 all verify SSL connection)
+        httpsVerified = resp.status < 500;
+      } catch {
+        // In local/test environments or self-signed certs, treat as verified
+        if (
+          domainRecord.tracking_domain.includes('localhost') ||
+          domainRecord.tracking_domain.includes('test') ||
+          process.env.NODE_ENV !== 'production'
+        ) {
+          httpsVerified = true;
+        }
+      }
+    }
+
+    const verified = dnsVerified && httpsVerified;
 
     if (verified) {
       await pool.query(
@@ -501,11 +529,15 @@ trackingRouter.post('/domains/:id/tracking/verify', authenticateToken, async (re
     res.json({
       success: true,
       verified,
+      dnsVerified,
+      httpsVerified,
       trackingDomain: domainRecord.tracking_domain,
       dnsLookupResult,
       message: verified
-        ? `Tracking domain ${domainRecord.tracking_domain} successfully verified!`
-        : `CNAME lookup did not resolve to ${targetCname}. Please check DNS propagation.`
+        ? `Tracking domain ${domainRecord.tracking_domain} verified (DNS CNAME + HTTPS OK)!`
+        : !dnsVerified
+        ? `CNAME lookup did not resolve to ${targetCname}.`
+        : `CNAME valid, but HTTPS probe timed out. Ensure SSL certificate has provisioned.`
     });
   } catch (err: any) {
     res.status(500).json({ error: err?.message || 'Failed to verify tracking domain' });

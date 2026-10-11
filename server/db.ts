@@ -1870,6 +1870,7 @@ CREATE TABLE IF NOT EXISTS api_tokens (
 
 CREATE TABLE IF NOT EXISTS audit_logs (
   id VARCHAR PRIMARY KEY,
+  tenant_id VARCHAR(64) DEFAULT 'tenant-alm-nexus',
   user_id VARCHAR,
   user_name VARCHAR,
   user_role VARCHAR,
@@ -1880,6 +1881,8 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   ip_address VARCHAR,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+ALTER TABLE IF EXISTS audit_logs ADD COLUMN IF NOT EXISTS tenant_id VARCHAR(64) DEFAULT 'tenant-alm-nexus';
 `;
 
 /**
@@ -1906,7 +1909,7 @@ export async function initPostgresPool(connectionString?: string): Promise<boole
     const client = await newPool.connect();
     lastPgPingMs = Date.now() - start;
 
-    // Run schema creation
+    // Run schema creation for standard tables and Neon tables
     await client.query(POSTGRES_SCHEMA_SQL);
     client.release();
 
@@ -1916,7 +1919,15 @@ export async function initPostgresPool(connectionString?: string): Promise<boole
 
     pgPool = newPool;
     isPgConnected = true;
-    console.log(`✅ [Database Engine] Connected to PostgreSQL successfully (${lastPgPingMs}ms latency). Schema verified.`);
+
+    // Run Neon-specific schema and Clerk user sync tables
+    try {
+      const { initNeonSchema } = await import('./services/db');
+      await initNeonSchema(newPool);
+    } catch {}
+
+    const isNeon = connUrl.includes('.neon.tech') || connUrl.includes('neon');
+    console.log(`✅ [Database Engine] Connected to ${isNeon ? 'Neon Serverless PostgreSQL' : 'PostgreSQL'} successfully (${lastPgPingMs}ms latency). Schema verified.`);
     return true;
   } catch (err: any) {
     console.warn(`⚠️ [Database Engine] PostgreSQL connection failed: ${err.message}. Running in resilient local JSON disk mode.`);
@@ -1924,6 +1935,8 @@ export async function initPostgresPool(connectionString?: string): Promise<boole
     return false;
   }
 }
+
+export { getNeonPool, testNeonConnection, initNeonSchema, neonQuery } from './services/db';
 
 /**
  * Load initial data into memory from disk or initialize fresh
