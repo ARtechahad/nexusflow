@@ -72,38 +72,99 @@ export function renderEmailTemplate(template: string, vars: Record<string, any> 
   </div>`;
 }
 
+import { resendService } from './resendService';
+import { requireClerkAuth } from '../middlewares/clerkAuth';
+
 export const emailRouter = Router();
 
-// POST /api/email/send - Queue transactional email dispatch
-emailRouter.post('/send', (req: Request, res: Response) => {
-  const body: EmailDispatchOptions = req.body;
+// POST /api/email/send or /api/emails/send - Dispatch email via Resend (guarded by requireClerkAuth)
+emailRouter.post(['/send', '/dispatch'], requireClerkAuth, async (req: Request, res: Response) => {
+  const body: EmailDispatchOptions & {
+    html?: string;
+    text?: string;
+    from?: string;
+    fromName?: string;
+    replyTo?: string;
+    immediate?: boolean;
+    attachments?: any[];
+    tags?: any[];
+  } = req.body;
+
   if (!body.to || !body.subject) {
-    return res.status(400).json({ success: false, error: 'Recipient email (to) and subject are required.' });
+    res.status(400).json({ success: false, error: 'Recipient email (to) and subject are required.' });
+    return;
   }
 
-  const tenantId = (req as any).tenant_id || 'tenant-alm-nexus';
-  const htmlContent = renderEmailTemplate(body.template || 'general', {
+  const tenantId = (req as any).userId ? ((req as any).orgId || (req as any).tenant_id || 'tenant-alm-nexus') : ((req as any).tenant_id || 'tenant-alm-nexus');
+  const htmlContent = body.html || renderEmailTemplate(body.template || 'general', {
     clientName: body.clientName,
     ...body.variables
   });
 
-  const job = queueEngine.addJob('email_send', {
-    to: body.to,
-    subject: body.subject,
-    template: body.template,
-    html: htmlContent
-  }, tenantId);
-
-  res.json({
-    success: true,
-    message: `Email job queued successfully for ${body.to}`,
-    data: {
-      jobId: job.id,
-      recipient: body.to,
+  try {
+    // If client requested immediate direct dispatch (default: true for Resend)
+    const result = await resendService.sendEmail({
+      to: body.to,
       subject: body.subject,
-      status: 'queued'
-    }
-  });
+      html: htmlContent,
+      text: body.text,
+      from: body.from,
+      fromName: body.fromName,
+      replyTo: body.replyTo,
+      attachments: body.attachments,
+      tags: body.tags,
+      tenantId,
+      template: body.template || 'transactional',
+      metadata: {
+        clientName: body.clientName,
+        queuedBy: (req as any).userId || (req as any).user?.id || 'system'
+      }
+    });
+
+    res.json({
+      success: result.success,
+      message: result.success
+        ? `Email successfully dispatched via Resend to ${body.to}`
+        : `Email queued with resilient fallback: ${result.error || 'Simulated delivery'}`,
+      data: {
+        messageId: result.messageId,
+        recipient: body.to,
+        from: result.from,
+        subject: body.subject,
+        provider: result.provider,
+        status: result.success ? 'delivered' : 'pending_retry',
+        telemetryId: result.telemetryId
+      }
+    });
+  } catch (err: any) {
+    logger.error(`[EmailEngine] Unexpected dispatch error: ${err.message}`, { context: 'EmailEngine' });
+    res.status(500).json({
+      success: false,
+      error: `Failed to dispatch email: ${err.message}`
+    });
+  }
+});
+
+// GET /api/email/logs - Retrieve recent email telemetry from Neon Database
+emailRouter.get('/logs', requireClerkAuth, async (req: Request, res: Response) => {
+  try {
+    const tenantId = (req as any).orgId || (req as any).tenant_id || 'tenant-alm-nexus';
+    const limit = parseInt(req.query.limit as string, 10) || 50;
+    const logs = await resendService.getRecentLogs(tenantId, limit);
+    res.json({ success: true, count: logs.length, logs });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/email/status - Resend engine diagnostic health check
+emailRouter.get(['/status', '/test'], async (req: Request, res: Response) => {
+  try {
+    const testRes = await resendService.testConnection();
+    res.json({ success: testRes.ok, ...testRes });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // GET /api/email/track/:id - Open pixel tracking simulation

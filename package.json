@@ -9,7 +9,7 @@
     "start": "node dist/server.cjs",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
-    "test": "node --test tests/automated.test.mjs && tsx --test tests/phase0.test.mjs && tsx --test tests/phase2.test.mjs && tsx --test tests/phase3.test.mjs && tsx --test tests/neon-clerk.test.mjs",
+    "test": "node --test tests/automated.test.mjs && tsx --test tests/phase0.test.mjs && tsx --test tests/phase2.test.mjs && tsx --test tests/phase3.test.mjs && tsx --test tests/neon-clerk.test.mjs && tsx --test tests/resend-email.test.mjs",
     "lint": "tsc --noEmit",
     "build-exe": "electron-builder build --win"
   },
@@ -36,6 +36,7 @@
     "pg": "^8.23.0",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
+    "resend": "^6.32.1",
     "vite": "^6.2.3",
     "zod": "^4.6.5"
   },

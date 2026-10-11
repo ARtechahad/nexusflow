@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { readDB, writeDB } from '../db';
+import { resendService } from '../services/resendService';
 
 export const dripRouter = Router();
 export const nudgeRouter = Router();
@@ -100,6 +101,29 @@ dripRouter.post('/trigger', (req: Request, res: Response) => {
     p.dripCampaign.history.unshift(historyEntry);
     p.dripCampaign.lastSentAt = new Date().toISOString();
     
+    // Dispatch via Resend if client email is available
+    const targetEmail = p.clientEmail || p.email || p.contactEmail;
+    if (targetEmail) {
+      resendService.sendEmail({
+        to: targetEmail,
+        subject: formattedSubject,
+        text: formattedBody,
+        html: `<div style="font-family: Arial, sans-serif; padding: 20px; color: #1e293b;">
+          <h2 style="color: #4f46e5;">Milestone Reminder for ${p.clientName}</h2>
+          <p>${formattedBody.replace(/\\n/g, '<br>')}</p>
+          <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;">
+          <p style="font-size: 12px; color: #64748b;">ALM Nexus Enterprise &bull; Client Operations</p>
+        </div>`,
+        template: 'drip_followup',
+        tenantId: p.tenantId || 'tenant-alm-nexus',
+        metadata: {
+          projectId: p.id,
+          stage: currentStage,
+          clientName: p.clientName
+        }
+      }).catch(err => console.debug('[Drip Engine] Notice:', err?.message));
+    }
+
     // Advance stage for next cycle if not completed
     if (p.dripCampaign.currentStage < 4) {
       p.dripCampaign.currentStage += 1;
@@ -184,6 +208,30 @@ dripRouter.post('/send-now/:projectId', (req: Request, res: Response) => {
 
   p.dripCampaign.history.unshift(historyEntry);
   p.dripCampaign.lastSentAt = new Date().toISOString();
+
+  // Dispatch via Resend if client email is available
+  const targetEmail = p.clientEmail || p.email || p.contactEmail;
+  if (targetEmail) {
+    resendService.sendEmail({
+      to: targetEmail,
+      subject: formattedSubject,
+      text: formattedBody,
+      html: `<div style="font-family: Arial, sans-serif; padding: 20px; color: #1e293b;">
+        <h2 style="color: #4f46e5;">Milestone Follow-Up for ${p.clientName}</h2>
+        <p>${formattedBody.replace(/\\n/g, '<br>')}</p>
+        <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;">
+        <p style="font-size: 12px; color: #64748b;">ALM Nexus Enterprise &bull; Client Operations</p>
+      </div>`,
+      template: 'drip_followup_manual',
+      tenantId: p.tenantId || 'tenant-alm-nexus',
+      metadata: {
+        projectId: p.id,
+        stage: currentStage,
+        clientName: p.clientName
+      }
+    }).catch(err => console.debug('[Drip Engine] Notice:', err?.message));
+  }
+
   if (p.dripCampaign.currentStage < 4) {
     p.dripCampaign.currentStage += 1;
   }

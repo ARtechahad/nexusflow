@@ -164,6 +164,7 @@ app.use('/api/offline', offlineSyncRouter);
 
 // Transactional Email & Notifications Engine
 app.use('/api/email', emailRouter);
+app.use('/api/emails', emailRouter);
 
 // Universal Webhooks Subscription Engine
 app.use('/api/webhooks/v2', universalWebhookRouter);

@@ -255,15 +255,31 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 7. Ensure All Columns Exist on Pre-existing Tables Before Indexing
+-- 7. Resend Email Telemetry Ledger
+CREATE TABLE IF NOT EXISTS resend_email_logs (
+  id VARCHAR(64) PRIMARY KEY,
+  tenant_id VARCHAR(64) DEFAULT 'tenant-alm-nexus',
+  resend_id VARCHAR(128),
+  recipient VARCHAR(255) NOT NULL,
+  sender VARCHAR(255) NOT NULL,
+  subject TEXT NOT NULL,
+  status VARCHAR(32) NOT NULL DEFAULT 'sent',
+  template VARCHAR(64),
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  error_message TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 8. Ensure All Columns Exist on Pre-existing Tables Before Indexing
 ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS clerk_user_id VARCHAR(128);
 ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS tenant_id VARCHAR(64) DEFAULT 'tenant-alm-nexus';
 ALTER TABLE IF EXISTS projects ADD COLUMN IF NOT EXISTS tenant_id VARCHAR(64) DEFAULT 'tenant-alm-nexus';
 ALTER TABLE IF EXISTS invoices ADD COLUMN IF NOT EXISTS tenant_id VARCHAR(64) DEFAULT 'tenant-alm-nexus';
 ALTER TABLE IF EXISTS audit_logs ADD COLUMN IF NOT EXISTS tenant_id VARCHAR(64) DEFAULT 'tenant-alm-nexus';
 ALTER TABLE IF EXISTS clerk_users_sync ADD COLUMN IF NOT EXISTS tenant_id VARCHAR(64) DEFAULT 'tenant-alm-nexus';
+ALTER TABLE IF EXISTS resend_email_logs ADD COLUMN IF NOT EXISTS tenant_id VARCHAR(64) DEFAULT 'tenant-alm-nexus';
 
--- 8. Essential Indexes
+-- 9. Essential Indexes
 CREATE INDEX IF NOT EXISTS idx_tenants_slug ON tenants(slug);
 CREATE INDEX IF NOT EXISTS idx_users_clerk_id ON users(clerk_user_id);
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
@@ -273,6 +289,8 @@ CREATE INDEX IF NOT EXISTS idx_projects_tenant ON projects(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
 CREATE INDEX IF NOT EXISTS idx_invoices_tenant ON invoices(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_tenant ON audit_logs(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_resend_email_logs_tenant ON resend_email_logs(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_resend_email_logs_recipient ON resend_email_logs(recipient);
 `;
 
 /**
@@ -298,6 +316,7 @@ export async function initNeonSchema(customPool?: pg.Pool): Promise<boolean> {
       ALTER TABLE IF EXISTS invoices ADD COLUMN IF NOT EXISTS tenant_id VARCHAR(64) DEFAULT 'tenant-alm-nexus';
       ALTER TABLE IF EXISTS audit_logs ADD COLUMN IF NOT EXISTS tenant_id VARCHAR(64) DEFAULT 'tenant-alm-nexus';
       ALTER TABLE IF EXISTS clerk_users_sync ADD COLUMN IF NOT EXISTS tenant_id VARCHAR(64) DEFAULT 'tenant-alm-nexus';
+      ALTER TABLE IF EXISTS resend_email_logs ADD COLUMN IF NOT EXISTS tenant_id VARCHAR(64) DEFAULT 'tenant-alm-nexus';
     `);
 
     // Run table creation and schema definitions

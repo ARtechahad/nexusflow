@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 import { z } from 'zod';
 import crypto from 'node:crypto';
 import { authenticateToken } from '../../middlewares/auth';
+import { requireClerkAuth } from '../../middlewares/clerkAuth';
 import { getOutreachPool } from '../../services/outreach/schema';
 import { logger } from '../../logger';
 import { validateTemplate } from '../../services/outreach/render';
@@ -619,9 +620,9 @@ campaignsRouter.get('/campaigns/:id/stats', authenticateToken, async (req: Reque
 });
 
 // 9. POST /api/outreach/campaigns/:id/test-send - Test send rendered step through Cap Guard & sender
-campaignsRouter.post('/campaigns/:id/test-send', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+campaignsRouter.post('/campaigns/:id/test-send', requireClerkAuth, async (req: Request, res: Response): Promise<void> => {
   try {
-    const tenantId = (req as any).user?.tenant_id;
+    const tenantId = (req as any).user?.tenant_id || (req as any).orgId || (req as any).tenant_id || 'tenant-alm-nexus';
     const { id: campaignId } = req.params;
 
     const parsed = TestSendSchema.safeParse(req.body);

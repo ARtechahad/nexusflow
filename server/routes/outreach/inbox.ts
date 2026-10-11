@@ -3,6 +3,8 @@ import crypto from 'node:crypto';
 import nodemailer from 'nodemailer';
 import { z } from 'zod';
 import { authenticateToken } from '../../middlewares/auth';
+import { requireClerkAuth } from '../../middlewares/clerkAuth';
+import { resendService } from '../../services/resendService';
 import { getOutreachPool } from '../../services/outreach/schema';
 import { logger } from '../../logger';
 import { decryptSecret } from '../../services/outreach/crypto';
@@ -171,9 +173,9 @@ outreachInboxRouter.get(['/inbox/threads/:id', '/threads/:id'], authenticateToke
 // ----------------------------------------------------
 // 3. POST /inbox/threads/:id/reply — Send manual reply through Cap Guard
 // ----------------------------------------------------
-outreachInboxRouter.post(['/inbox/threads/:id/reply', '/threads/:id/reply'], authenticateToken, async (req: Request, res: Response) => {
+outreachInboxRouter.post(['/inbox/threads/:id/reply', '/threads/:id/reply'], requireClerkAuth, async (req: Request, res: Response) => {
   const threadId = req.params.id;
-  const tenantId = (req as any).user?.tenant_id || (req as any).user?.tenantId || 'tenant-alm-nexus';
+  const tenantId = (req as any).user?.tenant_id || (req as any).user?.tenantId || (req as any).orgId || (req as any).tenant_id || 'tenant-alm-nexus';
   const pool = getOutreachPool();
   if (!pool) {
     res.status(500).json({ error: 'Database unavailable' });
@@ -232,29 +234,6 @@ outreachInboxRouter.post(['/inbox/threads/:id/reply', '/threads/:id/reply'], aut
       return;
     }
 
-    // 4. Decrypt SMTP secret
-    let smtpPassword = '';
-    try {
-      smtpPassword = decryptSecret(thread.smtp_pass_encrypted);
-    } catch {
-      res.status(500).json({ error: 'Unable to decrypt mailbox credentials' });
-      return;
-    }
-
-    const transporter = nodemailer.createTransport({
-      host: thread.smtp_host,
-      port: thread.smtp_port || 587,
-      secure: thread.smtp_port === 465,
-      auth: {
-        user: thread.smtp_user || thread.mailbox_email,
-        pass: smtpPassword
-      },
-      tls: {
-        rejectUnauthorized: process.env.NODE_ENV === 'production',
-        minVersion: 'TLSv1.2'
-      }
-    });
-
     const replySubject =
       customSubject ||
       (thread.subject?.toLowerCase().startsWith('re:') ? thread.subject : `Re: ${thread.subject || 'Outreach'}`);
@@ -270,17 +249,29 @@ outreachInboxRouter.post(['/inbox/threads/:id/reply', '/threads/:id/reply'], aut
       ? `${lastMsg.references_header} ${lastMsg.message_id_header || ''}`.trim()
       : lastMsg?.message_id_header || '';
 
-    // 5. Send Email
-    await transporter.sendMail({
-      from: `"${thread.mailbox_sender_name}" <${thread.mailbox_email}>`,
+    // 4. Send Email via Resend Engine
+    const resendResult = await resendService.sendEmail({
       to: thread.prospect_email,
+      from: thread.mailbox_email,
+      fromName: thread.mailbox_sender_name,
+      replyTo: thread.mailbox_email,
       subject: replySubject,
       text: bodyText + (thread.signature ? `\n\n${thread.signature}` : ''),
       html: formattedBodyHtml,
-      messageId: newMsgId,
-      inReplyTo: lastMsg?.message_id_header || undefined,
-      references: referencesHeader || undefined
+      headers: {
+        'In-Reply-To': lastMsg?.message_id_header || '',
+        'References': referencesHeader || '',
+        'Message-ID': newMsgId
+      },
+      tags: [
+        { name: 'channel', value: 'inbox_reply' },
+        { name: 'thread_id', value: String(threadId) }
+      ],
+      tenantId,
+      template: 'inbox_reply'
     });
+
+    const finalMsgId = resendResult.messageId || newMsgId;
 
     // 6. Record outbound message in ox_messages
     const newMsgRecordId = `msg_${crypto.randomUUID()}`;
@@ -300,7 +291,7 @@ outreachInboxRouter.post(['/inbox/threads/:id/reply', '/threads/:id/reply'], aut
         replySubject,
         bodyText,
         formattedBodyHtml,
-        newMsgId,
+        finalMsgId,
         lastMsg?.message_id_header || null,
         referencesHeader || null
       ]
@@ -319,8 +310,8 @@ outreachInboxRouter.post(['/inbox/threads/:id/reply', '/threads/:id/reply'], aut
 
     res.json({
       success: true,
-      messageId: newMsgId,
-      message: 'Reply sent successfully'
+      messageId: finalMsgId,
+      message: 'Reply sent successfully via Resend'
     });
   } catch (err: any) {
     logger.error('Failed to send thread reply', { details: err?.message });

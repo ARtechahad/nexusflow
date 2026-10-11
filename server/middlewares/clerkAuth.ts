@@ -1,4 +1,4 @@
-import { Request, Response, NextFunction } from 'express';
+import type { Request, Response, NextFunction } from 'express';
 import { createClerkClient } from '@clerk/backend';
 import { logger } from '../logger';
 import { getNeonPool } from '../services/db';
@@ -135,15 +135,39 @@ export async function clerkAuth(req: Request, res: Response, next: NextFunction)
   }
 
   try {
-    // Ensure request has minimal URL / host properties to prevent Node URL parsing issues
-    const safeReq: any = req;
-    if (!safeReq.url) safeReq.url = '/';
-    if (!safeReq.headers) safeReq.headers = {};
-    if (!safeReq.headers.host) safeReq.headers.host = 'localhost:3000';
-    if (!safeReq.method) safeReq.method = 'GET';
+    // Build standard Web Request object with absolute URL for Clerk SDK
+    const protocol = (req.headers && (req.headers['x-forwarded-proto'] as string)) || req.protocol || 'http';
+    const host = (req.headers && ((req.headers['x-forwarded-host'] as string) || req.headers.host)) || 'localhost:3000';
+    const rawPath = req.originalUrl || req.url || '/';
+    const normalizedPath = rawPath.startsWith('/') ? rawPath : `/${rawPath}`;
+    const fullUrl = `${protocol}://${host}${normalizedPath}`;
+
+    const headers = new Headers();
+    if (req.headers) {
+      for (const [key, value] of Object.entries(req.headers)) {
+        if (value !== undefined) {
+          if (Array.isArray(value)) {
+            for (const v of value) {
+              headers.append(key, v);
+            }
+          } else {
+            headers.set(key, String(value));
+          }
+        }
+      }
+    }
+
+    if (cookieToken && !headers.has('cookie')) {
+      headers.set('cookie', `__session=${cookieToken}`);
+    }
+
+    const webReq = new Request(fullUrl, {
+      method: req.method || 'GET',
+      headers
+    });
 
     // Authenticate request using Clerk SDK
-    const requestState: any = await (clerk as any).authenticateRequest(safeReq, {
+    const requestState: any = await (clerk as any).authenticateRequest(webReq, {
       secretKey: process.env.CLERK_SECRET_KEY,
       publishableKey: process.env.CLERK_PUBLISHABLE_KEY || process.env.VITE_CLERK_PUBLISHABLE_KEY
     });

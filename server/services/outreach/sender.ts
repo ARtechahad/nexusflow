@@ -7,6 +7,7 @@ import { decryptSecret, signToken } from './crypto';
 import { checkAndReserve } from './capGuard';
 import { renderEmailTemplate } from './render';
 import { realtimeEngine } from '../realtimeEngine';
+import { resendService } from '../resendService';
 
 // Cache nodemailer transporters per mailbox to reuse connection pools
 const transporterPool = new Map<string, { transporter: Transporter; cachedAt: number }>();
@@ -166,11 +167,14 @@ export async function handleSendCampaignEmailJob(jobPayload: SendCampaignEmailPa
   }
 
   const mailbox = mbxRes.rows[0];
-  if (!mailbox.smtp_pass_encrypted) {
-    throw new Error(`Mailbox ${mailbox.email} is missing encrypted SMTP credentials`);
+  let smtpPassword = '';
+  if (mailbox.smtp_pass_encrypted) {
+    try {
+      smtpPassword = decryptSecret(mailbox.smtp_pass_encrypted);
+    } catch {
+      logger.warn(`Could not decrypt SMTP password for ${mailbox.email}; proceeding via Resend engine`, { context: 'Sender' });
+    }
   }
-
-  const smtpPassword = decryptSecret(mailbox.smtp_pass_encrypted);
 
   // 4. Fetch Step and Variant
   const stepRes = await pool.query(
@@ -363,19 +367,75 @@ export async function handleSendCampaignEmailJob(jobPayload: SendCampaignEmailPa
     }
   };
 
-  // 8. SEND VIA NODEMAILER POOLED TRANSPORTER WITH ERROR CLASSIFICATION
-  const transporter = getPooledTransporter(mailbox, smtpPassword);
-
+  // 8. SEND VIA RESEND (Unified Primary & Exclusive Email Dispatch Engine)
   try {
-    const sendInfo = await transporter.sendMail(mailOptions);
-    logger.info(`Campaign email sent successfully to ${prospect.email}`, {
+    let finalMessageId = messageIdHeader;
+
+    const resendResult = await resendService.sendEmail({
+      to: prospect.email,
+      from: mailbox.email,
+      fromName: mailbox.sender_name,
+      replyTo: mailbox.email,
+      subject,
+      text: bodyText,
+      html: bodyHtml,
+      headers: {
+        'List-Unsubscribe': `<${unsubUrl}>, <mailto:${mailbox.email}?subject=Unsubscribe>`,
+        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+        'X-LeadFlow-Campaign': campaignId,
+        'X-LeadFlow-Enrollment': enrollment.id,
+        'X-LeadFlow-Tracking': trackingHash,
+        'Message-ID': messageIdHeader
+      },
+      tags: [
+        { name: 'campaign_id', value: String(campaignId) },
+        { name: 'step_id', value: String(step.id) },
+        { name: 'enrollment_id', value: String(enrollment.id) }
+      ],
+      tenantId,
+      template: 'outreach_campaign',
+      metadata: {
+        campaignId,
+        stepId: step.id,
+        enrollmentId: enrollment.id,
+        mailboxId: mailbox.id
+      }
+    });
+
+    if (resendResult.messageId) {
+      finalMessageId = resendResult.messageId;
+    }
+
+    logger.info(`Campaign email sent successfully via Resend to ${prospect.email}`, {
       context: 'Sender',
       details: {
         campaignId,
         mailbox: mailbox.email,
-        messageId: sendInfo.messageId || messageIdHeader
+        messageId: finalMessageId,
+        provider: resendResult.provider
       }
     });
+
+    if (!resendResult.success && resendResult.error) {
+      const errorString = resendResult.error;
+      const isHardBounce = /invalid|rejected|blacklist|not exist|unknown user|bounce/i.test(errorString);
+      if (isHardBounce && !isTest) {
+        await pool.query(
+          `INSERT INTO ox_suppressions (id, tenant_id, email, reason, source, created_at)
+           VALUES ($1, $2, $3, $4, $5, NOW())
+           ON CONFLICT (tenant_id, email) DO NOTHING`,
+          [`supp_${crypto.randomUUID()}`, tenantId, prospect.email.toLowerCase(), `Hard Bounce: ${errorString.slice(0, 100)}`, 'resend_delivery']
+        );
+
+        await pool.query(
+          `UPDATE ox_enrollments
+           SET status = 'bounced', defer_reason = $1, next_send_at = NULL, updated_at = NOW()
+           WHERE id = $2`,
+          [`Hard Bounce: ${errorString.slice(0, 200)}`, enrollment.id]
+        );
+        return;
+      }
+    }
 
     if (!isTest) {
       // Record sent email in ox_sent_emails using pre-assigned sentEmailId
@@ -394,7 +454,7 @@ export async function handleSendCampaignEmailJob(jobPayload: SendCampaignEmailPa
           mailbox.id,
           prospect.email,
           subject,
-          sendInfo.messageId || messageIdHeader,
+          finalMessageId,
           trackingHash
         ]
       );

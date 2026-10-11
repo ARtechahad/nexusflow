@@ -142,11 +142,29 @@ class QueueEngine {
   }
 
   private registerDefaultHandlers(): void {
-    // 1. Email Send Handler
-    this.registerHandler('email_send', async (payload) => {
-      const { to, subject, html } = payload;
-      logger.info(`Dispatching email to ${to}: "${subject}"`, { context: 'EmailHandler' });
-      return { sent: true, recipient: to, deliveredAt: new Date().toISOString() };
+    // 1. Email Send Handler (Unified via Resend)
+    this.registerHandler('email_send', async (payload, job) => {
+      const { to, subject, html, text, from, fromName, replyTo, template } = payload;
+      logger.info(`Dispatching email via Resend to ${to}: "${subject}"`, { context: 'EmailHandler' });
+      const { resendService } = await import('./resendService');
+      const res = await resendService.sendEmail({
+        to,
+        subject,
+        html,
+        text,
+        from,
+        fromName,
+        replyTo,
+        template: template || 'queued_email',
+        tenantId: job.tenantId
+      });
+      return {
+        sent: res.success,
+        recipient: to,
+        messageId: res.messageId,
+        provider: res.provider,
+        deliveredAt: res.timestamp
+      };
     });
 
     // 2. Lead Scrape Handler
@@ -171,10 +189,21 @@ class QueueEngine {
     });
 
     // 5. Drip Nudge Handler
-    this.registerHandler('drip_nudge', async (payload) => {
-      const { clientName, channel, stage } = payload;
+    this.registerHandler('drip_nudge', async (payload, job) => {
+      const { clientName, clientEmail, channel, stage, subject, body } = payload;
       logger.info(`Triggering stage ${stage} drip nudge for ${clientName} via ${channel}`, { context: 'DripHandler' });
-      return { nudgeSent: true, stage, channel };
+      let emailResult = null;
+      if (clientEmail && (channel === 'Email' || channel === 'email' || channel === 'Email (Direct)')) {
+        const { resendService } = await import('./resendService');
+        emailResult = await resendService.sendEmail({
+          to: clientEmail,
+          subject: subject || `Follow-up: Stage ${stage} update for ${clientName}`,
+          html: `<p>Hi ${clientName},</p><p>${body || 'Following up on your milestone proposal.'}</p>`,
+          tenantId: job.tenantId,
+          template: 'drip_nudge'
+        });
+      }
+      return { nudgeSent: true, stage, channel, emailResult };
     });
   }
 }
