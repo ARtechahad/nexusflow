@@ -1,0 +1,90 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile synchronized from Firebase Authentication",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 256 },
+        "displayName": { "type": "string", "maxLength": 128 },
+        "photoURL": { "type": "string", "maxLength": 1024 },
+        "role": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string" },
+        "lastLoginAt": { "type": "string" }
+      },
+      "required": ["uid"]
+    },
+    "Project": {
+      "title": "Project",
+      "description": "Project lead and active development milestone tracking",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "clientName": { "type": "string", "maxLength": 128 },
+        "clientEmail": { "type": "string", "maxLength": 256 },
+        "channel": { "type": "string", "maxLength": 64 },
+        "websiteType": { "type": "string", "maxLength": 64 },
+        "purpose": { "type": "string", "maxLength": 1024 },
+        "status": { "type": "string", "maxLength": 64 },
+        "estimatedPrice": { "type": "number" },
+        "finalPrice": { "type": "number" },
+        "advancePaid": { "type": "boolean" },
+        "advanceAmount": { "type": "number" },
+        "balancePaid": { "type": "boolean" },
+        "balanceAmount": { "type": "number" },
+        "domainTransferred": { "type": "boolean" },
+        "ownerId": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "clientName"]
+    },
+    "UserData": {
+      "title": "UserData",
+      "description": "User preferences and operational configuration",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "theme": { "type": "string", "maxLength": 16 },
+        "language": { "type": "string", "maxLength": 16 },
+        "currency": { "type": "string", "maxLength": 16 },
+        "scaleMode": { "type": "string", "maxLength": 32 },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["userId"]
+    },
+    "ChatMessage": {
+      "title": "ChatMessage",
+      "description": "Internal team collaboration and channel communication",
+      "type": "object",
+      "properties": {
+        "channel": { "type": "string", "maxLength": 64 },
+        "sender": { "type": "string", "maxLength": 128 },
+        "senderId": { "type": "string", "maxLength": 128 },
+        "role": { "type": "string", "maxLength": 64 },
+        "text": { "type": "string", "maxLength": 4096 },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["channel", "sender", "text"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile records indexed by Firebase Auth UID"
+    },
+    "/projects/{projectId}": {
+      "schema": "Project",
+      "description": "Project leads and operational milestone tracking"
+    },
+    "/userData/{userId}": {
+      "schema": "UserData",
+      "description": "Personalized user interface and locale preferences"
+    },
+    "/chatMessages/{messageId}": {
+      "schema": "ChatMessage",
+      "description": "Collaborative internal team chat messages"
+    }
+  }
+}

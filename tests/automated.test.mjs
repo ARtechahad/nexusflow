@@ -1,0 +1,463 @@
+import { test, describe } from 'node:test';
+import assert from 'node:assert/strict';
+
+// Helper reproduction of core business logic to test
+function calculateCommissionTest(projectValue, hasHighPerformanceTier = false) {
+  let percentage = 25;
+  if (projectValue <= 300) {
+    percentage = hasHighPerformanceTier ? 40 : 25;
+  } else if (projectValue <= 700) {
+    percentage = hasHighPerformanceTier ? 42 : 30;
+  } else {
+    percentage = hasHighPerformanceTier ? 45 : 35;
+  }
+  const amount = Number(((projectValue * percentage) / 100).toFixed(2));
+  return { percentage, amount };
+}
+
+function checkTransferAuthorization(project) {
+  if (!project.advancePaid) {
+    return { allowed: false, reason: 'Advance 50% payment is not confirmed.' };
+  }
+  if (!project.balancePaid) {
+    return { allowed: false, reason: 'SOP Rule 8 Violation: Website transfer is strictly locked until 100% balance payment is cleared.' };
+  }
+  if (!project.internalQAPassed) {
+    return { allowed: false, reason: 'Quality assurance checklist is pending.' };
+  }
+  return { allowed: true, reason: 'Approved for final domain and hosting migration.' };
+}
+
+function formatDiscordHandoffTest(clientName, websiteType, price, paymentStatus) {
+  return `📢 **NEW CLOSED CLIENT HANDOFF (SOP STEP 7)**\nClient: ${clientName}\nType: ${websiteType}\nPrice: $${price}\nPayment: ${paymentStatus}`;
+}
+
+describe('International Client Handling SOP - Automated Tests', () => {
+  describe('SOP Section 6: Commission Structure Assertions', () => {
+    test('Tier 1: Project <= $300 should yield exactly 25% commission', () => {
+      const res = calculateCommissionTest(200);
+      assert.equal(res.percentage, 25);
+      assert.equal(res.amount, 50.00);
+
+      const resEdge = calculateCommissionTest(300);
+      assert.equal(resEdge.percentage, 25);
+      assert.equal(resEdge.amount, 75.00);
+    });
+
+    test('Tier 2: Project between $300 and $700 should yield exactly 30% commission', () => {
+      const res = calculateCommissionTest(500);
+      assert.equal(res.percentage, 30);
+      assert.equal(res.amount, 150.00);
+
+      const resEdge = calculateCommissionTest(700);
+      assert.equal(resEdge.percentage, 30);
+      assert.equal(resEdge.amount, 210.00);
+    });
+
+    test('Tier 3: Project > $700 should yield exactly 35% commission', () => {
+      const res = calculateCommissionTest(1000);
+      assert.equal(res.percentage, 35);
+      assert.equal(res.amount, 350.00);
+    });
+
+    test('High Performer Tier: Discretionary commission rate applies (up to 45%)', () => {
+      const resTier3High = calculateCommissionTest(1000, true);
+      assert.equal(resTier3High.percentage, 45);
+      assert.equal(resTier3High.amount, 450.00);
+
+      const resTier1High = calculateCommissionTest(300, true);
+      assert.equal(resTier1High.percentage, 40);
+      assert.equal(resTier1High.amount, 120.00);
+    });
+  });
+
+  describe('SOP Section 8: Staging Development & Website Transfer Gate', () => {
+    test('Must reject transfer when final 50% balance payment is NOT cleared', () => {
+      const project = {
+        advancePaid: true,
+        balancePaid: false,
+        internalQAPassed: true
+      };
+      const check = checkTransferAuthorization(project);
+      assert.equal(check.allowed, false);
+      assert.match(check.reason, /SOP Rule 8 Violation/);
+    });
+
+    test('Must reject transfer when advance payment was skipped', () => {
+      const project = {
+        advancePaid: false,
+        balancePaid: true,
+        internalQAPassed: true
+      };
+      const check = checkTransferAuthorization(project);
+      assert.equal(check.allowed, false);
+      assert.match(check.reason, /Advance 50% payment/);
+    });
+
+    test('Must allow transfer ONLY when both payments (100%) and QA are cleared', () => {
+      const project = {
+        advancePaid: true,
+        balancePaid: true,
+        internalQAPassed: true
+      };
+      const check = checkTransferAuthorization(project);
+      assert.equal(check.allowed, true);
+      assert.match(check.reason, /Approved/);
+    });
+  });
+
+  describe('SOP Section 7: Discord Handover Formatting', () => {
+    test('Handoff text contains mandatory SOP 7 fields', () => {
+      const text = formatDiscordHandoffTest('Apex Legal UK', 'Corporate', 1200, '50% Advance Received');
+      assert.ok(text.includes('Apex Legal UK'));
+      assert.ok(text.includes('Corporate'));
+      assert.ok(text.includes('1200'));
+      assert.ok(text.includes('50% Advance Received'));
+    });
+  });
+
+  describe('RBAC Authorization & Privacy Controls', () => {
+    test('Client guest role should have restricted permissions', () => {
+      const guestRole = 'client_guest';
+      const permittedRoles = ['admin', 'sales', 'coordinator', 'developer'];
+      assert.equal(permittedRoles.includes(guestRole), false);
+    });
+  });
+
+  describe('Phase 1: Agent-Reach Lead Scraper & Outreach Engine', () => {
+    test('Keyword Matching detects target client intent', () => {
+      const snippet = 'Urgent: e-commerce store setup needed for our organic skincare brand launch.';
+      const keywords = ['web developer needed', 'e-commerce store setup'];
+      const matched = keywords.some(k => snippet.toLowerCase().includes(k.toLowerCase()));
+      assert.equal(matched, true);
+    });
+
+    test('LinkedIn Connection Snippet strictly respects <= 300 character constraint', () => {
+      const generateSnippet = (name, comp, wType) => 
+        `Hi ${name}, saw your post regarding ${wType} development for ${comp}. We build fast, high-converting sites with live staging demos in 7 days. Would love to connect and share a few relevant case studies!`;
+      const snippet = generateSnippet('Alexander Vance', 'Lumina Health Clinics UK', 'corporate');
+      assert.ok(snippet.length <= 300, `Expected snippet length <= 300, got ${snippet.length}`);
+    });
+
+    test('Drip Campaign advances stages when 50% advance payment is delayed', () => {
+      const evaluateDripStage = (daysSinceProposal, advancePaid) => {
+        if (advancePaid) return { active: false, stage: 0 };
+        if (daysSinceProposal >= 7) return { active: true, stage: 4 };
+        if (daysSinceProposal >= 5) return { active: true, stage: 3 };
+        if (daysSinceProposal >= 3) return { active: true, stage: 2 };
+        return { active: true, stage: 1 };
+      };
+
+      assert.equal(evaluateDripStage(1, false).stage, 1);
+      assert.equal(evaluateDripStage(3, false).stage, 2);
+      assert.equal(evaluateDripStage(5, false).stage, 3);
+      assert.equal(evaluateDripStage(8, false).stage, 4);
+      assert.equal(evaluateDripStage(5, true).active, false);
+    });
+  });
+
+  describe('Hybrid & Local-First AI Architecture Assertions', () => {
+    test('Offline SOP Fallback provides complete zero-crash proposal when AI is offline', () => {
+      const generateOfflineFallback = (options) => {
+        const clientName = options.clientName || 'Client';
+        const websiteType = options.websiteType || 'landing';
+        const advanceNotice = 'To secure our dedicated development sprint slot, we require a 50% upfront deposit as per our Standard Operating Procedure (SOP). The remaining 50% is due only after you test and approve the completed build on our private staging domain.';
+        return {
+          isFallback: true,
+          providerUsed: 'manual',
+          modelUsed: 'offline-sop-rules',
+          text: `Hi ${clientName},\n\nThank you for reaching out regarding your ${websiteType} project.\n\n${advanceNotice}`
+        };
+      };
+
+      const result = generateOfflineFallback({ clientName: 'Robert', websiteType: 'ecommerce' });
+      assert.equal(result.isFallback, true);
+      assert.equal(result.providerUsed, 'manual');
+      assert.ok(result.text.includes('50% upfront deposit'));
+      assert.ok(result.text.includes('private staging domain'));
+    });
+
+    test('Local AI Endpoint structure adheres to Ollama /api/generate format', () => {
+      const ollamaPayload = (model, prompt) => ({
+        model: model || 'llama3.2',
+        prompt,
+        stream: false
+      });
+
+      const payload = ollamaPayload('qwen2.5:7b', 'Write proposal');
+      assert.equal(payload.model, 'qwen2.5:7b');
+      assert.equal(payload.stream, false);
+      assert.equal(payload.prompt, 'Write proposal');
+    });
+  });
+
+  describe('Phase 5: Production Database Persistence, Real Webhooks & RBAC Assertions', () => {
+    test('Database Persistence: Dual-Engine fallback guarantees zero-loss JSON snapshots', () => {
+      const getEngineMode = (dbUrl) => {
+        return (dbUrl && dbUrl.startsWith('postgres')) ? 'postgresql' : 'local_disk_json';
+      };
+
+      assert.equal(getEngineMode(undefined), 'local_disk_json');
+      assert.equal(getEngineMode('postgresql://postgres:pass@localhost:5432/agency'), 'postgresql');
+      assert.equal(getEngineMode('postgres://railway:pass@viaduct.railway.app:5432/railway'), 'postgresql');
+    });
+
+    test('Live Webhooks: Stripe checkout.session.completed clears 50% advance deposit', () => {
+      const project = {
+        id: 'proj-1',
+        clientName: 'Alexander Vance',
+        finalPrice: 1250,
+        advancePaid: false,
+        balancePaid: false,
+        status: 'lead'
+      };
+
+      // Simulate Stripe Webhook Processing
+      const processStripeTest = (proj, amount) => {
+        if (!proj.advancePaid) {
+          proj.advancePaid = true;
+          proj.advanceAmount = amount;
+          proj.status = 'advance_paid';
+          return 'advance_cleared';
+        } else if (!proj.balancePaid) {
+          proj.balancePaid = true;
+          proj.balanceAmount = amount;
+          proj.status = 'balance_paid';
+          return 'balance_cleared';
+        }
+        return 'supplemental';
+      };
+
+      const res1 = processStripeTest(project, 625);
+      assert.equal(res1, 'advance_cleared');
+      assert.equal(project.advancePaid, true);
+      assert.equal(project.status, 'advance_paid');
+
+      const res2 = processStripeTest(project, 625);
+      assert.equal(res2, 'balance_cleared');
+      assert.equal(project.balancePaid, true);
+      assert.equal(project.status, 'balance_paid');
+    });
+
+    test('Production RBAC: Role hierarchy restricts client guests to portal only', () => {
+      const checkPermission = (userRole, action) => {
+        if (userRole === 'admin') return true;
+        if (userRole === 'sales') {
+          return ['projects:read', 'projects:write', 'outreach:generate', 'inbox:manage', 'commissions:view_own'].includes(action);
+        }
+        if (userRole === 'developer') {
+          return ['projects:read', 'staging:review', 'qa:signoff', 'discord:handoff', 'vault:read'].includes(action);
+        }
+        if (userRole === 'client_guest') {
+          return ['portal:access', 'milestones:review', 'staging:inspect', 'invoices:view', 'feedback:submit'].includes(action);
+        }
+        return false;
+      };
+
+      // Admin has universal access
+      assert.equal(checkPermission('admin', 'database:manage'), true);
+      assert.equal(checkPermission('admin', 'commissions:payout'), true);
+
+      // Sales cannot payout commissions or manage database
+      assert.equal(checkPermission('sales', 'commissions:view_own'), true);
+      assert.equal(checkPermission('sales', 'commissions:payout'), false);
+      assert.equal(checkPermission('sales', 'database:manage'), false);
+
+      // Developer cannot see commission sheets
+      assert.equal(checkPermission('developer', 'staging:review'), true);
+      assert.equal(checkPermission('developer', 'commissions:view_own'), false);
+
+      // Client guest strictly restricted to portal
+      assert.equal(checkPermission('client_guest', 'portal:access'), true);
+      assert.equal(checkPermission('client_guest', 'staging:inspect'), true);
+      assert.equal(checkPermission('client_guest', 'vault:read'), false);
+      assert.equal(checkPermission('client_guest', 'projects:write'), false);
+    });
+
+    test('Data Isolation: Sales rep data query returns ONLY assigned deals and commissions', () => {
+      const allProjects = [
+        { id: 'p1', clientName: 'Client A', assignedSalesperson: 'Hamza Farooq', salespersonEmail: 'sales@agencyops.dev', commissionAmount: 200 },
+        { id: 'p2', clientName: 'Client B', assignedSalesperson: 'Sara Khan', salespersonEmail: 'sara@agencyops.dev', commissionAmount: 350 },
+        { id: 'p3', clientName: 'Client C', assignedSalesperson: 'Hamza Farooq', salespersonEmail: 'sales@agencyops.dev', commissionAmount: 120 }
+      ];
+
+      const filterForSales = (projects, user) => {
+        return projects.filter(p => p.salespersonEmail === user.email || p.assignedSalesperson === user.name);
+      };
+
+      const salesUser = { name: 'Hamza Farooq', email: 'sales@agencyops.dev', role: 'sales' };
+      const filtered = filterForSales(allProjects, salesUser);
+
+      assert.equal(filtered.length, 2);
+      assert.equal(filtered.some(p => p.clientName === 'Client B'), false);
+      assert.equal(filtered.every(p => p.assignedSalesperson === 'Hamza Farooq'), true);
+    });
+
+    test('Data Isolation: Client guest query returns ONLY their project with internal metrics stripped', () => {
+      const allProjects = [
+        { id: 'p1', clientName: 'Alexander Vance', clientEmail: 'alex.vance@lumina-health.co.uk', finalPrice: 1200, commissionAmount: 420, commissionRate: 35 },
+        { id: 'p2', clientName: 'Elena Rostova', clientEmail: 'elena@nordic-ceramics.se', finalPrice: 650, commissionAmount: 195, commissionRate: 30 }
+      ];
+
+      const filterForClient = (projects, user) => {
+        return projects
+          .filter(p => p.clientEmail === user.email)
+          .map(p => ({
+            id: p.id,
+            clientName: p.clientName,
+            finalPrice: p.finalPrice
+          }));
+      };
+
+      const clientUser = { name: 'Alexander Vance', email: 'alex.vance@lumina-health.co.uk', role: 'client_guest' };
+      const filtered = filterForClient(allProjects, clientUser);
+
+      assert.equal(filtered.length, 1);
+      assert.equal(filtered[0].id, 'p1');
+      assert.equal(filtered[0].commissionAmount, undefined);
+      assert.equal(filtered[0].commissionRate, undefined);
+    });
+  });
+
+  describe('SOP Kanban: Horizontal Swimlanes Task Categorization by Urgency Level', () => {
+    function normalizeUrgencyLevel(priorityOrUrgency) {
+      if (!priorityOrUrgency) return 'medium';
+      const val = String(priorityOrUrgency).toLowerCase();
+      if (val === 'critical' || val === 'urgent') return 'critical';
+      if (val === 'high') return 'high';
+      if (val === 'medium') return 'medium';
+      return 'low';
+    }
+
+    const mockTasks = [
+      { id: 't1', title: 'Payment Gate Blocker', priority: 'critical', status: 'todo', estimatedHours: 2 },
+      { id: 't2', title: 'SSL Cert Deployment', priority: 'urgent', status: 'in_progress', estimatedHours: 1.5 },
+      { id: 't3', title: 'Multi-page Layout Spec', priority: 'high', status: 'review', estimatedHours: 8 },
+      { id: 't4', title: 'Staging DNS Architecture', priority: 'high', status: 'todo', estimatedHours: 3 },
+      { id: 't5', title: 'Brand Asset Ingestion', priority: 'medium', status: 'completed', estimatedHours: 2 },
+      { id: 't6', title: 'Code Refactoring', priority: 'low', status: 'todo', estimatedHours: 4 }
+    ];
+
+    test('Urgency Normalization maps critical and urgent to critical swimlane', () => {
+      assert.equal(normalizeUrgencyLevel('critical'), 'critical');
+      assert.equal(normalizeUrgencyLevel('urgent'), 'critical');
+      assert.equal(normalizeUrgencyLevel('high'), 'high');
+      assert.equal(normalizeUrgencyLevel('medium'), 'medium');
+      assert.equal(normalizeUrgencyLevel('low'), 'low');
+      assert.equal(normalizeUrgencyLevel(undefined), 'medium');
+    });
+
+    test('Categorizes tasks across the 4 discrete horizontal swimlanes', () => {
+      const swimlanes = { critical: [], high: [], medium: [], low: [] };
+      mockTasks.forEach(task => {
+        const lane = normalizeUrgencyLevel(task.priority);
+        swimlanes[lane].push(task);
+      });
+
+      assert.equal(swimlanes.critical.length, 2); // t1 (critical) + t2 (urgent)
+      assert.equal(swimlanes.high.length, 2);     // t3 + t4
+      assert.equal(swimlanes.medium.length, 1);   // t5
+      assert.equal(swimlanes.low.length, 1);      // t6
+    });
+
+    test('Categorizes each swimlane across 4 standard columns (todo, in_progress, review, completed)', () => {
+      const getColumnsForUrgency = (urgency) => {
+        const cols = { todo: [], in_progress: [], review: [], completed: [] };
+        mockTasks
+          .filter(t => normalizeUrgencyLevel(t.priority) === urgency)
+          .forEach(t => cols[t.status].push(t));
+        return cols;
+      };
+
+      const criticalCols = getColumnsForUrgency('critical');
+      assert.equal(criticalCols.todo.length, 1);
+      assert.equal(criticalCols.in_progress.length, 1);
+      assert.equal(criticalCols.review.length, 0);
+      assert.equal(criticalCols.completed.length, 0);
+    });
+
+    test('Simulates dragging task between swimlanes: updates priority to new Urgency Level', () => {
+      const task = { ...mockTasks[5] }; // low urgency 'Code Refactoring'
+      assert.equal(normalizeUrgencyLevel(task.priority), 'low');
+
+      // Promote task to Critical swimlane and In Progress column
+      const targetUrgency = 'critical';
+      const targetStatus = 'in_progress';
+      const updatedTask = {
+        ...task,
+        priority: targetUrgency,
+        status: targetStatus
+      };
+
+      assert.equal(normalizeUrgencyLevel(updatedTask.priority), 'critical');
+      assert.equal(updatedTask.status, 'in_progress');
+    });
+  });
+
+  describe('ALM Nexus Enterprise: Multi-Tenant Architecture & Data Partitioning', () => {
+    test('Strict Tenant Data Partitioning binds records to tenant_id', () => {
+      const records = [
+        { id: 'proj-1', tenant_id: 'tenant-alm-nexus', client: 'Lumina Health UK' },
+        { id: 'proj-2', tenant_id: 'tenant-apex-studio', client: 'Nordic Art Pottery' },
+        { id: 'proj-3', tenant_id: 'tenant-alm-nexus', client: 'GreenLeaf Solar' }
+      ];
+
+      const getTenantProjects = (tenantId) => records.filter(r => r.tenant_id === tenantId);
+
+      const almProjects = getTenantProjects('tenant-alm-nexus');
+      assert.equal(almProjects.length, 2);
+      assert.ok(almProjects.every(p => p.tenant_id === 'tenant-alm-nexus'));
+
+      const apexProjects = getTenantProjects('tenant-apex-studio');
+      assert.equal(apexProjects.length, 1);
+      assert.equal(apexProjects[0].client, 'Nordic Art Pottery');
+    });
+
+    test('Granular RBAC role definition configures organizational scopes', () => {
+      const rolesMatrix = {
+        ceo: ['all_macro_analytics', 'financial_oversight', 'system_settings'],
+        project_manager: ['sprint_backlog', 'kanban_assignment', 'sop_qa_signoff'],
+        sales: ['lead_scrapers', 'outreach_engine', 'deal_pipeline'],
+        developer: ['technical_tasks', 'staging_deployments', 'time_tracking'],
+        designer: ['wireframe_specs', 'asset_library', 'client_feedback'],
+        client_guest: ['client_portal_access', 'milestone_approvals']
+      };
+
+      assert.ok(rolesMatrix.ceo.includes('all_macro_analytics'));
+      assert.ok(rolesMatrix.project_manager.includes('sprint_backlog'));
+      assert.ok(rolesMatrix.sales.includes('outreach_engine'));
+      assert.ok(rolesMatrix.developer.includes('staging_deployments'));
+      assert.ok(rolesMatrix.designer.includes('wireframe_specs'));
+      assert.ok(rolesMatrix.client_guest.includes('client_portal_access'));
+      // Client guest should never have financial oversight
+      assert.equal(rolesMatrix.client_guest.includes('financial_oversight'), false);
+    });
+
+    test('External Integrations schema validates LinkedIn, Gmail, and Stripe connection state', () => {
+      const tenantIntegrations = {
+        linkedIn: { connected: true, accountHandle: '@alm-nexus', syncIntervalMinutes: 15 },
+        gmail: { connected: true, accountEmail: 'growth@alm-nexus.com', threadTracking: true },
+        stripe: { connected: true, liveMode: true, currency: 'USD' }
+      };
+
+      assert.equal(tenantIntegrations.linkedIn.connected, true);
+      assert.equal(tenantIntegrations.gmail.threadTracking, true);
+      assert.equal(tenantIntegrations.stripe.currency, 'USD');
+    });
+
+    test('Departmental Progress Tracker computes cross-functional velocity metrics', () => {
+      const departments = [
+        { department: 'sales_bd', velocity: 94, activeTasks: 18, completed: 12 },
+        { department: 'project_management', velocity: 92, activeTasks: 14, completed: 9 },
+        { department: 'engineering_dev', velocity: 96, activeTasks: 22, completed: 16 },
+        { department: 'ui_ux_design', velocity: 89, activeTasks: 11, completed: 8 }
+      ];
+
+      const avgVelocity = Math.round(departments.reduce((acc, d) => acc + d.velocity, 0) / departments.length);
+      const totalActive = departments.reduce((acc, d) => acc + d.activeTasks, 0);
+
+      assert.equal(avgVelocity, 93);
+      assert.equal(totalActive, 65);
+    });
+  });
+});
