@@ -7,6 +7,7 @@ import { getOutreachPool } from './schema';
 import { decryptSecret } from './crypto';
 import { classifyInboundReply, OutreachReplyLabel } from './classifier';
 import { realtimeEngine } from '../realtimeEngine';
+import { handleWarmupInboundMessage } from './warmupEngine';
 
 export interface DsnBounceResult {
   isBounce: boolean;
@@ -160,7 +161,10 @@ export function isAutoReplyMessage(
 export async function processInboundEmail(
   rawEmailSource: string | Buffer | any,
   mailbox: any,
-  pool: pg.Pool
+  pool: pg.Pool,
+  folderName: string = 'INBOX',
+  imapClient?: any,
+  uid?: number
 ): Promise<{ handled: boolean; type: string; details?: any }> {
   let parsed: ParsedMail;
   if (typeof rawEmailSource === 'string' || Buffer.isBuffer(rawEmailSource)) {
@@ -177,19 +181,41 @@ export async function processInboundEmail(
     return String((parsed.headers as any)[name.toLowerCase()] || (parsed.headers as any)[name] || '');
   };
 
-  // 1. FILTER: Ignore warmup network messages carrying X-Warmup-Tag
+  // 1. FILTER & PROCESS: Warmup network messages carrying X-Warmup-Tag
   const hasWarmupHeader =
     (typeof parsed?.headers?.has === 'function' && (parsed.headers.has('x-warmup-tag') || parsed.headers.has('x-warmup-id'))) ||
     Boolean(getHeader('x-warmup-tag')) ||
     Boolean(getHeader('x-warmup-id')) ||
+    (parsed.subject || '').includes('[WT-') ||
     (parsed.subject || '').includes('__WARMUP_TOKEN_');
 
   if (hasWarmupHeader) {
-    logger.debug('Ignored incoming message carrying X-Warmup-Tag', {
-      context: 'InboxSync',
-      details: { mailbox: mailbox.email }
-    });
-    return { handled: true, type: 'warmup_ignored' };
+    let warmupResult: any = null;
+    if (pool) {
+      try {
+        warmupResult = await handleWarmupInboundMessage(
+          parsed,
+          mailbox,
+          pool,
+          folderName,
+          imapClient,
+          uid
+        );
+        logger.info(`Warmup message processed on ${mailbox.email}`, {
+          context: 'InboxSync',
+          details: {
+            placement: warmupResult?.placement,
+            rescued: warmupResult?.rescued,
+            scheduledReply: warmupResult?.scheduledReply
+          }
+        });
+      } catch (err: any) {
+        logger.warn(`Warmup inbound processing error on ${mailbox.email}: ${err?.message}`, {
+          context: 'InboxSync'
+        });
+      }
+    }
+    return { handled: true, type: 'warmup_ignored', details: warmupResult };
   }
 
   const fromEmail = parsed.from?.value?.[0]?.address?.toLowerCase() || '';
@@ -685,34 +711,39 @@ export class InboxSyncManager {
     const pool = getOutreachPool();
     if (!pool) return;
 
-    try {
-      const lock = await client.getMailboxLock('INBOX');
+    // Check INBOX and common Spam/Junk folders
+    const foldersToCheck = ['INBOX', 'Junk', 'Spam'];
+
+    for (const folder of foldersToCheck) {
       try {
-        // Fetch last 10 messages from INBOX to inspect for replies / bounces
-        const status = await client.status('INBOX', { messages: true });
-        if (!status || typeof status !== 'object') return;
-        const total = status.messages || 0;
-        if (total === 0) return;
+        const lock = await client.getMailboxLock(folder);
+        try {
+          const status = await client.status(folder, { messages: true });
+          if (!status || typeof status !== 'object') continue;
+          const total = status.messages || 0;
+          if (total === 0) continue;
 
-        const startSeq = Math.max(1, total - 9);
-        const sequence = `${startSeq}:${total}`;
+          const startSeq = Math.max(1, total - 9);
+          const sequence = `${startSeq}:${total}`;
 
-        for await (const message of client.fetch(sequence, { source: true, envelope: true })) {
-          if (message.source) {
-            await processInboundEmail(message.source, mbx, pool).catch(err => {
-              logger.warn(`Error processing inbound message on ${mbx.email}: ${err?.message}`, {
-                context: 'InboxSync'
+          for await (const message of client.fetch(sequence, { source: true, envelope: true, uid: true })) {
+            if (message.source) {
+              await processInboundEmail(message.source, mbx, pool, folder, client, message.uid).catch(err => {
+                logger.warn(`Error processing inbound message on ${mbx.email} (${folder}): ${err?.message}`, {
+                  context: 'InboxSync'
+                });
               });
-            });
+            }
           }
+        } finally {
+          lock.release();
         }
-      } finally {
-        lock.release();
+      } catch (err: any) {
+        // Folder might not exist (e.g. Spam on some IMAP servers), ignore quietly
+        logger.debug(`Folder check ${folder} on ${mbx.email}: ${err?.message}`, {
+          context: 'InboxSync'
+        });
       }
-    } catch (err: any) {
-      logger.debug(`Fetch error during IMAP cycle for ${mbx.email}: ${err?.message}`, {
-        context: 'InboxSync'
-      });
     }
   }
 }

@@ -9,7 +9,7 @@
     "start": "node dist/server.cjs",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
-    "test": "node --test tests/automated.test.mjs && tsx --test tests/phase0.test.mjs && tsx --test tests/phase2.test.mjs && tsx --test tests/phase3.test.mjs && tsx --test tests/neon-clerk.test.mjs && tsx --test tests/resend-email.test.mjs",
+    "test": "node --test tests/automated.test.mjs && tsx --test tests/phase0.test.mjs && tsx --test tests/phase2.test.mjs && tsx --test tests/phase3.test.mjs && tsx --test tests/neon-clerk.test.mjs && tsx --test tests/resend-email.test.mjs && tsx --test tests/phase4-warmup.test.mjs && tsx --test tests/phase4-acceptance.test.mjs",
     "lint": "tsc --noEmit",
     "build-exe": "electron-builder build --win"
   },

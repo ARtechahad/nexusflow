@@ -69,10 +69,14 @@ import { mailboxesRouter } from './server/routes/outreach/mailboxes';
 import { campaignsRouter } from './server/routes/outreach/campaigns';
 import { trackingRouter } from './server/routes/outreach/tracking';
 import { outreachInboxRouter } from './server/routes/outreach/inbox';
+import { warmupRouter } from './server/routes/outreach/warmupRoutes';
+import { prospectRoutes } from './server/routes/outreach/prospectRoutes';
 import { ensureOutreachSchema, getOutreachPool } from './server/services/outreach/schema';
 import { startQueueWorker, stopQueueWorker } from './server/services/outreach/queue';
 import { initSequencer } from './server/services/outreach/sequencer';
 import { inboxSyncManager } from './server/services/outreach/inboxSync';
+import { initWarmupEngine } from './server/services/outreach/warmupEngine';
+import { initVerifier } from './server/services/outreach/verifier';
 
 dotenv.config();
 
@@ -211,9 +215,15 @@ app.use('/api/outreach', mailboxesRouter);
 app.use('/api/outreach', campaignsRouter);
 app.use('/api/outreach', trackingRouter);
 app.use('/api/outreach', outreachInboxRouter);
+app.use('/api/outreach', warmupRouter);
+app.use('/api/outreach', prospectRoutes);
 
 // Aliases for direct endpoint paths
 app.use('/api', outreachInboxRouter);
+app.use('/api', warmupRouter);
+app.use('/api', prospectRoutes);
+app.use('/', warmupRouter);
+app.use('/', prospectRoutes);
 app.use('/api/domains', trackingRouter);
 app.use('/domains', trackingRouter);
 app.use('/inbox', outreachInboxRouter);
@@ -240,6 +250,8 @@ async function startServer() {
       if (process.env.OUTREACH_WORKER !== 'off') {
         startQueueWorker(outreachPool);
         initSequencer(outreachPool);
+        initWarmupEngine(outreachPool);
+        initVerifier(outreachPool);
         inboxSyncManager.start().catch((syncErr: any) => {
           logger.warn(`InboxSyncManager background start warning: ${syncErr?.message}`, {
             context: 'InboxSync'

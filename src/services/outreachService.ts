@@ -705,3 +705,501 @@ export async function verifyDomainTracking(
   if (!res.ok || !body.success) throw new Error(body.error || 'Failed to verify tracking domain');
   return body;
 }
+
+// ----------------------------------------------------
+// PHASE 4: PEER-TO-PEER WARMUP ENGINE
+// ----------------------------------------------------
+export interface WarmupMailboxOverview {
+  id: string;
+  email: string;
+  sender_name: string;
+  provider: string;
+  domain_name?: string;
+  status: string;
+  warmup_enabled: boolean;
+  warmup_paused: boolean;
+  warmup_terms_accepted: boolean;
+  warmup_terms_accepted_at?: string;
+  warmup_mode: 'new_domain' | 'new_mailbox' | 'dormant' | 'maintenance' | 'recovery';
+  warmup_speed: 'conservative' | 'normal' | 'aggressive';
+  warmup_target: number;
+  pool_excluded: boolean;
+  pool_excluded_reason?: string;
+  health_score: number;
+  sending_day_number: number;
+  warmup_age_days: number;
+  today_target: number;
+  today_sent: number;
+  today_received: number;
+  today_campaign_sent: number;
+  daily_cap: number;
+  inbox_rate_7d: number;
+  spam_rate_7d: number;
+  bounce_rate_7d: number;
+  dns: {
+    hasSpf: boolean;
+    hasDkim: boolean;
+    hasDmarc: boolean;
+  };
+  reasons: string[];
+  unlocked_full_target: boolean;
+}
+
+export interface WarmupOverviewResponse {
+  network_pool: {
+    total_active_mailboxes: number;
+    is_ready: boolean;
+    warning: string | null;
+  };
+  mailboxes: WarmupMailboxOverview[];
+}
+
+export interface WarmupStatsPoint {
+  date: string;
+  sent: number;
+  received: number;
+  inbox: number;
+  spam: number;
+  rescued: number;
+  bounced: number;
+  health_score: number;
+}
+
+export interface WarmupStatsResponse {
+  mailbox_id: string;
+  series: WarmupStatsPoint[];
+}
+
+export async function getWarmupOverview(): Promise<WarmupOverviewResponse> {
+  const res = await fetch('/api/outreach/warmup/overview', {
+    headers: getAuthHeader()
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to fetch warmup overview');
+  }
+  return res.json();
+}
+
+export async function updateWarmupSettings(
+  mailboxId: string,
+  settings: {
+    warmup_enabled?: boolean;
+    warmup_paused?: boolean;
+    warmup_mode?: string;
+    warmup_speed?: string;
+    warmup_target?: number;
+  }
+): Promise<any> {
+  const res = await fetch(`/api/outreach/warmup/${mailboxId}`, {
+    method: 'PATCH',
+    headers: getAuthHeader(),
+    body: JSON.stringify(settings)
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message || data.error || 'Failed to update warmup settings');
+  return data;
+}
+
+export async function submitWarmupConsent(
+  mailboxId: string,
+  accepted: boolean = true
+): Promise<any> {
+  const res = await fetch(`/api/outreach/warmup/${mailboxId}/consent`, {
+    method: 'POST',
+    headers: getAuthHeader(),
+    body: JSON.stringify({ accepted })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to record consent');
+  return data;
+}
+
+export async function getWarmupStats(mailboxId: string): Promise<WarmupStatsResponse> {
+  const res = await fetch(`/api/outreach/warmup/${mailboxId}/stats`, {
+    headers: getAuthHeader()
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to fetch warmup stats');
+  return data;
+}
+
+export async function generateWarmupContentAI(): Promise<any> {
+  const res = await fetch('/api/outreach/warmup/generate-content', {
+    method: 'POST',
+    headers: getAuthHeader()
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to generate warmup content');
+  return data;
+}
+
+export async function triggerWarmupPlanner(): Promise<any> {
+  const res = await fetch('/api/outreach/warmup/run-planner', {
+    method: 'POST',
+    headers: getAuthHeader()
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to run warmup planner');
+  return data;
+}
+
+export async function testSimulateSpam(mailboxId: string, spamPercentage: number): Promise<any> {
+  const res = await fetch('/api/outreach/warmup/test-simulate-spam', {
+    method: 'POST',
+    headers: getAuthHeader(),
+    body: JSON.stringify({ mailboxId, spamPercentage })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to simulate spam');
+  return data;
+}
+
+// ============================================================================
+// PHASE 5: PROSPECTS, VERIFIER, SUPPRESSIONS & SPAM CHECKER API CLIENT
+// ============================================================================
+
+export interface Prospect {
+  id: string;
+  tenant_id: string;
+  email: string;
+  first_name?: string | null;
+  last_name?: string | null;
+  full_name?: string | null;
+  company?: string | null;
+  title?: string | null;
+  phone?: string | null;
+  linkedin_url?: string | null;
+  custom_attributes?: Record<string, any>;
+  status: string;
+  verification_status?: 'valid' | 'risky' | 'invalid' | 'unknown' | null;
+  verification_reason?: string | null;
+  verified_at?: string | null;
+  tags?: string[] | null;
+  list_id?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VerificationCheckDetails {
+  syntax: boolean;
+  disposable: boolean;
+  role: boolean;
+  mx: boolean;
+  hasArecordFallback?: boolean;
+  smtp?: boolean | 'unknown';
+  catchAll?: boolean | 'unknown';
+}
+
+export interface EmailVerificationResult {
+  email: string;
+  status: 'valid' | 'risky' | 'invalid' | 'unknown';
+  reason: string;
+  checks: VerificationCheckDetails;
+  typoSuggestion?: string;
+  mxRecords?: string[];
+  processedAt: string;
+}
+
+export interface VerificationBatchData {
+  id: string;
+  tenantId: string;
+  total: number;
+  processed: number;
+  valid: number;
+  risky: number;
+  invalid: number;
+  unknown: number;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  results: EmailVerificationResult[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface VerificationQuotaInfo {
+  quota: number;
+  used: number;
+  remaining: number;
+}
+
+export interface SuppressionItem {
+  id: string;
+  tenant_id: string;
+  email: string;
+  domain?: string | null;
+  is_domain: boolean;
+  reason: 'unsubscribe' | 'hard_bounce' | 'complaint' | 'manual';
+  source?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SpamCheckerResponse {
+  success: boolean;
+  score: number;
+  grade: 'A+' | 'A' | 'B' | 'C' | 'Risky';
+  issues: Array<{
+    id: string;
+    type: string;
+    severity: 'high' | 'medium' | 'low';
+    message: string;
+    matched?: string[];
+  }>;
+  fixes: string[];
+  highlights: string[];
+  details: {
+    wordCount: number;
+    allCapsRatio: number;
+    exclamationCount: number;
+    linkCount: number;
+    hasImageOnly: boolean;
+    missingPlainText: boolean;
+    brokenMergeTags: string[];
+    urlShorteners: string[];
+    spamWords: string[];
+  };
+}
+
+// Prospects API
+export async function getProspects(params?: {
+  search?: string;
+  status?: string;
+  verification_status?: string;
+  tag?: string;
+  list_id?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<{ prospects: Prospect[]; total: number; limit: number; offset: number }> {
+  const query = new URLSearchParams();
+  if (params?.search) query.set('search', params.search);
+  if (params?.status) query.set('status', params.status);
+  if (params?.verification_status) query.set('verification_status', params.verification_status);
+  if (params?.tag) query.set('tag', params.tag);
+  if (params?.list_id) query.set('list_id', params.list_id);
+  if (params?.limit) query.set('limit', String(params.limit));
+  if (params?.offset) query.set('offset', String(params.offset));
+
+  const res = await fetch(`/api/outreach/prospects?${query.toString()}`, {
+    headers: getAuthHeader()
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to fetch prospects');
+  return data;
+}
+
+export async function createProspect(prospectData: Partial<Prospect>): Promise<Prospect> {
+  const res = await fetch('/api/outreach/prospects', {
+    method: 'POST',
+    headers: getAuthHeader(),
+    body: JSON.stringify(prospectData)
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to create prospect');
+  return data.prospect;
+}
+
+export async function updateProspect(id: string, updates: Partial<Prospect>): Promise<Prospect> {
+  const res = await fetch(`/api/outreach/prospects/${id}`, {
+    method: 'PATCH',
+    headers: getAuthHeader(),
+    body: JSON.stringify(updates)
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to update prospect');
+  return data.prospect;
+}
+
+export async function deleteProspect(id: string): Promise<void> {
+  const res = await fetch(`/api/outreach/prospects/${id}`, {
+    method: 'DELETE',
+    headers: getAuthHeader()
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to delete prospect');
+}
+
+export async function importProspectsCsv(
+  rows: any[],
+  mapping?: Record<string, string>,
+  list_id?: string,
+  tags?: string[]
+): Promise<{
+  report: {
+    total: number;
+    imported: number;
+    duplicate: number;
+    invalid: number;
+    suppressed: number;
+    errors?: string[];
+  };
+}> {
+  const res = await fetch('/api/outreach/prospects/import-csv', {
+    method: 'POST',
+    headers: getAuthHeader(),
+    body: JSON.stringify({ rows, mapping, list_id, tags })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to import CSV');
+  return data;
+}
+
+export async function findLeadsOnline(params: {
+  domain?: string;
+  company?: string;
+  title?: string;
+}): Promise<{
+  success: boolean;
+  configured: boolean;
+  provider?: string;
+  prospects: Array<{
+    first_name: string;
+    last_name: string;
+    email: string;
+    company: string;
+    title: string;
+    phone: string;
+    linkedin_url: string;
+  }>;
+  error?: string;
+}> {
+  const res = await fetch('/api/outreach/prospects/find', {
+    method: 'POST',
+    headers: getAuthHeader(),
+    body: JSON.stringify(params)
+  });
+  const data = await res.json();
+  if (!res.ok && res.status !== 200) throw new Error(data.error || 'Lead sourcing lookup failed');
+  return data;
+}
+
+// Verification API
+export async function verifySingleEmailOnline(email: string): Promise<EmailVerificationResult> {
+  const res = await fetch('/api/outreach/tools/verify-email', {
+    method: 'POST',
+    headers: getAuthHeader(),
+    body: JSON.stringify({ email })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Verification failed');
+  return data.result;
+}
+
+export async function startBulkVerification(params: {
+  emails?: string[];
+  prospectIds?: string[];
+}): Promise<{ batchId: string; total: number; status: string; message: string }> {
+  const res = await fetch('/api/outreach/prospects/verify', {
+    method: 'POST',
+    headers: getAuthHeader(),
+    body: JSON.stringify(params)
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to start bulk verification');
+  return data;
+}
+
+export async function getVerificationBatchStatus(batchId: string): Promise<VerificationBatchData> {
+  const res = await fetch(`/api/outreach/verification/batches/${batchId}`, {
+    headers: getAuthHeader()
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to fetch batch status');
+  return data.batch;
+}
+
+export async function getVerificationQuotaInfo(): Promise<VerificationQuotaInfo> {
+  const res = await fetch('/api/outreach/verification/quota', {
+    headers: getAuthHeader()
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to fetch quota info');
+  return data;
+}
+
+export async function addCustomDisposableDomain(domain: string): Promise<void> {
+  const res = await fetch('/api/outreach/tools/admin/disposable-domains', {
+    method: 'POST',
+    headers: getAuthHeader(),
+    body: JSON.stringify({ domain })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to add disposable domain');
+}
+
+// Suppressions API
+export async function getSuppressionsList(params?: {
+  search?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<{ suppressions: SuppressionItem[]; total: number }> {
+  const query = new URLSearchParams();
+  if (params?.search) query.set('search', params.search);
+  if (params?.limit) query.set('limit', String(params.limit));
+  if (params?.offset) query.set('offset', String(params.offset));
+
+  const res = await fetch(`/api/outreach/suppressions?${query.toString()}`, {
+    headers: getAuthHeader()
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to fetch suppressions');
+  return data;
+}
+
+export async function addSuppressionItem(item: {
+  email?: string;
+  domain?: string;
+  is_domain?: boolean;
+  reason?: 'unsubscribe' | 'hard_bounce' | 'complaint' | 'manual';
+}): Promise<SuppressionItem> {
+  const res = await fetch('/api/outreach/suppressions', {
+    method: 'POST',
+    headers: getAuthHeader(),
+    body: JSON.stringify(item)
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to create suppression');
+  return data.suppression;
+}
+
+export async function removeSuppressionItem(id: string): Promise<void> {
+  const res = await fetch(`/api/outreach/suppressions/${id}`, {
+    method: 'DELETE',
+    headers: getAuthHeader()
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to remove suppression');
+}
+
+export async function importSuppressionsCsvData(
+  rows: any[],
+  reason: string = 'manual',
+  is_domain: boolean = false
+): Promise<{ report: { total: number; imported: number; duplicate: number } }> {
+  const res = await fetch('/api/outreach/suppressions/import-csv', {
+    method: 'POST',
+    headers: getAuthHeader(),
+    body: JSON.stringify({ rows, reason, is_domain })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to import suppressions');
+  return data;
+}
+
+// Spam Checker API
+export async function checkEmailSpamScore(input: {
+  subject?: string;
+  body?: string;
+  emailCopy?: string;
+  html?: string;
+  text?: string;
+}): Promise<SpamCheckerResponse> {
+  const res = await fetch('/api/outreach/tools/spam-check', {
+    method: 'POST',
+    headers: getAuthHeader(),
+    body: JSON.stringify(input)
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to check spam score');
+  return data;
+}
+

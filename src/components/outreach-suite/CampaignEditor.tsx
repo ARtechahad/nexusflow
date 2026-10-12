@@ -13,7 +13,11 @@ import {
   Sparkles,
   Trash2,
   Users,
-  AlertTriangle
+  AlertTriangle,
+  ShieldCheck,
+  ShieldAlert,
+  RefreshCw,
+  XCircle
 } from 'lucide-react';
 import {
   CampaignStep,
@@ -21,6 +25,8 @@ import {
   updateCampaignSteps,
   enrollProspects,
   sendCampaignTestEmail,
+  checkEmailSpamScore,
+  SpamCheckerResponse,
   Mailbox
 } from '../../services/outreachService';
 
@@ -86,6 +92,33 @@ export const CampaignEditor: React.FC<CampaignEditorProps> = ({
   const [testEmail, setTestEmail] = useState<string>('');
   const [testMailboxId, setTestMailboxId] = useState<string>(mailboxes[0]?.id || '');
   const [testingSend, setTestingSend] = useState<boolean>(false);
+
+  // Spam Checker State (Phase 5)
+  const [spamResult, setSpamResult] = useState<SpamCheckerResponse | null>(null);
+  const [checkingSpam, setCheckingSpam] = useState<boolean>(false);
+
+  const handleCheckSpamScore = async () => {
+    const curVariant = steps[activeStepTab]?.variants[0];
+    if (!curVariant) return;
+
+    setCheckingSpam(true);
+    try {
+      const res = await checkEmailSpamScore({
+        subject: curVariant.subject,
+        body: curVariant.body_html
+      });
+      setSpamResult(res);
+      if (res.score >= 80) {
+        showToast(`Deliverability score: ${res.score}/100 (${res.grade}) - Clean!`, 'success');
+      } else {
+        showToast(`Deliverability score: ${res.score}/100 (${res.grade}) - Issues detected`, 'error');
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Failed to check spam score', 'error');
+    } finally {
+      setCheckingSpam(false);
+    }
+  };
 
   const toggleDay = (day: number) => {
     if (selectedDays.includes(day)) {
@@ -758,6 +791,194 @@ export const CampaignEditor: React.FC<CampaignEditorProps> = ({
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* DELIVERABILITY & SPAM SCORE AUDIT PANEL (PHASE 5) */}
+          <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <ShieldCheck className="w-5 h-5 text-indigo-600" />
+                <div>
+                  <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                    Deliverability & Spam Score Analyzer
+                  </h4>
+                  <p className="text-[11px] text-slate-500">
+                    Audit subject and copy against Bayesian filters: promotional buzzwords, ALL CAPS ratio, link counts, and URL shorteners.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleCheckSpamScore}
+                disabled={checkingSpam}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors shadow-xs shrink-0"
+              >
+                {checkingSpam ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    Auditing Copy...
+                  </>
+                ) : (
+                  <>
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    Check Spam Score
+                  </>
+                )}
+              </button>
+            </div>
+
+            {spamResult ? (
+              <div className="space-y-4">
+                {/* Score & Grade Overview */}
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                  <div className="p-3.5 rounded-xl border bg-slate-50 dark:bg-slate-950 flex items-center justify-between">
+                    <div>
+                      <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
+                        Deliverability Score
+                      </div>
+                      <div className="text-xl font-black text-slate-900 dark:text-white mt-0.5">
+                        {spamResult.score} / 100
+                      </div>
+                    </div>
+                    <span
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold ${
+                        spamResult.score >= 80
+                          ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300'
+                          : spamResult.score >= 60
+                          ? 'bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300'
+                          : 'bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300'
+                      }`}
+                    >
+                      Grade: {spamResult.grade}
+                    </span>
+                  </div>
+
+                  <div className="p-3.5 rounded-xl border bg-slate-50 dark:bg-slate-950">
+                    <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
+                      ALL CAPS Ratio
+                    </div>
+                    <div className="text-sm font-bold text-slate-900 dark:text-white mt-1">
+                      {Math.round(spamResult.details.allCapsRatio * 100)}%
+                    </div>
+                    <div className="text-[10px] text-slate-400">
+                      {spamResult.details.allCapsRatio > 0.15 ? '⚠️ Exceeds 15% threshold' : '✓ Natural casing'}
+                    </div>
+                  </div>
+
+                  <div className="p-3.5 rounded-xl border bg-slate-50 dark:bg-slate-950">
+                    <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
+                      Exclamation Count
+                    </div>
+                    <div className="text-sm font-bold text-slate-900 dark:text-white mt-1">
+                      {spamResult.details.exclamationCount} marks
+                    </div>
+                    <div className="text-[10px] text-slate-400">
+                      {spamResult.details.exclamationCount > 2 ? '⚠️ Too many exclamations' : '✓ Professional'}
+                    </div>
+                  </div>
+
+                  <div className="p-3.5 rounded-xl border bg-slate-50 dark:bg-slate-950">
+                    <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
+                      Link & Shortener Count
+                    </div>
+                    <div className="text-sm font-bold text-slate-900 dark:text-white mt-1">
+                      {spamResult.details.linkCount} links
+                    </div>
+                    <div className="text-[10px] text-slate-400">
+                      {spamResult.details.urlShorteners.length > 0 ? '🚫 URL shortener detected' : '✓ Safe domains'}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Inline Highlights in copy */}
+                {spamResult.highlights && spamResult.highlights.length > 0 && (
+                  <div className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/40 space-y-2">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-rose-700 dark:text-rose-300">
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                      Offending Spam Words & Triggers Detected in Copy:
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {spamResult.highlights.map((tok, idx) => (
+                        <span
+                          key={idx}
+                          className="px-2.5 py-1 rounded-md text-xs font-semibold bg-rose-200 dark:bg-rose-900 text-rose-900 dark:text-rose-100 border border-rose-300 dark:border-rose-800 flex items-center gap-1"
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-rose-600 inline-block" />
+                          "{tok}"
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Issues List & Fixes */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Issues */}
+                  <div className="space-y-2">
+                    <div className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                      Detected Issues ({spamResult.issues.length}):
+                    </div>
+                    {spamResult.issues.length === 0 ? (
+                      <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-xs flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 shrink-0" />
+                        No deliverability violations detected. Copy is clean!
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                        {spamResult.issues.map((iss, iIdx) => (
+                          <div
+                            key={iIdx}
+                            className="p-2.5 rounded-lg border text-xs flex items-start gap-2 bg-slate-50 dark:bg-slate-950"
+                          >
+                            <span
+                              className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase shrink-0 ${
+                                iss.severity === 'high'
+                                  ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300'
+                                  : 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
+                              }`}
+                            >
+                              {iss.severity}
+                            </span>
+                            <span className="text-slate-700 dark:text-slate-300">
+                              {iss.message}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Fixes */}
+                  <div className="space-y-2">
+                    <div className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                      Recommended Fixes:
+                    </div>
+                    <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                      {spamResult.fixes.map((fix, fIdx) => (
+                        <div
+                          key={fIdx}
+                          className="p-2.5 rounded-lg border border-slate-100 dark:border-slate-800 text-xs flex items-start gap-2 bg-slate-50/70 dark:bg-slate-950/70 text-slate-700 dark:text-slate-300"
+                        >
+                          <Check className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />
+                          <span>{fix}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="p-6 text-center text-slate-400 space-y-1">
+                <ShieldCheck className="w-6 h-6 mx-auto text-slate-300 dark:text-slate-600 mb-1" />
+                <p className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                  Click "Check Spam Score" above to analyze this sequence step before sending.
+                </p>
+                <p className="text-[11px] text-slate-400">
+                  Real-time checks will inspect spam triggers, formatting, links, and merge tag syntax.
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="flex justify-between pt-4">

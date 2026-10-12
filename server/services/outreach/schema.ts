@@ -382,6 +382,113 @@ export async function ensureOutreachSchema(pool: pg.Pool): Promise<void> {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+
+      -- Phase 4 Peer-to-Peer Warmup System Upgrades
+      ALTER TABLE ox_mailboxes ADD COLUMN IF NOT EXISTS warmup_terms_accepted BOOLEAN DEFAULT false;
+      ALTER TABLE ox_mailboxes ADD COLUMN IF NOT EXISTS warmup_terms_accepted_at TIMESTAMPTZ;
+      ALTER TABLE ox_mailboxes ADD COLUMN IF NOT EXISTS warmup_mode VARCHAR(32) DEFAULT 'new_mailbox';
+      ALTER TABLE ox_mailboxes ADD COLUMN IF NOT EXISTS warmup_speed VARCHAR(32) DEFAULT 'normal';
+      ALTER TABLE ox_mailboxes ADD COLUMN IF NOT EXISTS warmup_target INT DEFAULT 30;
+      ALTER TABLE ox_mailboxes ADD COLUMN IF NOT EXISTS warmup_paused BOOLEAN DEFAULT false;
+      ALTER TABLE ox_mailboxes ADD COLUMN IF NOT EXISTS pool_excluded BOOLEAN DEFAULT false;
+      ALTER TABLE ox_mailboxes ADD COLUMN IF NOT EXISTS pool_excluded_reason TEXT;
+      ALTER TABLE ox_mailboxes ADD COLUMN IF NOT EXISTS warmup_sending_days INT DEFAULT 0;
+      ALTER TABLE ox_mailboxes ADD COLUMN IF NOT EXISTS health_score NUMERIC(5, 2) DEFAULT 100.00;
+      ALTER TABLE ox_mailboxes ADD COLUMN IF NOT EXISTS last_health_check_at TIMESTAMPTZ;
+      ALTER TABLE ox_mailboxes ADD COLUMN IF NOT EXISTS spam_recovery_days INT DEFAULT 0;
+
+      ALTER TABLE ox_warmup_messages ADD COLUMN IF NOT EXISTS tag VARCHAR(64);
+      ALTER TABLE ox_warmup_messages ADD COLUMN IF NOT EXISTS depth INT NOT NULL DEFAULT 1;
+      ALTER TABLE ox_warmup_messages ADD COLUMN IF NOT EXISTS placement VARCHAR(32) DEFAULT 'unknown';
+      ALTER TABLE ox_warmup_messages ADD COLUMN IF NOT EXISTS rescued BOOLEAN DEFAULT false;
+      ALTER TABLE ox_warmup_messages ADD COLUMN IF NOT EXISTS folder_name VARCHAR(64);
+      ALTER TABLE ox_warmup_messages ADD COLUMN IF NOT EXISTS in_reply_to VARCHAR(255);
+      ALTER TABLE ox_warmup_messages ADD COLUMN IF NOT EXISTS references_header TEXT;
+      ALTER TABLE ox_warmup_messages ADD COLUMN IF NOT EXISTS replied_at TIMESTAMPTZ;
+
+      CREATE INDEX IF NOT EXISTS idx_ox_warmup_messages_tag ON ox_warmup_messages(tag);
+
+      ALTER TABLE ox_mailbox_daily ADD COLUMN IF NOT EXISTS warmup_inbox_count INT DEFAULT 0;
+      ALTER TABLE ox_mailbox_daily ADD COLUMN IF NOT EXISTS warmup_spam_count INT DEFAULT 0;
+      ALTER TABLE ox_mailbox_daily ADD COLUMN IF NOT EXISTS warmup_rescued_count INT DEFAULT 0;
+      ALTER TABLE ox_mailbox_daily ADD COLUMN IF NOT EXISTS health_score NUMERIC(5, 2) DEFAULT 100.00;
+      ALTER TABLE ox_mailbox_daily ADD COLUMN IF NOT EXISTS warmup_target INT DEFAULT 0;
+
+      CREATE TABLE IF NOT EXISTS ox_warmup_content (
+        id VARCHAR(64) PRIMARY KEY,
+        category VARCHAR(32) NOT NULL,
+        text TEXT NOT NULL,
+        source VARCHAR(32) NOT NULL DEFAULT 'seed',
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_ox_warmup_content_cat ON ox_warmup_content(category, is_active);
+
+      CREATE TABLE IF NOT EXISTS ox_mailbox_health_history (
+        id VARCHAR(64) PRIMARY KEY,
+        mailbox_id VARCHAR(64) NOT NULL REFERENCES ox_mailboxes(id) ON DELETE CASCADE,
+        date_utc DATE NOT NULL,
+        health_score NUMERIC(5, 2) NOT NULL,
+        spam_rate NUMERIC(5, 2) NOT NULL,
+        bounce_rate NUMERIC(5, 2) NOT NULL,
+        spf_valid BOOLEAN NOT NULL DEFAULT true,
+        dkim_valid BOOLEAN NOT NULL DEFAULT true,
+        dmarc_valid BOOLEAN NOT NULL DEFAULT true,
+        warmup_sent INT NOT NULL DEFAULT 0,
+        inbox_count INT NOT NULL DEFAULT 0,
+        spam_count INT NOT NULL DEFAULT 0,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT uq_ox_mbx_health_date UNIQUE (mailbox_id, date_utc)
+      );
+      CREATE INDEX IF NOT EXISTS idx_ox_mbx_health_mbx ON ox_mailbox_health_history(mailbox_id, date_utc);
+
+      -- Phase 5 List Cleaning & Email Verification Upgrades
+      ALTER TABLE ox_prospects ADD COLUMN IF NOT EXISTS tags TEXT[] DEFAULT '{}';
+      ALTER TABLE ox_prospects ADD COLUMN IF NOT EXISTS verification_status VARCHAR(32) DEFAULT 'unverified';
+      ALTER TABLE ox_prospects ADD COLUMN IF NOT EXISTS verification_reason TEXT;
+      ALTER TABLE ox_prospects ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ;
+      ALTER TABLE ox_prospects ADD COLUMN IF NOT EXISTS list_id VARCHAR(64);
+      CREATE INDEX IF NOT EXISTS idx_ox_prospects_verif ON ox_prospects(tenant_id, verification_status);
+
+      ALTER TABLE ox_suppressions ADD COLUMN IF NOT EXISTS is_domain BOOLEAN DEFAULT false;
+      ALTER TABLE ox_suppressions ADD COLUMN IF NOT EXISTS domain VARCHAR(255);
+      ALTER TABLE ox_suppressions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+      CREATE INDEX IF NOT EXISTS idx_ox_suppressions_domain ON ox_suppressions(tenant_id, domain);
+
+      ALTER TABLE ox_plans ADD COLUMN IF NOT EXISTS verification_quota INT DEFAULT 1000;
+
+      CREATE TABLE IF NOT EXISTS ox_verification_batches (
+        id VARCHAR(64) PRIMARY KEY,
+        tenant_id VARCHAR(64) NOT NULL,
+        total_count INT NOT NULL DEFAULT 0,
+        processed_count INT NOT NULL DEFAULT 0,
+        valid_count INT NOT NULL DEFAULT 0,
+        risky_count INT NOT NULL DEFAULT 0,
+        invalid_count INT NOT NULL DEFAULT 0,
+        unknown_count INT NOT NULL DEFAULT 0,
+        status VARCHAR(32) NOT NULL DEFAULT 'pending',
+        results JSONB NOT NULL DEFAULT '[]'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_ox_verif_batches_tenant ON ox_verification_batches(tenant_id);
+
+      CREATE TABLE IF NOT EXISTS ox_verification_usage (
+        id VARCHAR(64) PRIMARY KEY,
+        tenant_id VARCHAR(64) NOT NULL,
+        year_month VARCHAR(7) NOT NULL,
+        verification_count INT NOT NULL DEFAULT 0,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT uq_ox_verif_usage UNIQUE (tenant_id, year_month)
+      );
+      CREATE INDEX IF NOT EXISTS idx_ox_verif_usage_tenant ON ox_verification_usage(tenant_id, year_month);
+
+      CREATE TABLE IF NOT EXISTS ox_disposable_domains (
+        domain VARCHAR(255) PRIMARY KEY,
+        source VARCHAR(32) NOT NULL DEFAULT 'seed',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
     `);
     await client.query('COMMIT');
     logger.info('Outreach Suite schema & indexes verified in PostgreSQL.', {
