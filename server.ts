@@ -90,20 +90,8 @@ const app = express();
 // Trust reverse proxies (Cloud Run, Container Nginx, Railway) for express-rate-limit and X-Forwarded-For IP resolution
 app.set('trust proxy', 1);
 
-// Detect AI Studio container preview environment vs external hosting platforms (Railway, Render, Cloud Run, etc.)
-const isRailwayOrExternal = Boolean(
-  process.env.RAILWAY_ENVIRONMENT ||
-  process.env.RAILWAY_SERVICE_ID ||
-  process.env.RAILWAY_STATIC_URL ||
-  process.env.RENDER ||
-  (!process.env.APPLET_ID && process.env.PORT)
-);
-
-// In external platforms like Railway, Render, or Docker, strictly read PORT from process.env.PORT (e.g., 8080 or dynamic port).
-// In AI Studio preview environment, Node dev server listens on port 3000.
-const PORT: number = isRailwayOrExternal
-  ? (process.env.PORT ? parseInt(process.env.PORT, 10) : 3000)
-  : 3000;
+// Dynamically resolve PORT: Railway, Render, Cloud Run and Docker containers inject process.env.PORT
+const PORT: number = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 // Global Middleware Pipeline
 app.use(securityHeaders);
@@ -123,8 +111,7 @@ const handleHealthCheck = (req: Request, res: Response) => {
     status: 'ok',
     uptime: Math.floor(process.uptime()),
     timestamp: new Date().toISOString(),
-    port: PORT,
-    platform: process.env.RAILWAY_ENVIRONMENT ? 'railway' : (isRailwayOrExternal ? 'external-cloud' : 'ai-studio'),
+    platform: process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_SERVICE_ID ? 'railway' : (process.env.PORT ? 'cloud' : 'ai-studio'),
     memory: {
       rssMb: Math.round(mem.rss / 1024 / 1024),
       heapTotalMb: Math.round(mem.heapTotal / 1024 / 1024),
@@ -295,7 +282,7 @@ async function startServer() {
   const isProd = process.env.NODE_ENV === 'production' ||
                  Boolean(process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_SERVICE_ID || process.env.RAILWAY_STATIC_URL || process.env.RENDER) ||
                  (isCompiledBundle && distHtmlExists) ||
-                 (isRailwayOrExternal && distHtmlExists);
+                 Boolean(distHtmlExists && process.env.NODE_ENV !== 'development' && !process.env.APPLET_ID);
 
   if (!isProd) {
     // Dynamic import of Vite ensures production builds never crash on missing Vite dependencies
