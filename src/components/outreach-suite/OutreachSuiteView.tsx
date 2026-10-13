@@ -32,6 +32,8 @@ import { InboxTab } from './InboxTab';
 import { WarmupTab } from './WarmupTab';
 import { ProspectsTab } from './ProspectsTab';
 import { VerifierTab } from './VerifierTab';
+import { AnalyticsTab } from './AnalyticsTab';
+import { SettingsTab } from './SettingsTab';
 import {
   getOutreachHealth,
   getOutreachQueueStats,
@@ -454,27 +456,14 @@ export const OutreachSuiteView: React.FC = () => {
         <VerifierTab showToast={showToast} isAdmin={role === 'admin'} />
       )}
 
-      {/* PLACEHOLDERS FOR SUBSEQUENT PHASES */}
-      {(activeTab === 'analytics' || activeTab === 'settings') && (
-        <div className="p-12 text-center rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-3">
-          <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 mx-auto flex items-center justify-center">
-            {activeTab === 'analytics' && <BarChart3 className="w-6 h-6" />}
-            {activeTab === 'settings' && <Settings className="w-6 h-6" />}
-          </div>
-          <h3 className="text-base font-semibold text-slate-900 dark:text-white capitalize">
-            {activeTab} Management
-          </h3>
-          <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-            {activeTab === 'analytics' && 'Open, click, reply, and meeting conversion funnel telemetry.'}
-            {activeTab === 'settings' && 'Tracking domains, API keys, and outbound tenant configuration.'}
-          </p>
-          <div className="pt-2">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
-              <Layers className="w-3.5 h-3.5" />
-              Under Active Development
-            </span>
-          </div>
-        </div>
+      {/* ANALYTICS TAB CONTENT (PHASE 6) */}
+      {activeTab === 'analytics' && (
+        <AnalyticsTab showToast={showToast} />
+      )}
+
+      {/* SETTINGS & USAGE TAB CONTENT (PHASE 6) */}
+      {activeTab === 'settings' && (
+        <SettingsTab showToast={showToast} isAdmin={role === 'admin'} />
       )}
     </div>
   );

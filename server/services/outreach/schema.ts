@@ -489,6 +489,65 @@ export async function ensureOutreachSchema(pool: pg.Pool): Promise<void> {
         source VARCHAR(32) NOT NULL DEFAULT 'seed',
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+
+      -- Phase 6 Conditional Branching, A-Z Variants, Analytics & Plans Upgrades
+      ALTER TABLE ox_sent_emails ADD COLUMN IF NOT EXISTS opened_at TIMESTAMPTZ;
+      ALTER TABLE ox_sent_emails ADD COLUMN IF NOT EXISTS clicked_at TIMESTAMPTZ;
+      ALTER TABLE ox_sent_emails ADD COLUMN IF NOT EXISTS replied_at TIMESTAMPTZ;
+      ALTER TABLE ox_sent_emails ADD COLUMN IF NOT EXISTS bounced_at TIMESTAMPTZ;
+
+      ALTER TABLE ox_steps ADD COLUMN IF NOT EXISTS condition JSONB;
+      ALTER TABLE ox_steps ADD COLUMN IF NOT EXISTS on_true_step VARCHAR(64);
+      ALTER TABLE ox_steps ADD COLUMN IF NOT EXISTS on_false_step VARCHAR(64);
+      ALTER TABLE ox_steps ADD COLUMN IF NOT EXISTS auto_optimise BOOLEAN DEFAULT false;
+      ALTER TABLE ox_steps ADD COLUMN IF NOT EXISTS optimization_log JSONB DEFAULT '[]'::jsonb;
+
+      ALTER TABLE ox_enrollments ADD COLUMN IF NOT EXISTS variant_assignments JSONB DEFAULT '{}'::jsonb;
+
+      CREATE TABLE IF NOT EXISTS ox_tenant_plans (
+        tenant_id VARCHAR(64) PRIMARY KEY,
+        plan_id VARCHAR(64) NOT NULL DEFAULT 'growth',
+        billing_interval VARCHAR(16) NOT NULL DEFAULT 'monthly',
+        billing_cycle_start TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        billing_cycle_end TIMESTAMPTZ NOT NULL DEFAULT NOW() + INTERVAL '30 days',
+        stripe_customer_id VARCHAR(128),
+        stripe_subscription_id VARCHAR(128),
+        status VARCHAR(32) NOT NULL DEFAULT 'active',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS ox_analytics_daily (
+        id VARCHAR(64) PRIMARY KEY,
+        tenant_id VARCHAR(64) NOT NULL,
+        campaign_id VARCHAR(64),
+        mailbox_id VARCHAR(64),
+        variant_id VARCHAR(64),
+        date_utc DATE NOT NULL,
+        sent_count INT NOT NULL DEFAULT 0,
+        delivered_count INT NOT NULL DEFAULT 0,
+        bounced_count INT NOT NULL DEFAULT 0,
+        opened_count INT NOT NULL DEFAULT 0,
+        clicked_count INT NOT NULL DEFAULT 0,
+        replied_count INT NOT NULL DEFAULT 0,
+        positive_replied_count INT NOT NULL DEFAULT 0,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT uq_ox_analytics_daily UNIQUE (tenant_id, campaign_id, mailbox_id, variant_id, date_utc)
+      );
+      CREATE INDEX IF NOT EXISTS idx_ox_analytics_daily_tenant_date ON ox_analytics_daily(tenant_id, date_utc);
+      CREATE INDEX IF NOT EXISTS idx_ox_analytics_daily_camp ON ox_analytics_daily(campaign_id, date_utc);
+
+      CREATE TABLE IF NOT EXISTS ox_workspace_members (
+        id VARCHAR(64) PRIMARY KEY,
+        tenant_id VARCHAR(64) NOT NULL,
+        user_id VARCHAR(64) NOT NULL,
+        role VARCHAR(32) NOT NULL DEFAULT 'viewer',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT uq_ox_workspace_members UNIQUE (tenant_id, user_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_ox_workspace_members_tenant ON ox_workspace_members(tenant_id);
     `);
     await client.query('COMMIT');
     logger.info('Outreach Suite schema & indexes verified in PostgreSQL.', {

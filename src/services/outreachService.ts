@@ -394,6 +394,11 @@ export interface CampaignStep {
   step_number: number;
   delay_days: number;
   delay_hours: number;
+  condition?: StepCondition;
+  on_true_step?: string;
+  on_false_step?: string;
+  auto_optimise?: boolean;
+  optimization_log?: any[];
   variants: CampaignStepVariant[];
 }
 
@@ -1203,3 +1208,366 @@ export async function checkEmailSpamScore(input: {
   return data;
 }
 
+
+// ============================================================================
+// PHASE 6: CONDITIONAL BRANCHING, A-Z VARIANTS, ANALYTICS, PLANS & STRIPE BILLING
+// ============================================================================
+
+export interface ConditionRule {
+  type:
+    | 'opened'
+    | 'clicked'
+    | 'replied'
+    | 'bounced'
+    | 'not_opened'
+    | 'not_clicked'
+    | 'link_clicked'
+    | 'replied_positive';
+  stepRef?: string | number;
+  withinHours?: number;
+  linkUrl?: string;
+}
+
+export interface StepCondition {
+  op: 'AND' | 'OR';
+  rules: ConditionRule[];
+}
+
+export interface OutreachPlan {
+  id: string;
+  name: string;
+  tier: 'starter' | 'growth' | 'scale';
+  monthlyPriceUsd: number;
+  annualPriceUsd: number;
+  mailboxLimit: number;
+  monthlySendLimit: number;
+  dailySendLimit: number;
+  verificationQuota: number;
+  features: {
+    warmup: boolean;
+    a_b_testing: boolean;
+    conditional_branching: boolean;
+    auto_optimize: boolean;
+    dedicated_tracking_domain: boolean;
+    advanced_analytics: boolean;
+    priority_support: boolean;
+  };
+}
+
+export interface TenantPlanDetails {
+  tenantId: string;
+  plan: OutreachPlan;
+  billingInterval: 'monthly' | 'annual';
+  billingCycleStart: string;
+  billingCycleEnd: string;
+  status: 'active' | 'past_due' | 'canceled';
+  stripeSubscriptionId?: string;
+  stripeCustomerId?: string;
+  isTestMode: boolean;
+  usage?: {
+    emailsSent: number;
+    emailsLimit: number;
+    emailsRemaining: number;
+    mailboxesUsed: number;
+    mailboxesLimit: number;
+    verificationsUsed: number;
+    verificationsLimit: number;
+    isUpgradeRequired: boolean;
+  };
+}
+
+export interface AnalyticsOverviewMetrics {
+  sent: number;
+  delivered: number;
+  bounced: number;
+  opened: number;
+  clicked: number;
+  replied: number;
+  positiveReplied: number;
+  deliveryRate: number;
+  openRate: number;
+  clickRate: number;
+  replyRate: number;
+  positiveReplyRate: number;
+  bounceRate: number;
+  openRateDisclaimer: string;
+}
+
+export interface AnalyticsDailyPoint {
+  date: string;
+  sent: number;
+  delivered: number;
+  bounced: number;
+  opened: number;
+  clicked: number;
+  replied: number;
+  positiveReplied: number;
+}
+
+export interface CampaignAnalyticsSummary {
+  id: string;
+  name: string;
+  status: string;
+  sent: number;
+  delivered: number;
+  bounced: number;
+  opened: number;
+  clicked: number;
+  replied: number;
+  positiveReplied: number;
+  replyRate: number;
+}
+
+export interface VariantAnalyticsSummary {
+  variantId: string;
+  stepId: string;
+  variantLabel: string;
+  subject: string;
+  weight: number;
+  sent: number;
+  opened: number;
+  clicked: number;
+  replied: number;
+  positiveReplied: number;
+  replyRate: number;
+  posteriorScore: number;
+}
+
+export interface MailboxAnalyticsSummary {
+  mailboxId: string;
+  email: string;
+  sent: number;
+  bounced: number;
+  replied: number;
+  bounceRate: number;
+  healthScore: number;
+}
+
+export interface WarmupTrendPoint {
+  date: string;
+  sent: number;
+  inboxLanded: number;
+  spamLanded: number;
+  rescued: number;
+  replied: number;
+  avgHealthScore: number;
+}
+
+export interface OutreachAnalyticsData {
+  overview: AnalyticsOverviewMetrics;
+  dailySeries: AnalyticsDailyPoint[];
+  campaigns: CampaignAnalyticsSummary[];
+  variants: VariantAnalyticsSummary[];
+  mailboxes: MailboxAnalyticsSummary[];
+  warmupTrend: WarmupTrendPoint[];
+}
+
+export interface WorkspaceMember {
+  id: string;
+  tenant_id: string;
+  user_id: string;
+  role: 'owner' | 'manager' | 'viewer';
+  created_at: string;
+  updated_at?: string;
+}
+
+// 1. Analytics Endpoints
+export async function getOutreachAnalyticsData(filters: {
+  campaignId?: string;
+  mailboxId?: string;
+  variantId?: string;
+  dateRange?: string;
+  startDate?: string;
+  endDate?: string;
+} = {}): Promise<OutreachAnalyticsData> {
+  const query = new URLSearchParams();
+  if (filters.campaignId) query.set('campaignId', filters.campaignId);
+  if (filters.mailboxId) query.set('mailboxId', filters.mailboxId);
+  if (filters.variantId) query.set('variantId', filters.variantId);
+  if (filters.dateRange) query.set('dateRange', filters.dateRange);
+  if (filters.startDate) query.set('startDate', filters.startDate);
+  if (filters.endDate) query.set('endDate', filters.endDate);
+
+  const res = await fetch(`/api/outreach/analytics/overview?${query.toString()}`, {
+    headers: getAuthHeader()
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to fetch analytics overview');
+  return data.data;
+}
+
+export async function downloadAnalyticsCsv(filters: {
+  campaignId?: string;
+  mailboxId?: string;
+  dateRange?: string;
+} = {}): Promise<void> {
+  const query = new URLSearchParams();
+  if (filters.campaignId) query.set('campaignId', filters.campaignId);
+  if (filters.mailboxId) query.set('mailboxId', filters.mailboxId);
+  if (filters.dateRange) query.set('dateRange', filters.dateRange);
+
+  const res = await fetch(`/api/outreach/analytics/export-csv?${query.toString()}`, {
+    headers: getAuthHeader()
+  });
+  if (!res.ok) throw new Error('Failed to export analytics CSV');
+
+  const blob = await res.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `outreach-analytics-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+export async function triggerDailyRollup(): Promise<any> {
+  const res = await fetch('/api/outreach/analytics/rollup', {
+    method: 'POST',
+    headers: getAuthHeader()
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to execute rollup');
+  return data.data;
+}
+
+// 2. Sequence Loop Validation
+export async function validateSequenceNodes(steps: any[]): Promise<{ isValid: boolean; error?: string; cyclePath?: string[] }> {
+  const res = await fetch('/api/outreach/sequences/validate', {
+    method: 'POST',
+    headers: getAuthHeader(),
+    body: JSON.stringify({ steps })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to validate sequence');
+  return data.data;
+}
+
+// 3. Variant Auto-Optimise & Decision Log
+export async function triggerStepAutoOptimise(
+  campaignId: string,
+  stepId: string,
+  minSendsThreshold: number = 100
+): Promise<any> {
+  const res = await fetch(`/api/outreach/campaigns/${campaignId}/steps/${stepId}/auto-optimise`, {
+    method: 'POST',
+    headers: getAuthHeader(),
+    body: JSON.stringify({ minSendsThreshold })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to auto-optimise step variants');
+  return data.data;
+}
+
+export async function getStepOptimisationLog(campaignId: string, stepId: string): Promise<any> {
+  const res = await fetch(`/api/outreach/campaigns/${campaignId}/steps/${stepId}/optimisation-log`, {
+    headers: getAuthHeader()
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to fetch optimization log');
+  return data.data;
+}
+
+// 4. Plans & Stripe Billing
+export async function getOutreachPlansList(): Promise<{ plans: Record<string, OutreachPlan>; isTestMode: boolean }> {
+  const res = await fetch('/api/outreach/billing/plans', {
+    headers: getAuthHeader()
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to fetch plans');
+  return data.data;
+}
+
+export async function getCurrentTenantPlan(): Promise<TenantPlanDetails> {
+  const res = await fetch('/api/outreach/billing/current-plan', {
+    headers: getAuthHeader()
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to fetch current plan');
+  return data.data;
+}
+
+export async function createOutreachCheckoutSession(
+  planId: string,
+  billingInterval: 'monthly' | 'annual'
+): Promise<{ sessionId: string; url: string; isLiveStripe: boolean; isTestMode?: boolean; message?: string }> {
+  const res = await fetch('/api/outreach/billing/checkout', {
+    method: 'POST',
+    headers: getAuthHeader(),
+    body: JSON.stringify({ planId, billingInterval })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to create checkout session');
+  return data;
+}
+
+export async function openCustomerPortalSession(): Promise<{ url: string; isTestMode?: boolean }> {
+  const res = await fetch('/api/outreach/billing/portal', {
+    method: 'POST',
+    headers: getAuthHeader()
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to open customer portal');
+  return data;
+}
+
+export async function testUpgradePlanManual(
+  planId: string,
+  billingInterval: 'monthly' | 'annual' = 'monthly'
+): Promise<TenantPlanDetails> {
+  const res = await fetch('/api/outreach/billing/test-upgrade', {
+    method: 'POST',
+    headers: getAuthHeader(),
+    body: JSON.stringify({ planId, billingInterval })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to upgrade plan in test mode');
+  return data.data;
+}
+
+// 5. Workspace Team Members
+export async function getWorkspaceMembers(): Promise<WorkspaceMember[]> {
+  const res = await fetch('/api/outreach/team/members', {
+    headers: getAuthHeader()
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to fetch team members');
+  return data.data;
+}
+
+export async function addWorkspaceMember(
+  userId: string,
+  role: 'owner' | 'manager' | 'viewer'
+): Promise<WorkspaceMember> {
+  const res = await fetch('/api/outreach/team/members', {
+    method: 'POST',
+    headers: getAuthHeader(),
+    body: JSON.stringify({ userId, role })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to add team member');
+  return data.data;
+}
+
+export async function updateWorkspaceMemberRole(
+  id: string,
+  role: 'owner' | 'manager' | 'viewer'
+): Promise<void> {
+  const res = await fetch(`/api/outreach/team/members/${id}`, {
+    method: 'PUT',
+    headers: getAuthHeader(),
+    body: JSON.stringify({ role })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to update member role');
+}
+
+export async function removeWorkspaceMember(id: string): Promise<void> {
+  const res = await fetch(`/api/outreach/team/members/${id}`, {
+    method: 'DELETE',
+    headers: getAuthHeader()
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to remove member');
+}

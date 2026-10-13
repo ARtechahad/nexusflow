@@ -17,8 +17,11 @@ import {
   ShieldCheck,
   ShieldAlert,
   RefreshCw,
-  XCircle
+  XCircle,
+  GitBranch,
+  Layers
 } from 'lucide-react';
+import { SequenceBuilder } from './SequenceBuilder';
 import {
   CampaignStep,
   createCampaign,
@@ -76,6 +79,9 @@ export const CampaignEditor: React.FC<CampaignEditorProps> = ({
     }
   ]);
   const [activeStepTab, setActiveStepTab] = useState<number>(0);
+  const [activeVariantTab, setActiveVariantTab] = useState<number>(0);
+  const [sequenceMode, setSequenceMode] = useState<'classic' | 'builder'>('classic');
+  const [showOptimLogModal, setShowOptimLogModal] = useState<boolean>(false);
   const [previewProspect, setPreviewProspect] = useState({
     first_name: 'Alex',
     last_name: 'Morgan',
@@ -98,7 +104,7 @@ export const CampaignEditor: React.FC<CampaignEditorProps> = ({
   const [checkingSpam, setCheckingSpam] = useState<boolean>(false);
 
   const handleCheckSpamScore = async () => {
-    const curVariant = steps[activeStepTab]?.variants[0];
+    const curVariant = steps[activeStepTab]?.variants[activeVariantTab] || steps[activeStepTab]?.variants[0];
     if (!curVariant) return;
 
     setCheckingSpam(true);
@@ -167,10 +173,43 @@ export const CampaignEditor: React.FC<CampaignEditorProps> = ({
     setActiveStepTab(Math.max(0, indexToRemove - 1));
   };
 
+  const addVariantToCurrentStep = () => {
+    const curStep = steps[activeStepTab];
+    if (!curStep) return;
+    if (curStep.variants.length >= 26) {
+      showToast('Maximum 26 variants (A to Z) per step reached', 'error');
+      return;
+    }
+
+    const nextLabel = String.fromCharCode(65 + curStep.variants.length); // 'B', 'C', etc.
+    const newVariant = {
+      variant_label: nextLabel,
+      subject: `${curStep.variants[0]?.subject || 'Quick question'} [Variant ${nextLabel}]`,
+      body_html: curStep.variants[0]?.body_html || '<p>Hi {{first_name}},</p><p>Wanted to follow up.</p>',
+      weight: 50
+    };
+
+    const copy = [...steps];
+    copy[activeStepTab].variants.push(newVariant);
+    setSteps(copy);
+    setActiveVariantTab(copy[activeStepTab].variants.length - 1);
+    showToast(`Added Variant [${nextLabel}]`, 'success');
+  };
+
+  const removeVariantFromCurrentStep = (vIdx: number) => {
+    const curStep = steps[activeStepTab];
+    if (!curStep || curStep.variants.length <= 1) return;
+
+    const copy = [...steps];
+    copy[activeStepTab].variants = curStep.variants.filter((_, i) => i !== vIdx);
+    setSteps(copy);
+    setActiveVariantTab(Math.max(0, vIdx - 1));
+  };
+
   const insertTag = (tag: string) => {
     const currentStep = steps[activeStepTab];
     if (!currentStep) return;
-    const currentVariant = currentStep.variants[0];
+    const currentVariant = currentStep.variants[activeVariantTab] || currentStep.variants[0];
     const updatedHtml = (currentVariant.body_html || '') + ` {{${tag}}}`;
     updateCurrentVariantBody(updatedHtml);
   };
@@ -178,7 +217,7 @@ export const CampaignEditor: React.FC<CampaignEditorProps> = ({
   const insertSpintax = () => {
     const currentStep = steps[activeStepTab];
     if (!currentStep) return;
-    const currentVariant = currentStep.variants[0];
+    const currentVariant = currentStep.variants[activeVariantTab] || currentStep.variants[0];
     const updatedHtml = (currentVariant.body_html || '') + ' {Hi|Hello|Hey}';
     updateCurrentVariantBody(updatedHtml);
   };
@@ -186,8 +225,9 @@ export const CampaignEditor: React.FC<CampaignEditorProps> = ({
   const updateCurrentVariantSubject = (val: string) => {
     setSteps((prev) => {
       const copy = [...prev];
-      if (copy[activeStepTab]?.variants[0]) {
-        copy[activeStepTab].variants[0].subject = val;
+      const targetVar = copy[activeStepTab]?.variants[activeVariantTab] || copy[activeStepTab]?.variants[0];
+      if (targetVar) {
+        targetVar.subject = val;
       }
       return copy;
     });
@@ -196,8 +236,20 @@ export const CampaignEditor: React.FC<CampaignEditorProps> = ({
   const updateCurrentVariantBody = (val: string) => {
     setSteps((prev) => {
       const copy = [...prev];
-      if (copy[activeStepTab]?.variants[0]) {
-        copy[activeStepTab].variants[0].body_html = val;
+      const targetVar = copy[activeStepTab]?.variants[activeVariantTab] || copy[activeStepTab]?.variants[0];
+      if (targetVar) {
+        targetVar.body_html = val;
+      }
+      return copy;
+    });
+  };
+
+  const updateCurrentVariantWeight = (weight: number) => {
+    setSteps((prev) => {
+      const copy = [...prev];
+      const targetVar = copy[activeStepTab]?.variants[activeVariantTab] || copy[activeStepTab]?.variants[0];
+      if (targetVar) {
+        targetVar.weight = weight;
       }
       return copy;
     });
@@ -217,10 +269,12 @@ export const CampaignEditor: React.FC<CampaignEditorProps> = ({
   // Live preview generator
   const getRenderedPreview = () => {
     const currentStep = steps[activeStepTab];
-    if (!currentStep || !currentStep.variants[0]) return { subject: '', body: '' };
+    if (!currentStep) return { subject: '', body: '' };
+    const curVariant = currentStep.variants[activeVariantTab] || currentStep.variants[0];
+    if (!curVariant) return { subject: '', body: '' };
 
-    let s = currentStep.variants[0].subject;
-    let b = currentStep.variants[0].body_html || '';
+    let s = curVariant.subject;
+    let b = curVariant.body_html || '';
 
     // Simple preview regex substitution
     s = s.replace(/\{\{first_name(?:\|[^}]+)?\}\}/g, previewProspect.first_name);
@@ -352,7 +406,7 @@ export const CampaignEditor: React.FC<CampaignEditorProps> = ({
   };
 
   const activeStep = steps[activeStepTab] || steps[0];
-  const activeVariant = activeStep?.variants[0] || { subject: '', body_html: '' };
+  const activeVariant = activeStep?.variants[activeVariantTab] || activeStep?.variants[0] || { subject: '', body_html: '', variant_label: 'A', weight: 100 };
   const preview = getRenderedPreview();
   const wordCount = (activeVariant.body_html || '').replace(/<[^>]+>/g, ' ').trim().split(/\s+/).filter(Boolean).length;
   const charCount = (activeVariant.body_html || '').replace(/<[^>]+>/g, '').length;
@@ -625,46 +679,161 @@ export const CampaignEditor: React.FC<CampaignEditorProps> = ({
       {/* STEP 2: SEQUENCE DESIGNER */}
       {stepIndex === 2 && (
         <div className="p-6 space-y-6">
-          {/* Step Tabs */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-slate-200 dark:border-slate-800">
-            {steps.map((st, sIdx) => (
-              <div
-                key={sIdx}
-                onClick={() => setActiveStepTab(sIdx)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-medium cursor-pointer transition-all ${
-                  activeStepTab === sIdx
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200'
+          {/* Sequence View Mode Switcher */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
+            <div className="flex items-center p-1 bg-slate-100 dark:bg-slate-800 rounded-xl text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => setSequenceMode('classic')}
+                className={`px-3 py-1.5 rounded-lg transition-all ${
+                  sequenceMode === 'classic'
+                    ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-2xs'
+                    : 'text-slate-600 dark:text-slate-400'
                 }`}
               >
-                <span>Step {st.step_number}</span>
-                {sIdx > 0 && (
-                  <span className="text-[10px] opacity-75">
-                    (+{st.delay_days}d {st.delay_hours}h)
-                  </span>
-                )}
-                {steps.length > 1 && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      removeStep(sIdx);
-                    }}
-                    className="hover:text-rose-300 ml-1"
-                  >
-                    ×
-                  </button>
-                )}
-              </div>
-            ))}
+                Classic Step Editor
+              </button>
+              <button
+                type="button"
+                onClick={() => setSequenceMode('builder')}
+                className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
+                  sequenceMode === 'builder'
+                    ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-2xs'
+                    : 'text-slate-600 dark:text-slate-400'
+                }`}
+              >
+                <GitBranch className="w-3.5 h-3.5" />
+                <span>Visual Flowchart & Branch Builder</span>
+              </button>
+            </div>
 
-            <button
-              onClick={addStep}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium border border-dashed border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-indigo-500 hover:text-indigo-600 transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              Add Follow-Up Step
-            </button>
+            <span className="text-xs text-slate-500">
+              {steps.length} touchpoint{steps.length > 1 ? 's' : ''} • {activeStep.variants.length} variant{activeStep.variants.length > 1 ? 's' : ''} (A–Z)
+            </span>
           </div>
+
+          {sequenceMode === 'builder' ? (
+            <SequenceBuilder steps={steps} onChange={setSteps} showToast={showToast} />
+          ) : (
+            <>
+              {/* Step Tabs */}
+              <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-slate-200 dark:border-slate-800">
+                {steps.map((st, sIdx) => (
+                  <div
+                    key={sIdx}
+                    onClick={() => {
+                      setActiveStepTab(sIdx);
+                      setActiveVariantTab(0);
+                    }}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-medium cursor-pointer transition-all ${
+                      activeStepTab === sIdx
+                        ? 'bg-indigo-600 text-white'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200'
+                    }`}
+                  >
+                    <span>Step {st.step_number}</span>
+                    {sIdx > 0 && (
+                      <span className="text-[10px] opacity-75">
+                        (+{st.delay_days}d {st.delay_hours}h)
+                      </span>
+                    )}
+                    {steps.length > 1 && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeStep(sIdx);
+                        }}
+                        className="hover:text-rose-300 ml-1"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                ))}
+
+                <button
+                  onClick={addStep}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium border border-dashed border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-indigo-500 hover:text-indigo-600 transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Add Follow-Up Step
+                </button>
+              </div>
+
+              {/* A-Z Variants Bar for Active Step */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/40">
+                <div className="flex items-center gap-2 overflow-x-auto">
+                  <span className="text-xs font-bold text-indigo-950 dark:text-indigo-200 shrink-0">
+                    A–Z Variants:
+                  </span>
+                  {activeStep.variants.map((v, vIdx) => (
+                    <div
+                      key={v.variant_label || vIdx}
+                      onClick={() => setActiveVariantTab(vIdx)}
+                      className={`px-3 py-1 rounded-xl text-xs font-mono font-bold cursor-pointer transition-all flex items-center gap-1.5 ${
+                        activeVariantTab === vIdx
+                          ? 'bg-indigo-600 text-white shadow-2xs'
+                          : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
+                      }`}
+                    >
+                      <span>[{v.variant_label}]</span>
+                      <span className="text-[10px] opacity-75">{v.weight}%</span>
+                      {activeStep.variants.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeVariantFromCurrentStep(vIdx);
+                          }}
+                          className="hover:text-rose-300 ml-0.5 text-xs"
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+                  ))}
+
+                  {activeStep.variants.length < 26 && (
+                    <button
+                      type="button"
+                      onClick={addVariantToCurrentStep}
+                      className="px-2.5 py-1 rounded-xl text-xs font-bold border border-dashed border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 flex items-center gap-1 shrink-0"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>Add Variant (A–Z)</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-3 shrink-0 text-xs">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-slate-500 text-[11px]">Weight:</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="100"
+                      value={activeVariant.weight || 100}
+                      onChange={(e) => updateCurrentVariantWeight(parseInt(e.target.value || '50', 10))}
+                      className="w-14 px-2 py-0.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono text-xs"
+                    />
+                    <span className="text-slate-400 text-xs">%</span>
+                  </div>
+
+                  <label className="flex items-center gap-1.5 cursor-pointer text-[11px] font-semibold text-purple-700 dark:text-purple-300">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(activeStep.auto_optimise)}
+                      onChange={(e) => {
+                        const copy = [...steps];
+                        copy[activeStepTab].auto_optimise = e.target.checked;
+                        setSteps(copy);
+                      }}
+                      className="w-3.5 h-3.5 text-purple-600 rounded-sm"
+                    />
+                    <span>Auto-Optimise (Beta)</span>
+                  </label>
+                </div>
+              </div>
 
           {/* Delay Settings for current step if > 1 */}
           {activeStepTab > 0 && (
@@ -980,6 +1149,8 @@ export const CampaignEditor: React.FC<CampaignEditorProps> = ({
               </div>
             )}
           </div>
+            </>
+          )}
 
           <div className="flex justify-between pt-4">
             <button

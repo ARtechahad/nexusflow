@@ -8,6 +8,7 @@ import { logger } from '../../logger';
 import { validateTemplate } from '../../services/outreach/render';
 import { handleSendCampaignEmailJob } from '../../services/outreach/sender';
 import { verifyToken } from '../../services/outreach/crypto';
+import { validateSequenceCycles } from '../../services/outreach/branching';
 
 export const campaignsRouter = express.Router();
 
@@ -49,16 +50,43 @@ const CreateCampaignSchema = z.object({
   mailboxIds: z.array(z.string()).optional().default([])
 });
 
+const ConditionRuleSchema = z.object({
+  type: z.enum([
+    'opened',
+    'clicked',
+    'replied',
+    'bounced',
+    'not_opened',
+    'not_clicked',
+    'link_clicked',
+    'replied_positive'
+  ]),
+  stepRef: z.union([z.string(), z.number()]).optional(),
+  withinHours: z.number().optional(),
+  linkUrl: z.string().optional()
+});
+
+const StepConditionSchema = z.object({
+  op: z.enum(['AND', 'OR']),
+  rules: z.array(ConditionRuleSchema)
+});
+
 const UpdateStepsSchema = z.object({
   steps: z
     .array(
       z.object({
+        id: z.string().optional(),
         step_number: z.number().int().min(1),
         delay_days: z.number().int().min(0).default(0),
         delay_hours: z.number().int().min(0).default(0),
+        condition: StepConditionSchema.optional().nullable(),
+        on_true_step: z.string().optional().nullable(),
+        on_false_step: z.string().optional().nullable(),
+        auto_optimise: z.boolean().optional().default(false),
         variants: z
           .array(
             z.object({
+              id: z.string().optional(),
               variant_label: z.string().default('A'),
               subject: z.string().min(1, 'Subject line is required'),
               body_html: z.string().optional().default(''),
@@ -67,6 +95,7 @@ const UpdateStepsSchema = z.object({
             })
           )
           .min(1, 'Each step requires at least 1 variant')
+          .max(26, 'Maximum 26 variants per step (A to Z)')
       })
     )
     .min(1, 'At least 1 step is required')
@@ -281,6 +310,21 @@ campaignsRouter.put('/campaigns/:id/steps', authenticateToken, async (req: Reque
       return;
     }
 
+    // Validate sequence cycles / infinite loops
+    const cycleCheck = validateSequenceCycles(
+      steps.map((s) => ({
+        id: s.id || `step_num_${s.step_number}`,
+        step_number: s.step_number,
+        condition: s.condition,
+        on_true_step: s.on_true_step,
+        on_false_step: s.on_false_step
+      }))
+    );
+    if (!cycleCheck.isValid) {
+      res.status(400).json({ success: false, error: cycleCheck.error || 'Circular loop detected in sequence' });
+      return;
+    }
+
     await client.query('BEGIN');
 
     // Verify campaign ownership
@@ -299,15 +343,28 @@ campaignsRouter.put('/campaigns/:id/steps', authenticateToken, async (req: Reque
 
     // Insert new steps and variants
     for (const step of steps) {
-      const stepId = `step_${crypto.randomUUID()}`;
+      const stepId = step.id || `step_${crypto.randomUUID()}`;
       await client.query(
-        `INSERT INTO ox_steps (id, tenant_id, campaign_id, step_number, delay_days, delay_hours, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())`,
-        [stepId, tenantId, campaignId, step.step_number, step.delay_days, step.delay_hours]
+        `INSERT INTO ox_steps (
+           id, tenant_id, campaign_id, step_number, delay_days, delay_hours,
+           condition, on_true_step, on_false_step, auto_optimise, created_at, updated_at
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())`,
+        [
+          stepId,
+          tenantId,
+          campaignId,
+          step.step_number,
+          step.delay_days,
+          step.delay_hours,
+          step.condition ? JSON.stringify(step.condition) : null,
+          step.on_true_step || null,
+          step.on_false_step || null,
+          Boolean(step.auto_optimise)
+        ]
       );
 
       for (const variant of step.variants) {
-        const variantId = `var_${crypto.randomUUID()}`;
+        const variantId = variant.id || `var_${crypto.randomUUID()}`;
         await client.query(
           `INSERT INTO ox_step_variants (id, tenant_id, step_id, variant_label, subject, body_html, body_text, weight, created_at, updated_at)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())`,

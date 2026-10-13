@@ -8,6 +8,7 @@ import { checkAndReserve } from './capGuard';
 import { renderEmailTemplate } from './render';
 import { realtimeEngine } from '../realtimeEngine';
 import { resendService } from '../resendService';
+import { assignStableVariant, evaluateStepCondition } from './branching';
 
 // Cache nodemailer transporters per mailbox to reuse connection pools
 const transporterPool = new Map<string, { transporter: Transporter; cachedAt: number }>();
@@ -178,7 +179,7 @@ export async function handleSendCampaignEmailJob(jobPayload: SendCampaignEmailPa
 
   // 4. Fetch Step and Variant
   const stepRes = await pool.query(
-    `SELECT s.id, s.step_number, s.delay_hours, s.delay_days
+    `SELECT s.id, s.step_number, s.delay_hours, s.delay_days, s.condition, s.on_true_step, s.on_false_step
      FROM ox_steps s
      WHERE s.id = $1 AND s.campaign_id = $2`,
     [stepId, campaignId]
@@ -189,16 +190,24 @@ export async function handleSendCampaignEmailJob(jobPayload: SendCampaignEmailPa
   }
   const step = stepRes.rows[0];
 
-  // Pick variant: specified, or weighted random, or first
+  // Pick variant: specified, or stable assignment per enrollment (A-Z)
   let variant: any;
   if (jobPayload.variantId) {
     const varRes = await pool.query(`SELECT * FROM ox_step_variants WHERE id = $1`, [jobPayload.variantId]);
     variant = varRes.rows[0];
   }
 
+  if (!variant && !isTest && enrollment?.id) {
+    try {
+      variant = await assignStableVariant(enrollment.id, stepId, pool);
+    } catch {
+      // Fallback
+    }
+  }
+
   if (!variant) {
     const varRes = await pool.query(
-      `SELECT * FROM ox_step_variants WHERE step_id = $1 ORDER BY weight DESC, created_at ASC`,
+      `SELECT * FROM ox_step_variants WHERE step_id = $1 ORDER BY weight DESC, created_at ASC LIMIT 1`,
       [stepId]
     );
     if (varRes.rowCount === 0) {
@@ -224,6 +233,21 @@ export async function handleSendCampaignEmailJob(jobPayload: SendCampaignEmailPa
     });
 
     if (!isTest) {
+      if (capCheck.reason === 'plan_upgrade_required' || capCheck.planUpgradeRequired) {
+        // Pause campaign and mark enrollment with plan_upgrade_required
+        await pool.query(
+          `UPDATE ox_campaigns SET status = 'paused', updated_at = NOW() WHERE id = $1`,
+          [campaignId]
+        );
+        await pool.query(
+          `UPDATE ox_enrollments
+           SET defer_reason = 'plan_upgrade_required', updated_at = NOW()
+           WHERE id = $1`,
+          [enrollment.id]
+        );
+        return;
+      }
+
       // Record defer reason on enrollment and schedule retry
       const retryDate = capCheck.retryAt || new Date(Date.now() + 15 * 60 * 1000);
       await pool.query(
@@ -476,19 +500,43 @@ export async function handleSendCampaignEmailJob(jobPayload: SendCampaignEmailPa
         ]
       );
 
-      // Advance Enrollment: find next step in sequence
-      const nextStepRes = await pool.query(
-        `SELECT id, step_number, delay_hours, delay_days
-         FROM ox_steps
-         WHERE campaign_id = $1 AND step_number > $2
-         ORDER BY step_number ASC
-         LIMIT 1`,
-        [campaignId, step.step_number]
-      );
+      // Advance Enrollment: check condition branch on current step first, else linear next step
+      let targetNextStepId: string | null = null;
 
-      if (nextStepRes.rowCount && nextStepRes.rowCount > 0) {
-        const nextStep = nextStepRes.rows[0];
-        const delayHoursTotal = (nextStep.delay_days || 0) * 24 + (nextStep.delay_hours || 0);
+      if (step.condition || step.on_true_step || step.on_false_step) {
+        const branchEval = await evaluateStepCondition(enrollment.id, step.condition, {
+          pool,
+          tenantId,
+          onTrueStep: step.on_true_step,
+          onFalseStep: step.on_false_step,
+          campaignId
+        });
+        if (branchEval.hasCondition && branchEval.nextStepId) {
+          targetNextStepId = branchEval.nextStepId;
+        }
+      }
+
+      if (!targetNextStepId) {
+        const nextStepRes = await pool.query(
+          `SELECT id, step_number, delay_hours, delay_days
+           FROM ox_steps
+           WHERE campaign_id = $1 AND step_number > $2
+           ORDER BY step_number ASC
+           LIMIT 1`,
+          [campaignId, step.step_number]
+        );
+        if (nextStepRes.rowCount && nextStepRes.rowCount > 0) {
+          targetNextStepId = nextStepRes.rows[0].id;
+        }
+      }
+
+      if (targetNextStepId) {
+        const targetStepRes = await pool.query(
+          `SELECT id, step_number, delay_hours, delay_days FROM ox_steps WHERE id = $1`,
+          [targetNextStepId]
+        );
+        const nextStep = targetStepRes.rows[0];
+        const delayHoursTotal = (nextStep?.delay_days || 0) * 24 + (nextStep?.delay_hours || 0);
         const nextSendAt = new Date(Date.now() + Math.max(1, delayHoursTotal) * 60 * 60 * 1000);
 
         await pool.query(
@@ -500,7 +548,7 @@ export async function handleSendCampaignEmailJob(jobPayload: SendCampaignEmailPa
                defer_reason = NULL,
                updated_at = NOW()
            WHERE id = $3`,
-          [nextStep.id, nextSendAt, enrollment.id]
+          [targetNextStepId, nextSendAt, enrollment.id]
         );
       } else {
         // Sequence completed!

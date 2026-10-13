@@ -71,6 +71,8 @@ import { trackingRouter } from './server/routes/outreach/tracking';
 import { outreachInboxRouter } from './server/routes/outreach/inbox';
 import { warmupRouter } from './server/routes/outreach/warmupRoutes';
 import { prospectRoutes } from './server/routes/outreach/prospectRoutes';
+import { analyticsRouter as outreachAnalyticsRouter } from './server/routes/outreach/analyticsRoutes';
+import { billingRouter } from './server/routes/outreach/billingRoutes';
 import { ensureOutreachSchema, getOutreachPool } from './server/services/outreach/schema';
 import { startQueueWorker, stopQueueWorker } from './server/services/outreach/queue';
 import { initSequencer } from './server/services/outreach/sequencer';
@@ -217,13 +219,19 @@ app.use('/api/outreach', trackingRouter);
 app.use('/api/outreach', outreachInboxRouter);
 app.use('/api/outreach', warmupRouter);
 app.use('/api/outreach', prospectRoutes);
+app.use('/api/outreach', outreachAnalyticsRouter);
+app.use('/api/outreach', billingRouter);
 
 // Aliases for direct endpoint paths
 app.use('/api', outreachInboxRouter);
 app.use('/api', warmupRouter);
 app.use('/api', prospectRoutes);
+app.use('/api', outreachAnalyticsRouter);
+app.use('/api', billingRouter);
 app.use('/', warmupRouter);
 app.use('/', prospectRoutes);
+app.use('/', outreachAnalyticsRouter);
+app.use('/', billingRouter);
 app.use('/api/domains', trackingRouter);
 app.use('/domains', trackingRouter);
 app.use('/inbox', outreachInboxRouter);

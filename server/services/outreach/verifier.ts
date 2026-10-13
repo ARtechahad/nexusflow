@@ -371,11 +371,21 @@ export async function checkAndIncrementVerificationQuota(
   const now = new Date();
   const yearMonth = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
 
-  // 1. Fetch quota from ox_plans (default 1000)
-  const planRes = await targetPool.query(
-    `SELECT COALESCE(verification_quota, 1000)::int as quota FROM ox_plans LIMIT 1`
+  // 1. Fetch quota from ox_tenant_plans or fallback ox_plans
+  const tenantPlanRes = await targetPool.query(
+    `SELECT COALESCE(p.verification_quota, 1000)::int as quota
+     FROM ox_tenant_plans tp
+     JOIN ox_plans p ON tp.plan_id = p.id
+     WHERE tp.tenant_id = $1`,
+    [tenantId]
   );
-  const quota = planRes.rows[0]?.quota ?? 1000;
+  let quota = tenantPlanRes.rows[0]?.quota;
+  if (!quota) {
+    const planRes = await targetPool.query(
+      `SELECT COALESCE(verification_quota, 1000)::int as quota FROM ox_plans LIMIT 1`
+    );
+    quota = planRes.rows[0]?.quota ?? 1000;
+  }
 
   // 2. Fetch current usage for this month
   const usageRes = await targetPool.query(

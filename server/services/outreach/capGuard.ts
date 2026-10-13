@@ -16,6 +16,7 @@ export interface CapGuardResult {
   allowed: boolean;
   reason?: string;
   retryAt?: Date;
+  planUpgradeRequired?: boolean;
   details?: Record<string, any>;
 }
 
@@ -188,28 +189,47 @@ export async function checkAndReserve(params: CapGuardParams): Promise<CapGuardR
       }
     }
 
-    // 3. Tenant Plan Monthly Email Quota
-    const planRes = await client.query(
-      `SELECT COALESCE(p.monthly_send_limit, 5000) as monthly_limit,
+    // 3. Tenant Plan Monthly Email Quota & Billing Cycle
+    const tenantPlanRes = await client.query(
+      `SELECT tp.plan_id, tp.billing_cycle_start, tp.billing_cycle_end,
+              COALESCE(p.monthly_send_limit, 5000) as monthly_limit,
               COALESCE(p.daily_send_limit, 500) as daily_limit
-       FROM ox_plans p
-       LIMIT 1`
+       FROM ox_tenant_plans tp
+       LEFT JOIN ox_plans p ON p.id = tp.plan_id
+       WHERE tp.tenant_id = $1`,
+      [params.tenantId]
     );
-    const monthlyLimit = planRes.rows[0]?.monthly_limit ?? 5000;
 
-    // Monthly sent count for tenant
-    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    let monthlyLimit = 5000;
+    let cycleStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    let cycleEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+
+    if (tenantPlanRes.rows.length > 0) {
+      const row = tenantPlanRes.rows[0];
+      monthlyLimit = row.monthly_limit || 5000;
+      if (row.billing_cycle_start) cycleStart = new Date(row.billing_cycle_start);
+      if (row.billing_cycle_end) cycleEnd = new Date(row.billing_cycle_end);
+    } else {
+      const fallbackPlanRes = await client.query(
+        `SELECT COALESCE(monthly_send_limit, 5000) as monthly_limit FROM ox_plans LIMIT 1`
+      );
+      monthlyLimit = fallbackPlanRes.rows[0]?.monthly_limit ?? 5000;
+    }
+
+    // Emails sent during the active billing period
     const monthSentRes = await client.query(
       `SELECT COUNT(*)::int as count FROM ox_sent_emails WHERE tenant_id = $1 AND sent_at >= $2`,
-      [params.tenantId, monthStart]
+      [params.tenantId, cycleStart]
     );
     const monthSent = monthSentRes.rows[0]?.count ?? 0;
+
     if (monthSent >= monthlyLimit) {
       await client.query('ROLLBACK');
       return {
         allowed: false,
-        reason: `Tenant plan monthly email quota reached (${monthSent}/${monthlyLimit})`,
-        retryAt: new Date(now.getTime() + 24 * 60 * 60 * 1000 + getJitterMs())
+        reason: 'plan_upgrade_required',
+        planUpgradeRequired: true,
+        retryAt: cycleEnd
       };
     }
 
