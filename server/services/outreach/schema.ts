@@ -548,6 +548,35 @@ export async function ensureOutreachSchema(pool: pg.Pool): Promise<void> {
         CONSTRAINT uq_ox_workspace_members UNIQUE (tenant_id, user_id)
       );
       CREATE INDEX IF NOT EXISTS idx_ox_workspace_members_tenant ON ox_workspace_members(tenant_id);
+
+      CREATE TABLE IF NOT EXISTS ox_webhook_deliveries (
+        id VARCHAR(64) PRIMARY KEY,
+        tenant_id VARCHAR(64) NOT NULL,
+        webhook_id VARCHAR(64) NOT NULL REFERENCES ox_webhooks(id) ON DELETE CASCADE,
+        event VARCHAR(64) NOT NULL,
+        payload JSONB NOT NULL,
+        status_code INT,
+        response_body TEXT,
+        duration_ms INT,
+        attempt INT NOT NULL DEFAULT 1,
+        max_attempts INT NOT NULL DEFAULT 5,
+        next_retry_at TIMESTAMPTZ,
+        status VARCHAR(32) NOT NULL DEFAULT 'delivered',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_ox_webhook_deliveries_tenant ON ox_webhook_deliveries(tenant_id);
+      CREATE INDEX IF NOT EXISTS idx_ox_webhook_deliveries_hook ON ox_webhook_deliveries(webhook_id, created_at DESC);
+
+      CREATE TABLE IF NOT EXISTS ox_idempotency_keys (
+        key VARCHAR(255) NOT NULL,
+        tenant_id VARCHAR(64) NOT NULL,
+        status_code INT NOT NULL,
+        response_body JSONB NOT NULL,
+        expires_at TIMESTAMPTZ NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (tenant_id, key)
+      );
+      CREATE INDEX IF NOT EXISTS idx_ox_idempotency_expires ON ox_idempotency_keys(expires_at);
     `);
     await client.query('COMMIT');
     logger.info('Outreach Suite schema & indexes verified in PostgreSQL.', {

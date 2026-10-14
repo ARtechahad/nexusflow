@@ -78,6 +78,18 @@ export async function enqueue(
 }
 
 /**
+ * Convenience alias for enqueueing jobs with tenantId as first parameter.
+ */
+export async function enqueueOutreachJob(
+  tenantId: string,
+  type: string,
+  payload: any,
+  options: { runAt?: Date; maxAttempts?: number; pool?: pg.Pool } = {}
+): Promise<string> {
+  return enqueue(type, payload, { tenantId, ...options });
+}
+
+/**
  * Recovers stuck jobs in 'processing' status whose lock has expired (> 10 minutes).
  */
 export async function recoverStuckJobs(pool: pg.Pool): Promise<number> {

@@ -44,6 +44,8 @@ import { LeadFlowFreeToolsSection } from './LeadFlowFreeToolsSection';
 import { InteractiveCampaignDrawer, CampaignTemplate } from './InteractiveCampaignDrawer';
 import { ThemeToggle } from './ThemeToggle';
 import { ParticleBackground } from './ParticleBackground';
+import { LeadFlowSoftwareSection } from './LeadFlowSoftwareSection';
+import { DocsView } from './DocsView';
 import { UserRole } from '../types';
 
 interface LeadFlowLandingViewProps {
@@ -80,6 +82,9 @@ export const LeadFlowLandingView: React.FC<LeadFlowLandingViewProps> = ({
 
   // Stripe Checkout Loading State
   const [checkingOutTier, setCheckingOutTier] = useState<string | null>(null);
+
+  // In-App Documentation Modal State
+  const [showDocsModal, setShowDocsModal] = useState(false);
 
   // Check URL params for checkout=success
   React.useEffect(() => {
@@ -394,7 +399,11 @@ export const LeadFlowLandingView: React.FC<LeadFlowLandingViewProps> = ({
           </div>
 
           {/* Navigation Links */}
-          <nav className="hidden lg:flex items-center gap-6 text-xs font-medium text-slate-300">
+          <nav className="hidden lg:flex items-center gap-5 text-xs font-medium text-slate-300">
+            <a href="#software" className="text-indigo-400 font-semibold hover:text-indigo-300 transition-colors flex items-center gap-1">
+              <span>Software</span>
+              <span className="px-1.5 py-0.2 rounded text-[9px] bg-indigo-500/30 text-indigo-300 font-mono font-bold">PLATFORM</span>
+            </a>
             <a href="#case-studies" className="hover:text-white transition-colors">Case Studies</a>
             <a href="#fit" className="hover:text-white transition-colors">Honest Fit</a>
             <a href="#services" className="hover:text-white transition-colors">Services</a>
@@ -404,6 +413,12 @@ export const LeadFlowLandingView: React.FC<LeadFlowLandingViewProps> = ({
               <span>Free Tools</span>
               <span className="px-1.5 py-0.2 rounded text-[9px] bg-emerald-500/20 text-emerald-400 font-mono font-semibold">FREE</span>
             </a>
+            <button
+              onClick={() => setShowDocsModal(true)}
+              className="hover:text-white text-slate-300 transition-colors cursor-pointer"
+            >
+              Docs & API
+            </button>
             <a href="#pricing" className="hover:text-white transition-colors">Pricing</a>
             <a href="#faq" className="hover:text-white transition-colors">FAQ</a>
           </nav>
@@ -1154,6 +1169,14 @@ export const LeadFlowLandingView: React.FC<LeadFlowLandingViewProps> = ({
       </section>
 
       {/* ========================================================
+          7.5. LEADFLOW OUTBOUND SOFTWARE PLATFORM
+      ======================================================== */}
+      <LeadFlowSoftwareSection
+        onOpenDocs={() => setShowDocsModal(true)}
+        onEnterWorkspace={onEnterWorkspace}
+      />
+
+      {/* ========================================================
           8. TRANSPARENT PRICING
       ======================================================== */}
       <section id="pricing" className="py-20 sm:py-24 border-b border-slate-200/80 dark:border-white/10 bg-white dark:bg-[#070e1b]">
@@ -1668,6 +1691,13 @@ export const LeadFlowLandingView: React.FC<LeadFlowLandingViewProps> = ({
         campaign={selectedCampaignForDrawer}
         onDeployCampaign={(campaignName) => handleOpenBooking(`Replicate Sequence: ${campaignName}`)}
       />
+
+      {/* Full In-App Documentation & API Modal */}
+      {showDocsModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950 animate-fadeIn">
+          <DocsView onBackToApp={() => setShowDocsModal(false)} />
+        </div>
+      )}
     </div>
   );
 };

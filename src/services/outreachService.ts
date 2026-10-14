@@ -1571,3 +1571,142 @@ export async function removeWorkspaceMember(id: string): Promise<void> {
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Failed to remove member');
 }
+
+// ============================================================================
+// 6. API Keys & Webhooks Management
+// ============================================================================
+
+export interface ApiKeyItem {
+  id: string;
+  tenant_id: string;
+  name: string;
+  key_prefix: string;
+  permissions: string[];
+  last_used_at: string | null;
+  created_at: string;
+}
+
+export interface CreatedApiKeyData {
+  success: boolean;
+  apiKey: string;
+  keyInfo: ApiKeyItem;
+  message: string;
+}
+
+export interface WebhookEndpointItem {
+  id: string;
+  tenant_id: string;
+  url: string;
+  secret: string;
+  events: string[];
+  is_active: boolean;
+  last_triggered_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WebhookDeliveryItem {
+  id: string;
+  tenant_id: string;
+  webhook_id: string;
+  event: string;
+  payload: any;
+  status_code: number | null;
+  response_body: string | null;
+  duration_ms: number | null;
+  attempt: number;
+  max_attempts: number;
+  next_retry_at: string | null;
+  status: 'delivered' | 'retrying' | 'failed';
+  created_at: string;
+}
+
+export async function getTenantApiKeys(): Promise<ApiKeyItem[]> {
+  const res = await fetch('/api/outreach/v1/api-keys', {
+    headers: getAuthHeader()
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to fetch API keys');
+  return data.keys || [];
+}
+
+export async function createTenantApiKey(
+  name: string,
+  scopes?: string[]
+): Promise<CreatedApiKeyData> {
+  const res = await fetch('/api/outreach/v1/api-keys', {
+    method: 'POST',
+    headers: getAuthHeader(),
+    body: JSON.stringify({ name, scopes })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to create API key');
+  return data;
+}
+
+export async function deleteTenantApiKey(id: string): Promise<void> {
+  const res = await fetch(`/api/outreach/v1/api-keys/${id}`, {
+    method: 'DELETE',
+    headers: getAuthHeader()
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to revoke API key');
+}
+
+export async function getWebhookEndpoints(): Promise<WebhookEndpointItem[]> {
+  const res = await fetch('/api/outreach/v1/webhooks', {
+    headers: getAuthHeader()
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to fetch webhooks');
+  return data.webhooks || [];
+}
+
+export async function createWebhookEndpoint(
+  url: string,
+  events: string[] = ['*'],
+  secret?: string
+): Promise<WebhookEndpointItem> {
+  const res = await fetch('/api/outreach/v1/webhooks', {
+    method: 'POST',
+    headers: getAuthHeader(),
+    body: JSON.stringify({ url, events, secret })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message || data.error || 'Failed to create webhook');
+  return data.webhook;
+}
+
+export async function deleteWebhookEndpoint(id: string): Promise<void> {
+  const res = await fetch(`/api/outreach/v1/webhooks/${id}`, {
+    method: 'DELETE',
+    headers: getAuthHeader()
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to delete webhook');
+}
+
+export async function getWebhookDeliveries(
+  webhookId?: string,
+  limit: number = 50
+): Promise<WebhookDeliveryItem[]> {
+  const url = webhookId
+    ? `/api/outreach/v1/webhooks/${webhookId}/deliveries?limit=${limit}`
+    : `/api/outreach/v1/webhooks/deliveries?limit=${limit}`;
+  const res = await fetch(url, {
+    headers: getAuthHeader()
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to fetch deliveries');
+  return data.deliveries || [];
+}
+
+export async function replayWebhookDelivery(deliveryId: string): Promise<any> {
+  const res = await fetch(`/api/outreach/v1/webhooks/deliveries/${deliveryId}/replay`, {
+    method: 'POST',
+    headers: getAuthHeader()
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to replay delivery');
+  return data.replayed;
+}

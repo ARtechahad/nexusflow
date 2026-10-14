@@ -73,6 +73,8 @@ import { warmupRouter } from './server/routes/outreach/warmupRoutes';
 import { prospectRoutes } from './server/routes/outreach/prospectRoutes';
 import { analyticsRouter as outreachAnalyticsRouter } from './server/routes/outreach/analyticsRoutes';
 import { billingRouter } from './server/routes/outreach/billingRoutes';
+import { restV1Router } from './server/routes/outreach/v1/restRoutes';
+import { handleMcpGet, handleMcpPost } from './server/services/outreach/mcpServer';
 import { ensureOutreachSchema, getOutreachPool } from './server/services/outreach/schema';
 import { startQueueWorker, stopQueueWorker } from './server/services/outreach/queue';
 import { initSequencer } from './server/services/outreach/sequencer';
@@ -221,6 +223,10 @@ app.use('/api/outreach', warmupRouter);
 app.use('/api/outreach', prospectRoutes);
 app.use('/api/outreach', outreachAnalyticsRouter);
 app.use('/api/outreach', billingRouter);
+app.use('/api/outreach/v1', restV1Router);
+app.get('/api/outreach/mcp', handleMcpGet);
+app.post('/api/outreach/mcp', handleMcpPost);
+app.post('/api/outreach/mcp/messages', handleMcpPost);
 
 // Aliases for direct endpoint paths
 app.use('/api', outreachInboxRouter);

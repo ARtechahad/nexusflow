@@ -81,6 +81,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
     { id: 'inbox', label: 'Unified Inbox', icon: Inbox, badge: unreadInboxCount, roles: ['admin', 'ceo', 'bd_head', 'sales', 'coordinator', 'project_manager'] },
     { id: 'outreach', label: 'Outreach Engine', icon: Send, roles: ['admin', 'ceo', 'bd_head', 'sales'] },
     { id: 'outreach_suite', label: 'Outreach Suite', icon: Send, badge: 'Phase 0', roles: ['admin', 'ceo', 'bd_head', 'sales', 'coordinator', 'project_manager', 'developer'] },
+    { id: 'docs', label: 'Docs & MCP API', icon: BookOpen, badge: 'v1 / MCP', roles: ['admin', 'ceo', 'bd_head', 'sales', 'coordinator', 'project_manager', 'developer', 'designer', 'collaborator', 'client_guest', 'team_member'] },
     { id: 'sop', label: 'SOP 1–11 Rules', icon: BookOpen, badge: `${automatedTestsPassedCount}/17`, roles: ['admin', 'ceo', 'bd_head', 'coordinator', 'project_manager', 'developer'] },
     { id: 'analytics', label: 'Analytics & Revenue', icon: BarChart3, roles: ['admin', 'ceo', 'bd_head'] },
     { id: 'free_apis', label: 'Live Free APIs', icon: Globe2, badge: 'Forex & DNS', roles: ['admin', 'ceo', 'bd_head', 'sales', 'coordinator', 'project_manager', 'developer', 'designer'] },

@@ -45,6 +45,7 @@ import { RoleLoginView } from './components/RoleLoginView';
 import { RoleRouteGuard } from './components/RoleRouteGuard';
 import { OfflineSyncBanner } from './components/OfflineSyncBanner';
 import { LeadFlowLandingView } from './components/LeadFlowLandingView';
+import { DocsView } from './components/DocsView';
 import { GlobalCommandPalette } from './components/GlobalCommandPalette';
 import { CreativeStudioModal } from './components/CreativeStudioModal';
 import { EmbeddedGeminiChatbot } from './components/EmbeddedGeminiChatbot';
@@ -94,6 +95,33 @@ const AppContent: React.FC = () => {
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
   }, [isCommandPaletteOpen, setIsCommandPaletteOpen]);
+
+  // Support /docs route inside SPA directly
+  const [isDocsRoute, setIsDocsRoute] = useState(() => {
+    return typeof window !== 'undefined' && window.location.pathname.startsWith('/docs');
+  });
+
+  React.useEffect(() => {
+    const checkPath = () => {
+      setIsDocsRoute(window.location.pathname.startsWith('/docs'));
+    };
+    window.addEventListener('popstate', checkPath);
+    return () => window.removeEventListener('popstate', checkPath);
+  }, []);
+
+  if (isDocsRoute || (activeTab as any) === 'docs') {
+    return (
+      <DocsView
+        onBackToApp={() => {
+          if (typeof window !== 'undefined') {
+            window.history.pushState({}, '', '/');
+          }
+          setIsDocsRoute(false);
+          setActiveTab(currentUser ? 'pipeline' : 'leadflow');
+        }}
+      />
+    );
+  }
 
   // When not authenticated, display the full LeadFlow Agency experience by default,
   // allowing visitors to explore features, calculate ROI, test free tools, book a call,
@@ -229,6 +257,17 @@ const AppContent: React.FC = () => {
         );
       case 'leadflow':
         return <LeadFlowLandingView onEnterWorkspace={() => setActiveTab('pipeline')} />;
+      case 'docs':
+        return (
+          <DocsView
+            onBackToApp={() => {
+              if (typeof window !== 'undefined') {
+                window.history.pushState({}, '', '/');
+              }
+              setActiveTab('outreach_suite');
+            }}
+          />
+        );
       default:
         return <ProjectsPipeline />;
     }

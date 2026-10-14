@@ -35,7 +35,7 @@ import { offlineSyncService } from '../services/offlineSyncService';
 import { googleSheetsService } from '../services/googleSheetsService';
 import { localDatabase } from '../services/localDatabaseFallback';
 
-export type AppNavTab = 'sop' | 'pipeline' | 'outreach' | 'outreach_suite' | 'inbox' | 'analytics' | 'integrations' | 'commissions' | 'chat' | 'vault' | 'portal' | 'free_apis' | 'gmail' | 'departmental' | 'wiki' | 'leadflow';
+export type AppNavTab = 'sop' | 'pipeline' | 'outreach' | 'outreach_suite' | 'docs' | 'inbox' | 'analytics' | 'integrations' | 'commissions' | 'chat' | 'vault' | 'portal' | 'free_apis' | 'gmail' | 'departmental' | 'wiki' | 'leadflow';
 
 interface AppContextType {
   role: UserRole;
