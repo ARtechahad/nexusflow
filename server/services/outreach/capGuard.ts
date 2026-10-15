@@ -189,14 +189,15 @@ export async function checkAndReserve(params: CapGuardParams): Promise<CapGuardR
       }
     }
 
-    // 3. Tenant Plan Monthly Email Quota & Billing Cycle
+    // 3. Tenant Plan Monthly Email Quota & Billing Cycle (Lock tenant plan row to serialize concurrent quota checks)
     const tenantPlanRes = await client.query(
       `SELECT tp.plan_id, tp.billing_cycle_start, tp.billing_cycle_end,
               COALESCE(p.monthly_send_limit, 5000) as monthly_limit,
               COALESCE(p.daily_send_limit, 500) as daily_limit
        FROM ox_tenant_plans tp
        LEFT JOIN ox_plans p ON p.id = tp.plan_id
-       WHERE tp.tenant_id = $1`,
+       WHERE tp.tenant_id = $1
+       FOR UPDATE OF tp`,
       [params.tenantId]
     );
 
@@ -233,8 +234,14 @@ export async function checkAndReserve(params: CapGuardParams): Promise<CapGuardR
       };
     }
 
-    // 4. Domain Daily Total (sum across all mailboxes for domain <= 150 default)
+    // 4. Domain Daily Total with FOR UPDATE lock on ox_domains to prevent concurrent ceiling breaches
     if (mbx.domain_id) {
+      // Lock domain row to serialize concurrent checks across mailboxes of the same domain
+      await client.query(
+        `SELECT id FROM ox_domains WHERE id = $1 FOR UPDATE`,
+        [mbx.domain_id]
+      );
+
       const domainSentRes = await client.query(
         `SELECT COALESCE(SUM(d.campaign_sent_count + d.warmup_sent_count), 0)::int as total
          FROM ox_mailbox_daily d
@@ -246,7 +253,6 @@ export async function checkAndReserve(params: CapGuardParams): Promise<CapGuardR
       const DOMAIN_DAILY_CEILING = 150;
       if (domainSentToday >= DOMAIN_DAILY_CEILING) {
         await client.query('ROLLBACK');
-        // Retry tomorrow UTC
         const tomorrowUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 1, 0));
         return {
           allowed: false,
@@ -299,9 +305,39 @@ export async function checkAndReserve(params: CapGuardParams): Promise<CapGuardR
       }
     }
 
-    // 7. Mailbox Daily Cap (Warmup + Campaign share ONE budget via ox_mailbox_daily)
-    const effectiveCap = mbx.daily_cap || mbx.daily_limit || 30;
+    // 6b. Spam / Bounce Rate Protection Thresholds (5% reduce send cap by 50%, 15% exclude mailbox)
+    let effectiveCap = mbx.daily_cap || mbx.daily_limit || 30;
 
+    const healthStatsRes = await client.query(
+      `SELECT COALESCE(SUM(campaign_sent_count), 0)::int as total_sends,
+              COALESCE(SUM(bounced_count), 0)::int as total_bounces,
+              COALESCE(SUM(spam_complaints), 0)::int as total_spam
+       FROM ox_mailbox_daily
+       WHERE mailbox_id = $1 AND date_utc >= (CURRENT_DATE - INTERVAL '7 days')`,
+      [mbx.id]
+    );
+
+    const healthStats = healthStatsRes.rows[0];
+    const totalSends = healthStats ? healthStats.total_sends : 0;
+    const totalNegative = healthStats ? (healthStats.total_bounces + healthStats.total_spam) : 0;
+
+    if (totalSends >= 20 && totalNegative > 0) {
+      const negativeRate = (totalNegative / totalSends) * 100;
+      if (negativeRate >= 15) {
+        await client.query('ROLLBACK');
+        return {
+          allowed: false,
+          reason: `Mailbox deliverability critical: bounce/spam complaint rate (${negativeRate.toFixed(1)}%) exceeds 15% threshold. Mailbox excluded from campaign dispatch.`
+        };
+      } else if (negativeRate >= 5) {
+        effectiveCap = Math.max(5, Math.floor(effectiveCap * 0.5));
+        logger.warn(`Mailbox ${mbx.email} spam/bounce rate is ${negativeRate.toFixed(1)}% (>=5%). Daily cap throttled by 50% to ${effectiveCap}.`, {
+          context: 'CapGuard'
+        });
+      }
+    }
+
+    // 7. Mailbox Daily Cap (Warmup + Campaign share ONE budget via ox_mailbox_daily)
     // Ensure daily counter row exists for today UTC
     const counterId = `mbxd_${mbx.id}_${todayUtc.replace(/-/g, '')}`;
     await client.query(

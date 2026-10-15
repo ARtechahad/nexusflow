@@ -338,8 +338,8 @@ campaignsRouter.put('/campaigns/:id/steps', authenticateToken, async (req: Reque
       return;
     }
 
-    // Delete existing steps and cascade variants
-    await client.query(`DELETE FROM ox_steps WHERE campaign_id = $1`, [campaignId]);
+    // Delete existing steps and cascade variants (scoped by tenant)
+    await client.query(`DELETE FROM ox_steps WHERE campaign_id = $1 AND tenant_id = $2`, [campaignId, tenantId]);
 
     // Insert new steps and variants
     for (const step of steps) {
@@ -579,8 +579,31 @@ campaignsRouter.post('/campaigns/:id/start', authenticateToken, async (req: Requ
       return;
     }
 
-    // Set campaign status to active
-    await pool.query(`UPDATE ox_campaigns SET status = 'active', updated_at = NOW() WHERE id = $1`, [id]);
+    // Checklist 5: SPF/DKIM/DMARC Pre-Launch DNS Deliverability Check
+    const domainChecks = await pool.query(
+      `SELECT d.id, d.domain, d.spf_status, d.dkim_status, d.dmarc_status
+       FROM ox_campaign_mailboxes cm
+       JOIN ox_mailboxes m ON cm.mailbox_id = m.id
+       JOIN ox_domains d ON m.domain_id = d.id
+       WHERE cm.campaign_id = $1 AND cm.tenant_id = $2 AND cm.is_active = true`,
+      [id, tenantId]
+    );
+
+    const failingDomain = domainChecks.rows.find(
+      (d) => d.spf_status === 'invalid' || d.dkim_status === 'invalid' || d.dmarc_status === 'invalid'
+    );
+
+    if (failingDomain && !acknowledgeRisk) {
+      res.status(400).json({
+        success: false,
+        requiresConfirmation: true,
+        warning: `Sending domain ${failingDomain.domain} has unverified DNS records (SPF: ${failingDomain.spf_status}, DKIM: ${failingDomain.dkim_status}, DMARC: ${failingDomain.dmarc_status}). Pass 'acknowledgeRisk: true' to launch anyway.`
+      });
+      return;
+    }
+
+    // Set campaign status to active (strictly scoped by tenant_id)
+    await pool.query(`UPDATE ox_campaigns SET status = 'active', updated_at = NOW() WHERE id = $1 AND tenant_id = $2`, [id, tenantId]);
 
     res.json({
       success: true,
@@ -645,10 +668,10 @@ campaignsRouter.get('/campaigns/:id/stats', authenticateToken, async (req: Reque
       `SELECT e.id, e.defer_reason, e.updated_at, p.email
        FROM ox_enrollments e
        JOIN ox_prospects p ON e.prospect_id = p.id
-       WHERE e.campaign_id = $1 AND e.defer_reason IS NOT NULL
+       WHERE e.campaign_id = $1 AND e.tenant_id = $2 AND e.defer_reason IS NOT NULL
        ORDER BY e.updated_at DESC
        LIMIT 10`,
-      [id]
+      [id, tenantId]
     );
 
     const data = statsRes.rows[0] || {
@@ -693,8 +716,8 @@ campaignsRouter.post('/campaigns/:id/test-send', requireClerkAuth, async (req: R
 
     // Fetch step
     const stepRes = await pool.query(
-      `SELECT id FROM ox_steps WHERE campaign_id = $1 ORDER BY step_number ASC OFFSET $2 LIMIT 1`,
-      [campaignId, stepIndex]
+      `SELECT id FROM ox_steps WHERE campaign_id = $1 AND tenant_id = $2 ORDER BY step_number ASC OFFSET $3 LIMIT 1`,
+      [campaignId, tenantId, stepIndex]
     );
 
     if (stepRes.rowCount === 0) {

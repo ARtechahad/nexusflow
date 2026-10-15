@@ -152,6 +152,18 @@ export async function handleSendCampaignEmailJob(jobPayload: SendCampaignEmailPa
       title: enrollment.title,
       custom_attributes: enrollment.custom_attributes || {}
     };
+
+    // Concurrency defense: check if this step was already dispatched for this enrollment
+    const alreadySentRes = await pool.query(
+      `SELECT id FROM ox_sent_emails WHERE enrollment_id = $1 AND step_id = $2 AND tenant_id = $3 LIMIT 1`,
+      [enrollment.id, stepId, tenantId]
+    );
+    if (alreadySentRes.rowCount && alreadySentRes.rowCount > 0) {
+      logger.info(`Step ${stepId} already sent for enrollment ${enrollment.id}. Aborting duplicate dispatch.`, {
+        context: 'Sender'
+      });
+      return;
+    }
   }
 
   // 3. Fetch Mailbox & Decrypt SMTP Password

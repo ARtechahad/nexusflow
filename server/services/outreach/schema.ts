@@ -348,6 +348,9 @@ export async function ensureOutreachSchema(pool: pg.Pool): Promise<void> {
       ALTER TABLE ox_mailboxes ADD COLUMN IF NOT EXISTS signature TEXT DEFAULT '';
       ALTER TABLE ox_mailboxes ADD COLUMN IF NOT EXISTS last_error TEXT;
       ALTER TABLE ox_mailboxes ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT false;
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_ox_sent_emails_enrollment_step ON ox_sent_emails(enrollment_id, step_id) WHERE enrollment_id IS NOT NULL AND step_id IS NOT NULL;
+      ALTER TABLE ox_domains ADD COLUMN IF NOT EXISTS tracking_domain VARCHAR(255);
+      ALTER TABLE ox_domains ADD COLUMN IF NOT EXISTS tracking_verified BOOLEAN DEFAULT false;
       ALTER TABLE ox_domains ADD COLUMN IF NOT EXISTS dns_records JSONB DEFAULT '{}'::jsonb;
       ALTER TABLE ox_domains ADD COLUMN IF NOT EXISTS fix_instructions JSONB DEFAULT '[]'::jsonb;
       ALTER TABLE ox_campaigns ADD COLUMN IF NOT EXISTS daily_limit INT DEFAULT 100;
