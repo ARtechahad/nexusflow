@@ -434,6 +434,7 @@ export async function verifySingleEmail(
     pool?: pg.Pool;
     tenantId?: string;
     bypassQuota?: boolean;
+    probeSmtp?: boolean;
   }
 ): Promise<VerificationResult> {
   const processedAt = new Date().toISOString();

@@ -312,3 +312,5 @@ export async function checkDomainDns(rawDomain: string): Promise<DnsCheckResult>
     checkedAt: new Date().toISOString()
   };
 }
+
+export const checkDomainDnsStatus = checkDomainDns;

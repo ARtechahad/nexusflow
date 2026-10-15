@@ -832,7 +832,7 @@ export async function handleMcpPost(req: Request, res: Response): Promise<void> 
   const sessionId = req.query.sessionId as string;
   if (sessionId && sseSessions.has(sessionId)) {
     const session = sseSessions.get(sessionId)!;
-    await session.transport.handlePostMessage(req, res);
+    await (session.transport as any).handlePostMessage(req as any, res as any);
     return;
   }
 
