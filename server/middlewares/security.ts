@@ -18,6 +18,9 @@ const allowedOrigins = [
 export const securityHeaders: RequestHandler = helmet({
   contentSecurityPolicy: false, // Disabled for Vite preview & iframe embedding in AI Studio
   crossOriginEmbedderPolicy: false,
+  crossOriginOpenerPolicy: false,
+  originAgentCluster: false,
+  xFrameOptions: false,
   crossOriginResourcePolicy: { policy: 'cross-origin' }
 });
 

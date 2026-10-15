@@ -98,11 +98,19 @@ const app = express();
 // Trust reverse proxies (Cloud Run, Container Nginx, Railway) for express-rate-limit and X-Forwarded-For IP resolution
 app.set('trust proxy', 1);
 
-// Dynamically resolve PORT: Railway, Render, Cloud Run and Docker containers inject process.env.PORT
-const PORT: number = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+// Dev server must strictly bind to port 3000 as required by the AI Studio environment
+const PORT: number =
+  process.env.NODE_ENV === 'production' && !process.env.APPLET_ID && process.env.PORT
+    ? parseInt(process.env.PORT, 10)
+    : 3000;
 
 // Global Middleware Pipeline
 app.use(securityHeaders);
+app.use((_req, res, next) => {
+  res.removeHeader('X-Frame-Options');
+  res.removeHeader('Cross-Origin-Opener-Policy');
+  next();
+});
 app.use(dynamicCors);
 app.use(parseCookies);
 app.use(compressionMiddleware);

@@ -20,7 +20,7 @@ import {
   Check,
   AlertCircle
 } from 'lucide-react';
-import { OUTREACH_PLANS } from '../../server/services/outreach/plans';
+import { OUTREACH_PLANS } from '../data/outreachPlans';
 
 interface SoftwareSectionProps {
   onOpenDocs?: () => void;

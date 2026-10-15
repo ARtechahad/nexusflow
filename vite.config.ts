@@ -135,6 +135,9 @@ export default defineConfig(() => {
         '@': path.resolve(__dirname, '.'),
       },
     },
+    optimizeDeps: {
+      exclude: ['pg', '@clerk/backend']
+    },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var to prevent WebSocket dropouts
       hmr: isHmrDisabled ? false : true,
