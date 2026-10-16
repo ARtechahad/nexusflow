@@ -41,7 +41,8 @@ const createMailboxSchema = z.object({
   password: z.string().min(1, 'Password is required'),
   daily_cap: z.coerce.number().int().min(1).max(120).optional(),
   send_interval_sec: z.coerce.number().int().min(30).optional(),
-  signature: z.string().optional()
+  signature: z.string().optional(),
+  skip_live_check: z.boolean().optional()
 });
 
 const updateMailboxSchema = z.object({
@@ -130,7 +131,8 @@ mailboxesRouter.post(
       }
 
       const tenantId = req.user?.tenant_id || (req as any).tenant_id || 'tenant-alm-nexus';
-      const mailbox = await createMailbox(pool, tenantId, parsed.data);
+      const skipCheck = parsed.data.skip_live_check ?? false;
+      const mailbox = await createMailbox(pool, tenantId, parsed.data, skipCheck);
 
       return res.status(201).json({
         success: true,

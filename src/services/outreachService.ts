@@ -242,6 +242,7 @@ export async function createMailbox(data: {
   daily_cap?: number;
   send_interval_sec?: number;
   signature?: string;
+  skip_live_check?: boolean;
 }): Promise<Mailbox> {
   const res = await fetch('/api/outreach/mailboxes', {
     method: 'POST',

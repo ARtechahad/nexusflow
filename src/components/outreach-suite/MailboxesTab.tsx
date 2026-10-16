@@ -85,7 +85,8 @@ export const MailboxesTab: React.FC = () => {
     password: '',
     daily_cap: 30,
     send_interval_sec: 120,
-    signature: ''
+    signature: '',
+    skip_live_check: false
   });
 
   const [testStatus, setTestStatus] = useState<ConnectionTestResult | null>(null);
@@ -209,7 +210,8 @@ export const MailboxesTab: React.FC = () => {
         password: formData.password,
         daily_cap: formData.daily_cap,
         send_interval_sec: formData.send_interval_sec,
-        signature: formData.signature
+        signature: formData.signature,
+        skip_live_check: formData.skip_live_check
       });
 
       showToast?.(`Mailbox ${formData.email} connected safely.`, 'success');
@@ -228,7 +230,8 @@ export const MailboxesTab: React.FC = () => {
         password: '',
         daily_cap: 30,
         send_interval_sec: 120,
-        signature: ''
+        signature: '',
+        skip_live_check: false
       });
       loadData(true);
     } catch (err: any) {
