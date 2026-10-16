@@ -98,9 +98,10 @@ const app = express();
 // Trust reverse proxies (Cloud Run, Container Nginx, Railway) for express-rate-limit and X-Forwarded-For IP resolution
 app.set('trust proxy', 1);
 
-// Dev server must strictly bind to port 3000 as required by the AI Studio environment
+// Honor the platform-injected PORT (Railway, Render, Cloud Run, Docker).
+// Only force port 3000 inside the AI Studio sandbox (APPLET_ID set) or when PORT is absent.
 const PORT: number =
-  process.env.NODE_ENV === 'production' && !process.env.APPLET_ID && process.env.PORT
+  !process.env.APPLET_ID && process.env.PORT
     ? parseInt(process.env.PORT, 10)
     : 3000;
 
