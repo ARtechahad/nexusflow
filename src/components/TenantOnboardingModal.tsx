@@ -3,25 +3,20 @@ import {
   Building2, 
   Shield, 
   Users, 
-  Link2, 
   CheckCircle2, 
   ArrowRight, 
   ArrowLeft, 
   Sparkles, 
   X, 
-  Linkedin, 
   Mail, 
-  CreditCard, 
   Lock, 
-  Key, 
-  Eye, 
   Globe, 
-  Sliders, 
-  CheckSquare, 
   Check, 
-  Zap, 
-  Palette, 
-  Briefcase 
+  Briefcase,
+  DollarSign,
+  Clock,
+  Layers,
+  ShieldCheck
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
@@ -31,125 +26,92 @@ interface TenantOnboardingModalProps {
 }
 
 export const TenantOnboardingModal: React.FC<TenantOnboardingModalProps> = ({ isOpen, onClose }) => {
-  const { onboardNewTenant, showToast } = useApp();
+  const { onboardNewTenant, showToast, currentUser } = useApp();
 
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [submitting, setSubmitting] = useState<boolean>(false);
 
-  // Step 1: Company Branding & Profile
-  const [companyName, setCompanyName] = useState<string>('');
-  const [industry, setIndustry] = useState<string>('B2B SaaS & Growth Operations');
-  const [companyDescription, setCompanyDescription] = useState<string>('');
-  const [website, setWebsite] = useState<string>('');
-  const [primaryColor, setPrimaryColor] = useState<string>('#6366f1');
-  const [accentColor, setAccentColor] = useState<string>('#06b6d4');
-  const [geometricStyle, setGeometricStyle] = useState<'cyber_glass' | 'minimal_grid' | 'monochrome_clean' | 'matrix_dark'>('cyber_glass');
-  const [logoPreset, setLogoPreset] = useState<string>('hexagon_nexus');
-  const [targetRevenueUSD, setTargetRevenueUSD] = useState<number>(250000);
-  const [objectives, setObjectives] = useState<string[]>([
-    'Automate LinkedIn & Gmail client outreach',
-    'Manage Stripe milestone escrow releases',
-    'Real-time cross-departmental team tracking'
-  ]);
-  const [newObjective, setNewObjective] = useState<string>('');
+  // Step 1: Company Category & Dynamic RBAC Roles
+  const [companyCategory, setCompanyCategory] = useState<'software_house' | 'digital_agency' | 'enterprise_it' | 'ecommerce' | 'other'>('software_house');
+  
+  const categoryRolesPresets: Record<string, Array<{ key: string; title: string; desc: string; permissions: string[] }>> = {
+    software_house: [
+      { key: 'admin', title: 'Chief Executive Officer (CEO)', desc: 'Executive oversight, financial management & system controls', permissions: ['all_macro_analytics', 'financial_oversight', 'system_settings', 'user_management'] },
+      { key: 'cto', title: 'Chief Technology Officer (CTO)', desc: 'Architecture, database schema, CI/CD pipeline & security audits', permissions: ['database_schema', 'deployment_controls', 'api_tokens', 'security_logs'] },
+      { key: 'project_manager', title: 'Project Operations Manager (PM)', desc: 'Sprint planning, Kanban board assignments & milestone approvals', permissions: ['sprint_backlog', 'kanban_assignment', 'sop_qa_signoff', 'discord_broadcasts'] },
+      { key: 'developer', title: 'Lead Full-Stack Engineer', desc: 'Code commits, staging deployments, and technical task execution', permissions: ['technical_tasks', 'staging_deployments', 'time_tracking', 'vault_credentials'] },
+      { key: 'sales', title: 'Business Development Specialist', desc: 'Inbound campaigns, client outreach, and deal pipelines', permissions: ['lead_scrapers', 'outreach_engine', 'deal_pipeline', 'commission_ledger'] }
+    ],
+    digital_agency: [
+      { key: 'admin', title: 'Managing Director & CEO', desc: 'Agency growth, high-level client accounts & financial ledger', permissions: ['all_macro_analytics', 'financial_oversight', 'system_settings', 'user_management'] },
+      { key: 'creative_director', title: 'Creative Director', desc: 'UI/UX design standards, asset library & brand guidelines', permissions: ['brand_standards', 'asset_library', 'client_feedback', 'design_specs'] },
+      { key: 'account_director', title: 'Client Account Director', desc: 'Client portal management, scope review & milestone escrow', permissions: ['client_portal_access', 'milestone_approvals', 'invoice_settlement'] },
+      { key: 'growth_marketer', title: 'Growth & Outreach Lead', desc: 'Multi-channel campaigns, lead enrichment & CRM sequencing', permissions: ['lead_scrapers', 'outreach_engine', 'deal_pipeline', 'campaigns'] }
+    ],
+    enterprise_it: [
+      { key: 'admin', title: 'Chief Information Officer (CIO)', desc: 'Enterprise infrastructure governance & executive oversight', permissions: ['all_macro_analytics', 'financial_oversight', 'system_settings', 'user_management'] },
+      { key: 'vp_eng', title: 'VP of Engineering', desc: 'Technical division leadership & resource allocation', permissions: ['sprint_backlog', 'infrastructure', 'deployment_controls'] }
+    ],
+    ecommerce: [
+      { key: 'admin', title: 'E-Commerce Founder & CEO', desc: 'Store operations, revenue analytics & financial control', permissions: ['all_macro_analytics', 'financial_oversight', 'system_settings', 'user_management'] },
+      { key: 'growth_lead', title: 'Growth & Conversion Lead', desc: 'Customer acquisition, email marketing & pipeline tracking', permissions: ['outreach_engine', 'lead_scrapers', 'campaigns'] }
+    ],
+    other: [
+      { key: 'admin', title: 'Managing Director & Admin', desc: 'Full workspace administration and team management', permissions: ['all_macro_analytics', 'system_settings', 'user_management'] }
+    ]
+  };
 
-  // Step 2: Admin Authentication & Master Role
-  const [adminName, setAdminName] = useState<string>('');
-  const [adminEmail, setAdminEmail] = useState<string>('');
-  const [adminPassword, setAdminPassword] = useState<string>('Admin@12345');
-  const [adminPin, setAdminPin] = useState<string>('1234');
-  const [adminTitle, setAdminTitle] = useState<string>('Chief Executive Officer (CEO)');
-  const [timezone, setTimezone] = useState<string>('America/New_York (EST)');
-
-  // Step 3: Granular Role Definition (RBAC)
   const [configuredRoles, setConfiguredRoles] = useState<Record<string, { title: string; enabled: boolean; permissions: string[] }>>({
-    admin: {
-      title: 'Chief Executive Officer (CEO)',
-      enabled: true,
-      permissions: ['all_macro_analytics', 'financial_oversight', 'system_settings', 'user_management']
-    },
-    project_manager: {
-      title: 'Project Operations Manager',
-      enabled: true,
-      permissions: ['sprint_backlog', 'kanban_assignment', 'sop_qa_signoff', 'discord_broadcasts']
-    },
-    sales: {
-      title: 'Business Development Specialist',
-      enabled: true,
-      permissions: ['lead_scrapers', 'outreach_engine', 'deal_pipeline', 'commission_ledger']
-    },
-    developer: {
-      title: 'Lead Full-Stack Engineer',
-      enabled: true,
-      permissions: ['technical_tasks', 'staging_deployments', 'time_tracking', 'vault_credentials']
-    },
-    designer: {
-      title: 'Lead UI/UX Designer',
-      enabled: true,
-      permissions: ['wireframe_specs', 'asset_library', 'client_feedback', 'brand_standards']
-    },
-    client_guest: {
-      title: 'Client Stakeholder',
-      enabled: true,
-      permissions: ['client_portal_access', 'milestone_approvals', 'invoice_settlement']
-    }
+    admin: { title: 'Chief Executive Officer (CEO)', enabled: true, permissions: ['all_macro_analytics', 'financial_oversight', 'system_settings', 'user_management'] },
+    cto: { title: 'Chief Technology Officer (CTO)', enabled: true, permissions: ['database_schema', 'deployment_controls', 'api_tokens', 'security_logs'] },
+    project_manager: { title: 'Project Operations Manager (PM)', enabled: true, permissions: ['sprint_backlog', 'kanban_assignment', 'sop_qa_signoff', 'discord_broadcasts'] },
+    developer: { title: 'Lead Full-Stack Engineer', enabled: true, permissions: ['technical_tasks', 'staging_deployments', 'time_tracking', 'vault_credentials'] },
+    sales: { title: 'Business Development Specialist', enabled: true, permissions: ['lead_scrapers', 'outreach_engine', 'deal_pipeline', 'commission_ledger'] }
   });
 
-  // Step 4: External Integrations Setup
-  const [linkedInEnabled, setLinkedInEnabled] = useState<boolean>(true);
-  const [linkedInHandle, setLinkedInHandle] = useState<string>('@company-growth');
-  const [linkedInSyncFreq, setLinkedInSyncFreq] = useState<number>(15);
-  const [linkedInAutoOutreach, setLinkedInAutoOutreach] = useState<boolean>(true);
-
-  const [gmailEnabled, setGmailEnabled] = useState<boolean>(true);
-  const [gmailEmail, setGmailEmail] = useState<string>('');
-  const [gmailThreadTracking, setGmailThreadTracking] = useState<boolean>(true);
-  const [gmailAutoDraft, setGmailAutoDraft] = useState<boolean>(true);
-
-  const [stripeEnabled, setStripeEnabled] = useState<boolean>(true);
-  const [stripeCurrency, setStripeCurrency] = useState<string>('USD');
-  const [stripeLiveMode, setStripeLiveMode] = useState<boolean>(false);
-
-  if (!isOpen) return null;
-
-  const handleAddObjective = () => {
-    if (newObjective.trim() && !objectives.includes(newObjective.trim())) {
-      setObjectives([...objectives, newObjective.trim()]);
-      setNewObjective('');
-    }
-  };
-
-  const handleRemoveObjective = (idx: number) => {
-    setObjectives(objectives.filter((_, i) => i !== idx));
-  };
-
-  const handleTogglePermission = (roleKey: string, perm: string) => {
-    setConfiguredRoles(prev => {
-      const current = prev[roleKey];
-      if (!current) return prev;
-      const hasPerm = current.permissions.includes(perm);
-      const updatedPerms = hasPerm 
-        ? current.permissions.filter(p => p !== perm) 
-        : [...current.permissions, perm];
-      return {
-        ...prev,
-        [roleKey]: {
-          ...current,
-          permissions: updatedPerms
-        }
+  const handleCategoryChange = (cat: 'software_house' | 'digital_agency' | 'enterprise_it' | 'ecommerce' | 'other') => {
+    setCompanyCategory(cat);
+    const rolesList = categoryRolesPresets[cat] || categoryRolesPresets.software_house;
+    const newRolesMap: Record<string, { title: string; enabled: boolean; permissions: string[] }> = {};
+    rolesList.forEach(r => {
+      newRolesMap[r.key] = {
+        title: r.title,
+        enabled: true,
+        permissions: r.permissions
       };
     });
+    setConfiguredRoles(newRolesMap);
   };
+
+  // Step 2: Essential Business Profile Information
+  const [companyName, setCompanyName] = useState<string>('');
+  const [website, setWebsite] = useState<string>('https://');
+  const [businessEmail, setBusinessEmail] = useState<string>(currentUser?.email || '');
+  const [industrySector, setIndustrySector] = useState<string>('Software & Cloud Engineering');
+  const [coreServiceOffering, setCoreServiceOffering] = useState<string>('Enterprise SaaS, Custom Full-Stack Apps & AI Automation');
+
+  // Step 3: Team Scale & Operational Preferences (Flexible)
+  const [teamSize, setTeamSize] = useState<string>('11-50 employees');
+  const [operatingCurrency, setOperatingCurrency] = useState<string>('USD ($)');
+  const [timezone, setTimezone] = useState<string>('America/New_York (EST)');
+  const [communicationNote, setCommunicationNote] = useState<string>('Slack & Email (Flexible — configure anytime from Integrations)');
+
+  // Step 4: Administrator Account & Instant Launch
+  const [adminName, setAdminName] = useState<string>(currentUser?.name || 'Tariq Mehmood');
+  const [adminEmail, setAdminEmail] = useState<string>(currentUser?.email || 'admin@agencyops.dev');
+  const [adminPassword, setAdminPassword] = useState<string>('Admin@Enterprise2026');
+
+  if (!isOpen) return null;
 
   const handleCompleteOnboarding = async () => {
     if (!companyName.trim()) {
       showToast('Please enter your Company Name', 'warning');
-      setCurrentStep(1);
+      setCurrentStep(2);
       return;
     }
     if (!adminEmail.trim() || !adminName.trim()) {
-      showToast('Please fill in the Master Admin name and email', 'warning');
-      setCurrentStep(2);
+      showToast('Please provide Administrator name and email', 'warning');
+      setCurrentStep(4);
       return;
     }
 
@@ -158,45 +120,37 @@ export const TenantOnboardingModal: React.FC<TenantOnboardingModalProps> = ({ is
       companyName,
       logoUrl: '/icon.svg',
       branding: {
-        primaryColor,
-        accentColor,
+        primaryColor: '#6366f1',
+        accentColor: '#06b6d4',
         theme: 'dark',
-        geometricStyle,
-        logoPreset
+        geometricStyle: 'cyber_glass',
+        logoPreset: 'hexagon_nexus'
       },
       businessInfo: {
-        industry,
-        description: companyDescription || `${companyName} centralized growth operations.`,
-        website,
-        targetRevenueUSD,
-        coreObjectives: objectives
+        industry: industrySector,
+        description: coreServiceOffering,
+        website: website.trim() === 'https://' ? '' : website.trim(),
+        targetRevenueUSD: 500000,
+        coreObjectives: [
+          `Category: ${companyCategory}`,
+          `Team Size: ${teamSize}`,
+          `Operating Currency: ${operatingCurrency}`,
+          `Timezone: ${timezone}`
+        ]
       },
       adminUser: {
         name: adminName,
         email: adminEmail,
         password: adminPassword,
-        pin: adminPin,
-        title: adminTitle
+        pin: '1234',
+        title: 'Chief Executive Officer (CEO)'
       },
       rolesConfig: configuredRoles,
       integrations: {
-        linkedIn: {
-          connected: linkedInEnabled,
-          accountHandle: linkedInHandle,
-          syncIntervalMinutes: linkedInSyncFreq,
-          autoOutreachEnabled: linkedInAutoOutreach
-        },
-        gmail: {
-          connected: gmailEnabled,
-          accountEmail: gmailEmail || adminEmail,
-          threadTracking: gmailThreadTracking,
-          autoDraftReplies: gmailAutoDraft
-        },
-        stripe: {
-          connected: stripeEnabled,
-          liveMode: stripeLiveMode,
-          currency: stripeCurrency
-        }
+        linkedIn: { connected: true, accountHandle: '@enterprise-growth', syncIntervalMinutes: 15, autoOutreachEnabled: true },
+        gmail: { connected: true, accountEmail: businessEmail || adminEmail, threadTracking: true, autoDraftReplies: true },
+        stripe: { connected: true, liveMode: true, currency: operatingCurrency.split(' ')[0] },
+        resend: { apiKey: 're_LXiiEzAS_86mprrkSQfUGaJHZRK25Pp18', verified: true }
       }
     };
 
@@ -204,18 +158,19 @@ export const TenantOnboardingModal: React.FC<TenantOnboardingModalProps> = ({ is
     setSubmitting(false);
 
     if (res.success) {
+      showToast(`Welcome to ${companyName}! Workspace registered successfully. Welcome email sent via Resend.`, 'success');
       onClose();
     } else {
-      showToast(res.message || 'Onboarding failed. Please try again.', 'error');
+      showToast(res.message || 'Company registration failed. Please try again.', 'error');
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 md:p-6 bg-black/80 backdrop-blur-md overflow-y-auto">
-      <div className="relative w-full max-w-4xl bg-white dark:bg-[#0b101e] border border-slate-200 dark:border-white/10 rounded-3xl shadow-2xl overflow-hidden my-auto flex flex-col max-h-[92vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 md:p-6 bg-black/85 backdrop-blur-md overflow-y-auto">
+      <div className="relative w-full max-w-4xl bg-white dark:bg-[#090d16] border border-slate-200 dark:border-white/10 rounded-3xl shadow-2xl overflow-hidden my-auto flex flex-col max-h-[92vh]">
         
-        {/* Modal Top Header */}
-        <div className="p-6 border-b border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-[#070a12] flex items-center justify-between">
+        {/* Modal Header */}
+        <div className="p-6 border-b border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-[#05080f] flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-lg shadow-indigo-600/30">
               <Building2 className="w-5 h-5" />
@@ -223,14 +178,14 @@ export const TenantOnboardingModal: React.FC<TenantOnboardingModalProps> = ({ is
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-lg font-black text-slate-900 dark:text-white tracking-tight">
-                  ALM Nexus Tenant Setup
+                  Company Workspace Registration
                 </h2>
                 <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 font-mono">
-                  Enterprise Onboarding
+                  Step {currentStep} of 4
                 </span>
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Initialize your isolated multi-channel workspace, RBAC permissions, and external APIs
+                Frictionless multi-tenant setup with Neon DB pooling, Clerk session sync &amp; Resend dispatch
               </p>
             </div>
           </div>
@@ -243,652 +198,348 @@ export const TenantOnboardingModal: React.FC<TenantOnboardingModalProps> = ({ is
           </button>
         </div>
 
-        {/* Step Progress Breadcrumb */}
-        <div className="px-6 py-3 bg-slate-100/70 dark:bg-slate-900/60 border-b border-slate-200 dark:border-white/10 flex items-center justify-between overflow-x-auto text-xs font-semibold">
+        {/* Breadcrumb Steps */}
+        <div className="px-6 py-3 bg-slate-100/70 dark:bg-slate-900/60 border-b border-slate-200 dark:border-white/10 flex items-center justify-between overflow-x-auto text-xs font-semibold gap-2">
           {[
-            { step: 1, label: '1. Company Branding' },
-            { step: 2, label: '2. Admin Master' },
-            { step: 3, label: '3. RBAC Roles' },
-            { step: 4, label: '4. External APIs' },
-            { step: 5, label: '5. Launch' }
-          ].map(s => {
-            const isCompleted = currentStep > s.step;
-            const isCurrent = currentStep === s.step;
-            return (
-              <button
-                key={s.step}
-                onClick={() => setCurrentStep(s.step)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition cursor-pointer whitespace-nowrap ${
-                  isCurrent 
-                    ? 'bg-indigo-600 text-white font-bold shadow-xs' 
-                    : isCompleted 
-                    ? 'text-emerald-600 dark:text-emerald-400 font-semibold' 
-                    : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
-                }`}
-              >
-                {isCompleted ? <CheckCircle2 className="w-3.5 h-3.5" /> : <span className="font-mono text-[11px]">{s.step}</span>}
-                <span>{s.label}</span>
-              </button>
-            );
-          })}
+            { s: 1, label: '1. Category & Roles' },
+            { s: 2, label: '2. Company Profile' },
+            { s: 3, label: '3. Team Scale & Preferences' },
+            { s: 4, label: '4. Admin & Launch' }
+          ].map(item => (
+            <button
+              key={item.s}
+              onClick={() => setCurrentStep(item.s)}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl transition shrink-0 cursor-pointer ${
+                currentStep === item.s
+                  ? 'bg-indigo-600 text-white shadow-xs font-bold'
+                  : currentStep > item.s
+                  ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                  : 'text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-white/5'
+              }`}
+            >
+              <span>{item.label}</span>
+              {currentStep > item.s && <Check className="w-3.5 h-3.5 text-emerald-500" />}
+            </button>
+          ))}
         </div>
 
-        {/* Scrollable Step Body */}
-        <div className="p-6 md:p-8 overflow-y-auto flex-1 space-y-6">
+        {/* Modal Body (Scrollable) */}
+        <div className="p-6 overflow-y-auto space-y-6 text-xs flex-1">
           
-          {/* STEP 1: Company Branding & Profile */}
+          {/* STEP 1: Company Category & Dynamic RBAC Roles */}
           {currentStep === 1 && (
-            <div className="space-y-6 animate-fadeIn">
+            <div className="space-y-5 animate-fadeIn">
               <div>
-                <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                  <Palette className="w-4 h-4 text-indigo-500" />
-                  <span>Company Branding &amp; Operational Objectives</span>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Briefcase className="w-4 h-4 text-indigo-500" />
+                  Select Business Category &amp; Workspace Management Roles
                 </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  Configure your company profile and geometric dark-mode aesthetics for strict tenant isolation.
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Select your organization category to automatically configure tailored hierarchical workspace roles.
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                    Company / Agency Name *
-                  </label>
-                  <input
-                    type="text"
-                    value={companyName}
-                    onChange={e => setCompanyName(e.target.value)}
-                    placeholder="e.g. Apex Digital Ventures"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-hidden transition"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                    Primary Industry Focus
-                  </label>
-                  <select
-                    value={industry}
-                    onChange={e => setIndustry(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-hidden transition"
-                  >
-                    <option value="B2B SaaS & Growth Operations">B2B SaaS & Growth Operations</option>
-                    <option value="Digital Web Development & Design Agency">Digital Web Development & Design Agency</option>
-                    <option value="Game Development & Interactive Studios">Game Development & Interactive Studios</option>
-                    <option value="FinTech & Corporate Consultancy">FinTech & Corporate Consultancy</option>
-                    <option value="E-Commerce & High-Ticket Retail">E-Commerce & High-Ticket Retail</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                    Official Website / Domain
-                  </label>
-                  <input
-                    type="url"
-                    value={website}
-                    onChange={e => setWebsite(e.target.value)}
-                    placeholder="https://apexventures.com"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-hidden transition"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                    Quarterly Target Revenue (USD)
-                  </label>
-                  <input
-                    type="number"
-                    value={targetRevenueUSD}
-                    onChange={e => setTargetRevenueUSD(Number(e.target.value))}
-                    step={10000}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-hidden transition font-mono"
-                  />
-                </div>
-              </div>
-
-              {/* Geometric Brand Aesthetics */}
-              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-white/10 space-y-4">
-                <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
-                  Geometric Dark-Mode Brand Styling
-                </span>
-
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  {[
-                    { key: 'cyber_glass', label: 'Cyber Glass', desc: 'Subtle neon borders & glass blur' },
-                    { key: 'minimal_grid', label: 'Minimal Grid', desc: 'Engineering lines & dot matrix' },
-                    { key: 'monochrome_clean', label: 'Monochrome', desc: 'High contrast clean slate' },
-                    { key: 'matrix_dark', label: 'Matrix Dark', desc: 'Deep terminal blacks' }
-                  ].map(style => (
-                    <div
-                      key={style.key}
-                      onClick={() => setGeometricStyle(style.key as any)}
-                      className={`p-3 rounded-xl border cursor-pointer transition ${
-                        geometricStyle === style.key
-                          ? 'border-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/40 ring-2 ring-indigo-500/20'
-                          : 'border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-white/20'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs font-bold text-slate-900 dark:text-white">{style.label}</span>
-                        {geometricStyle === style.key && <CheckCircle2 className="w-3.5 h-3.5 text-indigo-500" />}
-                      </div>
-                      <p className="text-[10px] text-slate-500 dark:text-slate-400">{style.desc}</p>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="flex items-center gap-4 flex-wrap pt-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">Primary Color:</span>
-                    <input
-                      type="color"
-                      value={primaryColor}
-                      onChange={e => setPrimaryColor(e.target.value)}
-                      className="w-7 h-7 rounded-lg border-0 cursor-pointer"
-                    />
-                    <span className="text-xs font-mono text-slate-500">{primaryColor}</span>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">Accent Color:</span>
-                    <input
-                      type="color"
-                      value={accentColor}
-                      onChange={e => setAccentColor(e.target.value)}
-                      className="w-7 h-7 rounded-lg border-0 cursor-pointer"
-                    />
-                    <span className="text-xs font-mono text-slate-500">{accentColor}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Core Objectives Checklist */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">
-                  Core Business Objectives
-                </label>
-                <div className="space-y-2 mb-3">
-                  {objectives.map((obj, i) => (
-                    <div key={i} className="flex items-center justify-between px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900/80 border border-slate-200 dark:border-white/10 text-xs">
-                      <span className="text-slate-800 dark:text-slate-200 font-medium">✓ {obj}</span>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveObjective(i)}
-                        className="text-slate-400 hover:text-red-500 transition"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={newObjective}
-                    onChange={e => setNewObjective(e.target.value)}
-                    placeholder="Add custom objective (e.g. Upwork Enterprise RFP integration)..."
-                    onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), handleAddObjective())}
-                    className="flex-1 px-3.5 py-2 rounded-xl border border-slate-300 dark:border-white/10 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white"
-                  />
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {[
+                  { id: 'software_house', title: 'Software House', desc: 'Custom engineering, SaaS products & full-stack development teams' },
+                  { id: 'digital_agency', title: 'Digital Agency', desc: 'Marketing, UI/UX creative design & international client operations' },
+                  { id: 'enterprise_it', title: 'Enterprise IT', desc: 'Cloud infrastructure governance, security & IT services' },
+                  { id: 'ecommerce', title: 'E-Commerce Brand', desc: 'Direct-to-consumer storefronts, growth & customer success' },
+                  { id: 'other', title: 'Other Business', desc: 'General professional services, consulting & team operations' }
+                ].map(cat => (
                   <button
+                    key={cat.id}
                     type="button"
-                    onClick={handleAddObjective}
-                    className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-white/10 hover:bg-slate-200 dark:hover:bg-white/15 text-xs font-bold transition cursor-pointer"
+                    onClick={() => handleCategoryChange(cat.id as any)}
+                    className={`p-4 rounded-2xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                      companyCategory === cat.id
+                        ? 'border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/40 text-indigo-900 dark:text-indigo-200 ring-2 ring-indigo-500'
+                        : 'border-slate-200 dark:border-white/10 bg-slate-50/50 dark:bg-slate-900/40 text-slate-700 dark:text-slate-300 hover:border-slate-300'
+                    }`}
                   >
-                    Add
+                    <div>
+                      <div className="font-bold text-sm mb-1">{cat.title}</div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400">{cat.desc}</div>
+                    </div>
+                    {companyCategory === cat.id && (
+                      <div className="mt-3 inline-flex items-center gap-1 text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Selected
+                      </div>
+                    )}
                   </button>
+                ))}
+              </div>
+
+              <div className="border-t border-slate-200 dark:border-white/10 pt-4 space-y-3">
+                <h4 className="font-bold text-slate-900 dark:text-white">Assigned Hierarchical Roles &amp; Permissions</h4>
+                <div className="space-y-2">
+                  {Object.entries(configuredRoles).map(([key, roleObj]) => (
+                    <div key={key} className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-white/10 flex items-center justify-between">
+                      <div>
+                        <div className="font-bold text-slate-900 dark:text-white">{roleObj.title}</div>
+                        <div className="text-[10px] font-mono text-indigo-600 dark:text-indigo-400 mt-0.5">
+                          Permissions: {roleObj.permissions.join(', ')}
+                        </div>
+                      </div>
+                      <span className="px-2 py-1 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold">
+                        Active Role
+                      </span>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
           )}
 
-          {/* STEP 2: Master Admin / CEO Authentication */}
+          {/* STEP 2: Company Metadata & Profile (Frictionless) */}
           {currentStep === 2 && (
-            <div className="space-y-6 animate-fadeIn">
+            <div className="space-y-5 animate-fadeIn">
               <div>
-                <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                  <Shield className="w-4 h-4 text-rose-500" />
-                  <span>Master Administrator &amp; CEO Configuration</span>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Globe className="w-4 h-4 text-indigo-500" />
+                  Essential Company Profile
                 </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  Register the root company executive. This account maintains unrestricted macro-level access across all departments.
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Provide high-level company identity details. No burdensome corporate tax numbers required.
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                    Master Administrator Name *
-                  </label>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Company / Brand Name *</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Crestview Technologies"
+                    value={companyName}
+                    onChange={(e) => setCompanyName(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Official Website</label>
+                  <input
+                    type="text"
+                    placeholder="https://crestview.io"
+                    value={website}
+                    onChange={(e) => setWebsite(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Support / Business Email</label>
+                  <input
+                    type="email"
+                    placeholder="contact@crestview.io"
+                    value={businessEmail}
+                    onChange={(e) => setBusinessEmail(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Industry Sector</label>
+                  <input
+                    type="text"
+                    placeholder="Software & Cloud Engineering"
+                    value={industrySector}
+                    onChange={(e) => setIndustrySector(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Core Service Offering / Elevator Summary</label>
+                <textarea
+                  rows={3}
+                  value={coreServiceOffering}
+                  onChange={(e) => setCoreServiceOffering(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* STEP 3: Team Scale & Operational Preferences (Flexible) */}
+          {currentStep === 3 && (
+            <div className="space-y-5 animate-fadeIn">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Users className="w-4 h-4 text-indigo-500" />
+                  Team Scale &amp; Operational Preferences
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Configure team size and operating currency. All settings are completely flexible and can be modified anytime.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Team Size / Employee Count</label>
+                  <select
+                    value={teamSize}
+                    onChange={(e) => setTeamSize(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white"
+                  >
+                    <option value="1-10 employees">1-10 employees (Startup)</option>
+                    <option value="11-50 employees">11-50 employees (Growth)</option>
+                    <option value="51-200 employees">51-200 employees (Scale-up)</option>
+                    <option value="200+ employees">200+ employees (Enterprise)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Operating Currency</label>
+                  <select
+                    value={operatingCurrency}
+                    onChange={(e) => setOperatingCurrency(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white"
+                  >
+                    <option value="USD ($)">USD ($)</option>
+                    <option value="EUR (€)">EUR (€)</option>
+                    <option value="GBP (£)">GBP (£)</option>
+                    <option value="AED (د.إ)">AED (د.إ)</option>
+                    <option value="AUD (A$)">AUD (A$)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Default Timezone</label>
+                  <select
+                    value={timezone}
+                    onChange={(e) => setTimezone(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white"
+                  >
+                    <option value="America/New_York (EST)">America/New_York (EST)</option>
+                    <option value="Europe/London (GMT)">Europe/London (GMT)</option>
+                    <option value="Asia/Dubai (GST)">Asia/Dubai (GST)</option>
+                    <option value="Asia/Singapore (SGT)">Asia/Singapore (SGT)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Communication Channels Note</label>
+                  <div className="px-3 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-[11px] text-slate-600 dark:text-slate-300">
+                    {communicationNote}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 4: Administrator Account & Instant Launch */}
+          {currentStep === 4 && (
+            <div className="space-y-5 animate-fadeIn">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-indigo-500" />
+                  Administrator Identity &amp; Workspace Launch
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Confirm administrator credentials and provision your isolated company workspace.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Master Administrator Name *</label>
                   <input
                     type="text"
                     value={adminName}
-                    onChange={e => setAdminName(e.target.value)}
-                    placeholder="e.g. Tariq Mehmood"
-                    required
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-hidden transition"
+                    onChange={(e) => setAdminName(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                    Corporate Email Address *
-                  </label>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Administrator Email (Clerk Auth) *</label>
                   <input
                     type="email"
                     value={adminEmail}
-                    onChange={e => setAdminEmail(e.target.value)}
-                    placeholder="ceo@yourcompany.com"
-                    required
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-hidden transition"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                    Master Password
-                  </label>
-                  <div className="relative">
-                    <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="password"
-                      value={adminPassword}
-                      onChange={e => setAdminPassword(e.target.value)}
-                      className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-hidden transition"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                    4-Digit Fast Security PIN
-                  </label>
-                  <div className="relative">
-                    <Key className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="text"
-                      maxLength={4}
-                      value={adminPin}
-                      onChange={e => setAdminPin(e.target.value)}
-                      className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm font-mono focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-hidden transition"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                    Executive Title
-                  </label>
-                  <input
-                    type="text"
-                    value={adminTitle}
-                    onChange={e => setAdminTitle(e.target.value)}
-                    placeholder="CEO & Managing Director"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-hidden transition"
+                    onChange={(e) => setAdminEmail(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                    Operating Timezone
-                  </label>
-                  <select
-                    value={timezone}
-                    onChange={e => setTimezone(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-hidden transition"
-                  >
-                    <option value="America/New_York (EST)">America/New_York (EST, UTC-5)</option>
-                    <option value="Europe/London (GMT)">Europe/London (GMT/BST, UTC+0)</option>
-                    <option value="Asia/Dubai (GST)">Asia/Dubai (GST, UTC+4)</option>
-                    <option value="Asia/Karachi (PKT)">Asia/Karachi (PKT, UTC+5)</option>
-                    <option value="Europe/Berlin (CET)">Europe/Berlin (CET, UTC+1)</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* STEP 3: Role Definition & Granular Access Control (RBAC) */}
-          {currentStep === 3 && (
-            <div className="space-y-6 animate-fadeIn">
-              <div>
-                <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                  <Users className="w-4 h-4 text-blue-500" />
-                  <span>Role Definition &amp; Granular Access Control (RBAC)</span>
-                </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  Define organizational roles and assign specific permission scopes so team members only see data relevant to their function.
-                </p>
-              </div>
-
-              <div className="space-y-3">
-                {(Object.entries(configuredRoles) as Array<[string, { title: string; enabled: boolean; permissions: string[] }]>).map(([roleKey, conf]) => (
-                  <div 
-                    key={roleKey}
-                    className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-white/10 space-y-3"
-                  >
-                    <div className="flex items-center justify-between flex-wrap gap-2">
-                      <div className="flex items-center gap-2.5">
-                        <span className="w-2.5 h-2.5 rounded-full bg-indigo-500" />
-                        <div>
-                          <span className="text-xs font-bold text-slate-900 dark:text-white">
-                            {conf.title}
-                          </span>
-                          <span className="ml-2 font-mono text-[10px] text-slate-500 dark:text-slate-400 uppercase">
-                            ({roleKey})
-                          </span>
-                        </div>
-                      </div>
-
-                      <span className="text-[11px] px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-mono font-bold">
-                        {conf.permissions.length} Scopes Active
-                      </span>
-                    </div>
-
-                    {/* Permissions Badges */}
-                    <div className="flex flex-wrap gap-1.5 pt-1">
-                      {conf.permissions.map(perm => (
-                        <span 
-                          key={perm}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 text-[11px] text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-white/10 font-mono font-medium"
-                        >
-                          <Check className="w-3 h-3 text-emerald-500" />
-                          <span>{perm.replace(/_/g, ' ')}</span>
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* STEP 4: External Integrations Setup */}
-          {currentStep === 4 && (
-            <div className="space-y-6 animate-fadeIn">
-              <div>
-                <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                  <Link2 className="w-4 h-4 text-emerald-500" />
-                  <span>External Integrations Setup (LinkedIn, Gmail, Stripe)</span>
-                </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  Connect corporate accounts for automated marketing, synchronized email communication, and financial escrow billing.
-                </p>
-              </div>
-
-              {/* LinkedIn Connector */}
-              <div className="p-5 rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-900/50 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-[#0077b5] text-white flex items-center justify-center shadow-md">
-                      <Linkedin className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-bold text-slate-900 dark:text-white">LinkedIn Outreach Engine</h4>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400">Automated lead scraper, connection requests & InMail sync</p>
-                    </div>
-                  </div>
-
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Secure Password *</label>
                   <input
-                    type="checkbox"
-                    checked={linkedInEnabled}
-                    onChange={e => setLinkedInEnabled(e.target.checked)}
-                    className="w-4 h-4 accent-indigo-600 rounded cursor-pointer"
+                    type="password"
+                    value={adminPassword}
+                    onChange={(e) => setAdminPassword(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white font-mono"
                   />
                 </div>
 
-                {linkedInEnabled && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-                    <div>
-                      <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                        Corporate / Sales Nav Handle
-                      </label>
-                      <input
-                        type="text"
-                        value={linkedInHandle}
-                        onChange={e => setLinkedInHandle(e.target.value)}
-                        placeholder="@company-sales"
-                        className="w-full px-3 py-1.5 rounded-lg border border-slate-300 dark:border-white/10 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                        Sync Frequency
-                      </label>
-                      <select
-                        value={linkedInSyncFreq}
-                        onChange={e => setLinkedInSyncFreq(Number(e.target.value))}
-                        className="w-full px-3 py-1.5 rounded-lg border border-slate-300 dark:border-white/10 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white"
-                      >
-                        <option value={5}>Every 5 minutes</option>
-                        <option value={15}>Every 15 minutes (Recommended)</option>
-                        <option value={30}>Every 30 minutes</option>
-                      </select>
-                    </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Assigned Tenant ID</label>
+                  <div className="px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-white/10 text-slate-500 font-mono text-[11px]">
+                    tenant-{companyName ? companyName.toLowerCase().replace(/[^a-z0-9]+/g, '-') : 'workspace'}-01
                   </div>
-                )}
+                </div>
               </div>
 
-              {/* Gmail Connector */}
-              <div className="p-5 rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-900/50 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-[#ea4335] text-white flex items-center justify-center shadow-md">
-                      <Mail className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-bold text-slate-900 dark:text-white">Gmail Corporate Outreach</h4>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400">Thread tracking, automated follow-up sequences, and Unified Inbox</p>
-                    </div>
-                  </div>
-
-                  <input
-                    type="checkbox"
-                    checked={gmailEnabled}
-                    onChange={e => setGmailEnabled(e.target.checked)}
-                    className="w-4 h-4 accent-indigo-600 rounded cursor-pointer"
-                  />
+              <div className="p-4 rounded-2xl bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-500/20 space-y-2">
+                <div className="font-bold text-indigo-900 dark:text-indigo-200 flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-indigo-600" />
+                  Automated Security &amp; Telemetry Provisioning
                 </div>
-
-                {gmailEnabled && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-                    <div>
-                      <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                        Outreach Email Account
-                      </label>
-                      <input
-                        type="email"
-                        value={gmailEmail}
-                        onChange={e => setGmailEmail(e.target.value)}
-                        placeholder="outreach@yourcompany.com"
-                        className="w-full px-3 py-1.5 rounded-lg border border-slate-300 dark:border-white/10 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white"
-                      />
-                    </div>
-                    <div className="flex items-center gap-3 pt-4">
-                      <label className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={gmailAutoDraft}
-                          onChange={e => setGmailAutoDraft(e.target.checked)}
-                          className="accent-indigo-600"
-                        />
-                        <span>AI Auto-Draft Replies</span>
-                      </label>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Stripe Connector */}
-              <div className="p-5 rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-900/50 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-[#635bff] text-white flex items-center justify-center shadow-md">
-                      <CreditCard className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-bold text-slate-900 dark:text-white">Stripe Financial Escrow</h4>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400">Automated 50% advance deposits, milestone clearance & receipts</p>
-                    </div>
-                  </div>
-
-                  <input
-                    type="checkbox"
-                    checked={stripeEnabled}
-                    onChange={e => setStripeEnabled(e.target.checked)}
-                    className="w-4 h-4 accent-indigo-600 rounded cursor-pointer"
-                  />
-                </div>
-
-                {stripeEnabled && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-                    <div>
-                      <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                        Settlement Currency
-                      </label>
-                      <select
-                        value={stripeCurrency}
-                        onChange={e => setStripeCurrency(e.target.value)}
-                        className="w-full px-3 py-1.5 rounded-lg border border-slate-300 dark:border-white/10 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white"
-                      >
-                        <option value="USD">USD ($)</option>
-                        <option value="GBP">GBP (£)</option>
-                        <option value="EUR">EUR (€)</option>
-                        <option value="AED">AED (AED)</option>
-                      </select>
-                    </div>
-                    <div className="flex items-center gap-3 pt-4">
-                      <label className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={stripeLiveMode}
-                          onChange={e => setStripeLiveMode(e.target.checked)}
-                          className="accent-indigo-600"
-                        />
-                        <span>Production Live Mode (Unchecked: Sandbox)</span>
-                      </label>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* STEP 5: Final Review & Launch */}
-          {currentStep === 5 && (
-            <div className="space-y-6 animate-fadeIn">
-              <div className="text-center max-w-lg mx-auto">
-                <div className="w-14 h-14 rounded-3xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 flex items-center justify-center mx-auto mb-3 shadow-lg shadow-emerald-500/10">
-                  <Sparkles className="w-7 h-7" />
-                </div>
-                <h3 className="text-xl font-extrabold text-slate-900 dark:text-white">
-                  Ready to Launch {companyName || 'Your Workspace'}!
-                </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  Your tenant configuration is validated. Click below to provision the isolated database schema, create the master CEO account, and enter the dashboard.
-                </p>
-              </div>
-
-              {/* Summary Card */}
-              <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-white/10 space-y-3">
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
-                  <div>
-                    <span className="text-slate-400 block text-[10px] uppercase font-mono">Company</span>
-                    <strong className="text-slate-900 dark:text-white font-bold">{companyName || 'Not Set'}</strong>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 block text-[10px] uppercase font-mono">Industry</span>
-                    <strong className="text-slate-900 dark:text-white font-bold">{industry}</strong>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 block text-[10px] uppercase font-mono">Master CEO</span>
-                    <strong className="text-slate-900 dark:text-white font-bold">{adminName || 'Admin'}</strong>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 block text-[10px] uppercase font-mono">Aesthetics</span>
-                    <strong className="text-slate-900 dark:text-white font-bold font-mono">{geometricStyle}</strong>
-                  </div>
-                </div>
-
-                <div className="pt-3 border-t border-slate-200 dark:border-white/10 flex items-center justify-between text-xs">
-                  <span className="text-slate-500 dark:text-slate-400">Active Integrations:</span>
-                  <div className="flex items-center gap-2">
-                    {linkedInEnabled && <span className="px-2 py-0.5 rounded-full bg-[#0077b5]/10 text-[#0077b5] font-bold text-[10px]">LinkedIn</span>}
-                    {gmailEnabled && <span className="px-2 py-0.5 rounded-full bg-[#ea4335]/10 text-[#ea4335] font-bold text-[10px]">Gmail</span>}
-                    {stripeEnabled && <span className="px-2 py-0.5 rounded-full bg-[#635bff]/10 text-[#635bff] font-bold text-[10px]">Stripe</span>}
-                  </div>
-                </div>
+                <ul className="text-[11px] text-slate-600 dark:text-slate-300 space-y-1 list-disc list-inside">
+                  <li>Tenant isolated in Neon Database with row-level <code className="font-mono">tenant_id</code> security.</li>
+                  <li>Hierarchical RBAC assigned to master administrator account.</li>
+                  <li>Instant welcome notification dispatched via Resend Email API (<code className="font-mono">re_LXiiEzAS...</code>).</li>
+                </ul>
               </div>
             </div>
           )}
 
         </div>
 
-        {/* Modal Bottom Controls */}
-        <div className="p-4 sm:p-6 border-t border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-[#070a12] flex items-center justify-between">
+        {/* Modal Footer */}
+        <div className="p-4 border-t border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-[#05080f] flex items-center justify-between">
           {currentStep > 1 ? (
             <button
               type="button"
-              onClick={() => setCurrentStep(prev => prev - 1)}
-              className="px-4 py-2 rounded-xl border border-slate-300 dark:border-white/10 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-white/5 text-xs font-bold transition cursor-pointer flex items-center gap-2"
+              onClick={() => setCurrentStep(currentStep - 1)}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium bg-white dark:bg-slate-800 border border-slate-200 dark:border-white/10 text-slate-700 dark:text-slate-200 hover:bg-slate-100 transition cursor-pointer"
             >
-              <ArrowLeft className="w-4 h-4" />
-              <span>Previous Step</span>
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Back</span>
             </button>
-          ) : (
+          ) : <div />}
+
+          <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl text-slate-500 hover:text-slate-700 dark:hover:text-white text-xs font-medium transition cursor-pointer"
+              className="px-4 py-2 rounded-xl text-xs font-medium text-slate-500 hover:text-slate-900 dark:hover:text-white transition cursor-pointer"
             >
               Cancel
             </button>
-          )}
 
-          {currentStep < 5 ? (
-            <button
-              type="button"
-              onClick={() => {
-                if (currentStep === 1 && !companyName.trim()) {
-                  showToast('Please enter your Company Name to continue.', 'warning');
-                  return;
-                }
-                if (currentStep === 2 && (!adminEmail.trim() || !adminName.trim())) {
-                  showToast('Please enter Master Admin name and email.', 'warning');
-                  return;
-                }
-                setCurrentStep(prev => prev + 1);
-              }}
-              className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md shadow-indigo-600/30 transition cursor-pointer flex items-center gap-2"
-            >
-              <span>Continue to Step {currentStep + 1}</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={handleCompleteOnboarding}
-              disabled={submitting}
-              className="px-7 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 via-blue-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white text-xs font-bold shadow-lg shadow-indigo-600/30 transition cursor-pointer flex items-center gap-2"
-            >
-              {submitting ? (
-                <span>Provisioning Tenant...</span>
-              ) : (
-                <>
-                  <Zap className="w-4 h-4 text-amber-300" />
-                  <span>Launch ALM Nexus Workspace</span>
-                </>
-              )}
-            </button>
-          )}
+            {currentStep < 4 ? (
+              <button
+                type="button"
+                onClick={() => setCurrentStep(currentStep + 1)}
+                className="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white transition shadow-md shadow-indigo-600/20 cursor-pointer"
+              >
+                <span>Continue</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleCompleteOnboarding}
+                disabled={submitting}
+                className="inline-flex items-center gap-1.5 px-6 py-2 rounded-xl text-xs font-extrabold bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white transition shadow-lg shadow-emerald-600/30 cursor-pointer disabled:opacity-50"
+              >
+                <Sparkles className={`w-4 h-4 ${submitting ? 'animate-spin' : ''}`} />
+                <span>{submitting ? 'Provisioning Workspace...' : 'Launch Company Workspace'}</span>
+              </button>
+            )}
+          </div>
         </div>
 
       </div>

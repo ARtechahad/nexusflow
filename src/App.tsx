@@ -17,6 +17,7 @@ import { FreeApiToolsView } from './components/FreeApiToolsView';
 import { GmailWorkspaceView } from './components/GmailWorkspaceView';
 import { DepartmentalTrackingView } from './components/DepartmentalTrackingView';
 import { TenantOnboardingModal } from './components/TenantOnboardingModal';
+import { UserProfileDashboard } from './components/UserProfileDashboard';
 import { ActivityFeedDrawer } from './components/ActivityFeedDrawer';
 import { CompanyWikiModal } from './components/CompanyWikiModal';
 import { PlatformHealthModal } from './components/PlatformHealthModal';
@@ -43,6 +44,7 @@ import { DiscordExportModal } from './components/DiscordExportModal';
 import { ToastNotification } from './components/ToastNotification';
 import { RoleLoginView } from './components/RoleLoginView';
 import { RoleRouteGuard } from './components/RoleRouteGuard';
+import { ThemeToggle } from './components/ThemeToggle';
 import { OfflineSyncBanner } from './components/OfflineSyncBanner';
 import { LeadFlowLandingView } from './components/LeadFlowLandingView';
 import { DocsView } from './components/DocsView';
@@ -256,7 +258,9 @@ const AppContent: React.FC = () => {
           </RoleRouteGuard>
         );
       case 'leadflow':
-        return <LeadFlowLandingView onEnterWorkspace={() => setActiveTab('pipeline')} />;
+        return <LeadFlowLandingView onEnterWorkspace={() => setActiveTab('profile')} />;
+      case 'profile':
+        return <UserProfileDashboard />;
       case 'docs':
         return (
           <DocsView

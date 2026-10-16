@@ -60,7 +60,8 @@ export const TopHeader: React.FC<TopHeaderProps> = ({ onOpenMobileSidebar }) => 
     chat: { title: 'Team Collaboration Hub', subtitle: 'Internal channels for Sales, Devs & Operations' },
     vault: { title: 'Encrypted Credential Vault', subtitle: 'RBAC protected hosting, Git & domain credentials' },
     integrations: { title: 'Webhooks & External Connectors', subtitle: 'Live Stripe, PayPal IPN, Upwork & Discord channels' },
-    portal: { title: 'Isolated Client Portal', subtitle: 'Live milestone reviews, invoice settlement & handover archive' }
+    portal: { title: 'Isolated Client Portal', subtitle: 'Live milestone reviews, invoice settlement & handover archive' },
+    profile: { title: 'Personal Profile & Workspaces', subtitle: 'Account Identity, Multi-Tenant Workspaces & Registration' }
   };
 
   const currentViewMeta = tabTitles[activeTab] || { title: 'Operations Dashboard', subtitle: 'Client Operations Suite' };

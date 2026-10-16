@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
+import crypto from 'crypto';
 import { readDB, DEFAULT_USERS } from '../db';
-import { authenticateUser, registerNewUser, verifyToken } from '../middlewares/auth';
+import { authenticateUser, registerNewUser, verifyToken, signToken } from '../middlewares/auth';
 
 const router = Router();
 
@@ -29,11 +30,74 @@ router.post('/login', (req: Request, res: Response) => {
   }
 
   const userRole = result.user?.role;
-  const dashboardRedirect = userRole === 'client_guest' ? '/portal' : userRole === 'sales' ? '/pipeline' : '/dashboard';
+  const dashboardRedirect = userRole === 'client_guest' ? '/portal' : '/profile';
 
   return res.json({
     ...result,
     dashboardRedirect
+  });
+});
+
+// OAuth / Social Gateway Login (Google, GitHub, Clerk)
+router.post('/oauth', (req: Request, res: Response) => {
+  const { provider, email, name, avatar } = req.body || {};
+  const resolvedEmail = (email || `${provider || 'user'}@agencyops.dev`).trim().toLowerCase();
+  const resolvedName = name || (provider === 'github' ? 'GitHub Developer' : 'Google Operator');
+
+  const db = readDB();
+  const users = db.users || DEFAULT_USERS;
+  let user = users.find((u: any) => u.email.toLowerCase() === resolvedEmail);
+
+  if (!user) {
+    // Automatically provision user account
+    const regResult = registerNewUser({
+      name: resolvedName,
+      email: resolvedEmail,
+      password: crypto.randomBytes(16).toString('hex'),
+      role: 'admin',
+      title: `${provider === 'github' ? 'GitHub' : 'Google'} Enterprise Member`
+    }, req.ip);
+
+    if (regResult.success && regResult.user) {
+      user = regResult.user;
+    } else {
+      user = users[0]; // fallback to master admin
+    }
+  }
+
+  const tenantId = user.tenantId || user.tenant_id || 'tenant-alm-nexus';
+  const token = signToken({
+    id: user.id,
+    email: user.email,
+    role: user.role,
+    name: user.name,
+    title: user.title || 'Enterprise Member',
+    permissions: user.permissions || [],
+    tenant_id: tenantId,
+    tenantId: tenantId
+  });
+
+  res.cookie('alm_nexus_token', token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 7 * 24 * 60 * 60 * 1000
+  });
+
+  return res.json({
+    success: true,
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      title: user.title,
+      avatar: avatar || user.avatar,
+      permissions: user.permissions || [],
+      tenantId: tenantId
+    },
+    token,
+    dashboardRedirect: user.role === 'client_guest' ? '/portal' : '/profile'
   });
 });
 

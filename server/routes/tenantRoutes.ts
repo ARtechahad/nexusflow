@@ -11,6 +11,7 @@ import {
   logAuditAction
 } from '../db';
 import { signToken, AuthenticatedRequest } from '../middlewares/auth';
+import { resendService } from '../services/resendService';
 
 const router = Router();
 
@@ -231,6 +232,34 @@ router.post('/onboard', (req: Request, res: Response) => {
   db.activityFeed = [onboardingActivity, ...(db.activityFeed || DEFAULT_ACTIVITY_FEED)];
 
   saveDB(db);
+
+  // Trigger automated welcome email via Resend with telemetry logging
+  resendService.sendEmail({
+    to: adminUser.email,
+    subject: `Welcome to ${companyName} — Workspace Provisioned`,
+    html: `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; background: #0f172a; color: #f8fafc; border-radius: 16px;">
+        <h1 style="color: #6366f1; margin-bottom: 8px;">Welcome to ${companyName}</h1>
+        <p style="color: #94a3b8; font-size: 14px;">Your multi-tenant enterprise workspace has been securely provisioned with Neon DB row-level isolation.</p>
+        <div style="background: #1e293b; padding: 16px; border-radius: 12px; margin: 20px 0;">
+          <p style="margin: 4px 0; font-size: 13px;"><strong>Tenant ID:</strong> <code>${tenantId}</code></p>
+          <p style="margin: 4px 0; font-size: 13px;"><strong>Administrator:</strong> ${adminUser.name} (${adminUser.email})</p>
+          <p style="margin: 4px 0; font-size: 13px;"><strong>Role:</strong> Chief Executive Officer (CEO)</p>
+          <p style="margin: 4px 0; font-size: 13px;"><strong>Industry:</strong> ${businessInfo?.industry || 'B2B Services'}</p>
+        </div>
+        <p style="font-size: 12px; color: #64748b;">Dispatched securely via Resend API (Key: re_LXiiEzAS...)</p>
+      </div>
+    `,
+    text: `Welcome to ${companyName}! Your tenant ${tenantId} is now active. Admin: ${adminUser.name} (${adminUser.email}).`,
+    tenantId: tenantId,
+    metadata: {
+      action: 'tenant_onboarded',
+      tenantId: tenantId,
+      companyName: companyName
+    }
+  }).catch((err: any) => {
+    console.warn('[TenantRoutes] Resend welcome email non-blocking notice:', err?.message || err);
+  });
 
   // Sign JWT session token for instant authenticated onboarding experience
   const token = signToken({

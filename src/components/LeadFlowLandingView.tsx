@@ -438,18 +438,18 @@ export const LeadFlowLandingView: React.FC<LeadFlowLandingViewProps> = ({
               <ArrowUpRight className="w-3.5 h-3.5" />
             </button>
 
-            {/* Launch / Access Operations Platform Button */}
+            {/* Unified Authentication & Navigation Flow */}
             {currentUser ? (
               <button
                 type="button"
                 onClick={() => {
                   if (onEnterWorkspace) onEnterWorkspace();
-                  else setActiveTab('pipeline');
+                  else setActiveTab('profile');
                 }}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 text-xs font-semibold shadow-xs transition cursor-pointer"
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-600/30 transition cursor-pointer"
               >
-                <Layers className="w-3.5 h-3.5 text-slate-300" />
-                <span>Open Operations Hub</span>
+                <Layers className="w-3.5 h-3.5 text-white" />
+                <span>Personal Profile &amp; Dashboard</span>
               </button>
             ) : (
               <button
@@ -457,10 +457,10 @@ export const LeadFlowLandingView: React.FC<LeadFlowLandingViewProps> = ({
                 onClick={() => {
                   if (onOpenLoginModal) onOpenLoginModal();
                 }}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-750 text-white text-xs font-semibold transition cursor-pointer shadow-xs"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl border border-slate-700 bg-slate-800/90 hover:bg-slate-750 text-white text-xs font-bold transition cursor-pointer shadow-md shadow-black/20 hover:border-slate-600"
               >
-                <Lock className="w-3.5 h-3.5 text-slate-300" />
-                <span>Team / Client Login</span>
+                <Lock className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Login</span>
               </button>
             )}
           </div>

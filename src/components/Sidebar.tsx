@@ -74,6 +74,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
 
   // Role-based navigation matrix
   const navItems = [
+    { id: 'profile', label: 'User Profile & Hub', icon: User, roles: ['admin', 'ceo', 'bd_head', 'sales', 'coordinator', 'project_manager', 'developer', 'designer', 'collaborator', 'client_guest', 'team_member'] },
     { id: 'leadflow', label: 'LeadFlow Agency (GTM)', icon: Sparkles, badge: 'Agency Hub', roles: ['admin', 'ceo', 'bd_head', 'sales', 'coordinator', 'project_manager', 'developer', 'designer', 'collaborator', 'client_guest', 'team_member'] },
     { id: 'pipeline', label: 'Pipeline & Deals', icon: Kanban, roles: ['admin', 'ceo', 'bd_head', 'sales', 'coordinator', 'project_manager', 'developer', 'designer', 'collaborator'] },
     { id: 'departmental', label: 'Department Velocity', icon: Layers, roles: ['admin', 'ceo', 'bd_head', 'coordinator', 'project_manager', 'sales', 'developer', 'designer'] },
@@ -145,7 +146,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
           </div>
 
           {/* Active Persona / Role Badge Card */}
-          <div className="mt-3 p-2.5 rounded-lg bg-slate-50 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+          <div 
+            onClick={() => handleNavClick('profile')}
+            className="mt-3 p-2.5 rounded-lg bg-slate-50 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 flex items-center justify-between cursor-pointer hover:border-indigo-500/50 transition-colors"
+            title="View personal profile & registered workspaces"
+          >
             <div className="flex items-center gap-2 overflow-hidden">
               <div className="w-7 h-7 rounded-md bg-slate-900 text-white dark:bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-xs shrink-0">
                 {currentUser?.name ? currentUser.name[0] : (role === 'client_guest' ? 'C' : 'A')}
@@ -161,7 +166,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
             </div>
 
             <button
-              onClick={() => setIsAuthModalOpen(true)}
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsAuthModalOpen(true);
+              }}
               className="px-2 py-1 rounded-md bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-[10px] font-semibold border border-slate-300 dark:border-slate-700 transition cursor-pointer shrink-0"
               title="Switch user role or log in"
             >

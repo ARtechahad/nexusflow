@@ -35,7 +35,7 @@ import { offlineSyncService } from '../services/offlineSyncService';
 import { googleSheetsService } from '../services/googleSheetsService';
 import { localDatabase } from '../services/localDatabaseFallback';
 
-export type AppNavTab = 'sop' | 'pipeline' | 'outreach' | 'outreach_suite' | 'docs' | 'inbox' | 'analytics' | 'integrations' | 'commissions' | 'chat' | 'vault' | 'portal' | 'free_apis' | 'gmail' | 'departmental' | 'wiki' | 'leadflow';
+export type AppNavTab = 'sop' | 'pipeline' | 'outreach' | 'outreach_suite' | 'docs' | 'inbox' | 'analytics' | 'integrations' | 'commissions' | 'chat' | 'vault' | 'portal' | 'free_apis' | 'gmail' | 'departmental' | 'wiki' | 'leadflow' | 'profile';
 
 interface AppContextType {
   role: UserRole;
@@ -46,6 +46,7 @@ interface AppContextType {
   firebaseUser: FirebaseUser | null;
   isFirebaseConnected: boolean;
   loginWithGoogle: () => Promise<{ success: boolean; message?: string; cancelled?: boolean }>;
+  loginWithOAuth: (provider: 'github' | 'google', fallbackUser?: { name: string; email: string; avatar?: string }) => Promise<{ success: boolean; message?: string }>;
   login: (email: string, password: string) => Promise<{ success: boolean; message?: string }>;
   logout: () => void;
   switchPersona: (role: UserRole) => Promise<void>;
@@ -614,6 +615,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         // Refresh projects from Firestore
         await refreshProjects();
 
+        setActiveTabState('profile');
         showToast(`Signed in with Google as ${userObj.name}!`, 'success');
         return { success: true };
       } else if (res.cancelled) {
@@ -626,6 +628,38 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
     } catch (e: any) {
       return { success: false, message: e.message || 'Authentication error.' };
+    }
+  };
+
+  const loginWithOAuth = async (
+    provider: 'github' | 'google',
+    fallbackUser?: { name: string; email: string; avatar?: string }
+  ): Promise<{ success: boolean; message?: string }> => {
+    try {
+      const email = fallbackUser?.email || (provider === 'github' ? 'dev@agencyops.dev' : 'admin@agencyops.dev');
+      const name = fallbackUser?.name || (provider === 'github' ? 'GitHub Developer' : 'Google Operator');
+      const avatar = fallbackUser?.avatar || (provider === 'github' ? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150' : undefined);
+
+      const res = await fetch('/api/auth/oauth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider, email, name, avatar })
+      });
+      const data = await res.json();
+      if (res.ok && data.success && data.token) {
+        setAuthToken(data.token);
+        setCurrentUser(data.user);
+        setRoleState(data.user.role);
+        localStorage.setItem('alm_nexus_token', data.token);
+        localStorage.setItem('alm_nexus_user', JSON.stringify(data.user));
+        showToast(`Authenticated via ${provider === 'github' ? 'GitHub' : 'Google'} as ${data.user.name}!`, 'success');
+        setActiveTabState('profile');
+        return { success: true };
+      } else {
+        return { success: false, message: data.message || 'OAuth authentication failed.' };
+      }
+    } catch (e: any) {
+      return { success: false, message: e.message || 'Network error during OAuth.' };
     }
   };
 
@@ -651,10 +685,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         showToast(`Welcome back, ${data.user.name} (${data.user.title || data.user.role})!`);
         if (data.user.role === 'client_guest') {
           setActiveTabState('portal');
-        } else if (data.user.role === 'sales') {
-          setActiveTabState('pipeline');
-        } else if (data.user.role === 'developer') {
-          setActiveTabState('pipeline');
+        } else {
+          setActiveTabState('profile');
         }
         return { success: true };
       } else {
@@ -974,6 +1006,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         firebaseUser,
         isFirebaseConnected,
         loginWithGoogle,
+        loginWithOAuth,
         login,
         logout,
         switchPersona,
