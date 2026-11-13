@@ -136,6 +136,9 @@ interface AppContextType {
   // Global Command Palette (⌘K)
   isCommandPaletteOpen: boolean;
   setIsCommandPaletteOpen: (open: boolean) => void;
+  // Collapsible Sidebar Rail
+  sidebarCollapsed: boolean;
+  setSidebarCollapsed: (collapsed: boolean) => void;
   // Creative Studio & Media Vault
   isCreativeStudioOpen: boolean;
   setIsCreativeStudioOpen: (open: boolean) => void;
@@ -196,7 +199,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         return legacy as ThemeMode;
       }
     }
-    return 'dark';
+    return 'light';
   });
 
   const [systemPrefersDark, setSystemPrefersDark] = useState<boolean>(() => {
@@ -289,7 +292,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // Activity Feed & Notifications
   const [isActivityFeedOpen, setIsActivityFeedOpen] = useState<boolean>(false);
   const [activityFeed, setActivityFeed] = useState<ActivityFeedItem[]>([]);
-  const [unreadActivityCount, setUnreadActivityCount] = useState<number>(2);
+  const [unreadActivityCount, setUnreadActivityCount] = useState<number>(0);
 
   // Wiki & Knowledge Base
   const [isWikiModalOpen, setIsWikiModalOpen] = useState<boolean>(false);
@@ -308,7 +311,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
     return null;
   });
-  const [unreadInboxCount, setUnreadInboxCount] = useState<number>(3);
+  const [unreadInboxCount, setUnreadInboxCount] = useState<number>(0);
   const [projects, setProjects] = useState<ProjectLead[]>(() => {
     return localDatabase.getProjects();
   });
@@ -330,6 +333,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [automatedTestsPassedCount, setAutomatedTestsPassedCount] = useState<number>(17);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isCreativeStudioOpen, setIsCreativeStudioOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsedState] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('clientops_sidebar_collapsed') === 'true';
+    }
+    return false;
+  });
+
+  const setSidebarCollapsed = (collapsed: boolean) => {
+    setSidebarCollapsedState(collapsed);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('clientops_sidebar_collapsed', String(collapsed));
+    }
+  };
 
   // Load Tenants from API
   const refreshTenants = async () => {
@@ -1090,6 +1106,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setScaleMode,
         isCommandPaletteOpen,
         setIsCommandPaletteOpen,
+        sidebarCollapsed,
+        setSidebarCollapsed,
         isCreativeStudioOpen,
         setIsCreativeStudioOpen
       }}

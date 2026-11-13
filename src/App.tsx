@@ -21,16 +21,7 @@ import { UserProfileDashboard } from './components/UserProfileDashboard';
 import { ActivityFeedDrawer } from './components/ActivityFeedDrawer';
 import { CompanyWikiModal } from './components/CompanyWikiModal';
 import { PlatformHealthModal } from './components/PlatformHealthModal';
-import { 
-  ShieldCheck, 
-  CheckCircle2, 
-  TrendingUp, 
-  Database, 
-  Server,
-  Zap,
-  Activity,
-  ArrowUpRight
-} from 'lucide-react';
+import { ExecutiveOperationsRibbon } from './components/ExecutiveOperationsRibbon';
 
 // Modals
 import { NewClientLeadModal } from './components/NewClientLeadModal';
@@ -44,7 +35,6 @@ import { DiscordExportModal } from './components/DiscordExportModal';
 import { ToastNotification } from './components/ToastNotification';
 import { RoleLoginView } from './components/RoleLoginView';
 import { RoleRouteGuard } from './components/RoleRouteGuard';
-import { ThemeToggle } from './components/ThemeToggle';
 import { OfflineSyncBanner } from './components/OfflineSyncBanner';
 import { LeadFlowLandingView } from './components/LeadFlowLandingView';
 import { DocsView } from './components/DocsView';
@@ -52,7 +42,6 @@ import { GlobalCommandPalette } from './components/GlobalCommandPalette';
 import { CreativeStudioModal } from './components/CreativeStudioModal';
 import { EmbeddedGeminiChatbot } from './components/EmbeddedGeminiChatbot';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { ParticleBackground } from './components/ParticleBackground';
 import { X } from 'lucide-react';
 
 const AppContent: React.FC = () => {
@@ -76,11 +65,8 @@ const AppContent: React.FC = () => {
     setIsCreativeStudioOpen,
     toasts,
     dismissToast,
-    projects,
-    formatMoney,
     automatedTestsPassedCount,
-    databaseStatus,
-    role
+    sidebarCollapsed
   } = useApp();
 
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -166,10 +152,6 @@ const AppContent: React.FC = () => {
       </div>
     );
   }
-
-  const totalPipelineValue = projects.reduce((acc, p) => acc + (p.finalPrice || p.estimatedPrice || 0), 0);
-  const advancesCleared = projects.filter(p => p.advancePaid).length;
-  const inStaging = projects.filter(p => p.internalQAPassed && !p.domainTransferred).length;
 
   const renderActiveView = () => {
     switch (activeTab) {
@@ -285,93 +267,37 @@ const AppContent: React.FC = () => {
         setMobileOpen={setMobileSidebarOpen} 
       />
 
-      {/* Main Workspace Area (offset by Left Sidebar on lg screens) */}
-      <div className="lg:pl-72 flex flex-col flex-1 min-h-screen w-full">
+      {/* Main Workspace Area (offset dynamically by Collapsible Left Sidebar on lg screens) */}
+      <div className={`${sidebarCollapsed ? 'lg:pl-16' : 'lg:pl-60'} flex flex-col flex-1 min-h-screen w-full transition-all duration-200 ease-in-out`}>
         
         {/* Top Header */}
         <TopHeader onOpenMobileSidebar={() => setMobileSidebarOpen(true)} />
 
-        {/* Executive Operations Telemetry Ribbon (Visible for Internal Roles) */}
-        {role !== 'client_guest' && (
-          <div className="border-b border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-[#0a192f]/90 backdrop-blur-md px-4 sm:px-6 lg:px-8 py-2">
-            <div className="flex items-center justify-between gap-4 flex-wrap text-xs">
-              
-              {/* Metric Badges */}
-              <div className="flex items-center gap-4 flex-wrap">
-                <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
-                  <TrendingUp className="w-3.5 h-3.5 text-slate-900 dark:text-slate-300" />
-                  <span className="text-slate-500 dark:text-slate-400 font-medium">Pipeline:</span>
-                  <span className="font-semibold text-slate-900 dark:text-white font-mono">{formatMoney(totalPipelineValue)}</span>
-                </div>
-
-                <div className="h-3 w-px bg-slate-200 dark:bg-slate-800 hidden sm:block" />
-
-                <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
-                  <Zap className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400" />
-                  <span className="text-slate-500 dark:text-slate-400 font-medium">50% Deposits:</span>
-                  <span className="font-semibold text-amber-600 dark:text-amber-300 font-mono">{advancesCleared} / {projects.length}</span>
-                </div>
-
-                <div className="h-3 w-px bg-slate-200 dark:bg-slate-800 hidden md:block" />
-
-                <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300 hidden md:flex">
-                  <Activity className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
-                  <span className="text-slate-500 dark:text-slate-400 font-medium">In-Flight QA:</span>
-                  <span className="font-semibold text-slate-800 dark:text-slate-200 font-mono">{inStaging} Active</span>
-                </div>
-
-                <div className="h-3 w-px bg-slate-200 dark:bg-slate-800 hidden lg:block" />
-
-                <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 hidden lg:flex">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                  <span className="text-slate-500 dark:text-slate-400 font-medium">SOP Gate:</span>
-                  <span className="font-semibold text-emerald-600 dark:text-emerald-300 font-mono">{automatedTestsPassedCount}/17 Passed</span>
-                </div>
-              </div>
-
-              {/* Status Indicator */}
-              <div className="flex items-center gap-3 ml-auto">
-                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[11px] font-mono font-medium">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                  <span>{databaseStatus?.engine === 'postgresql' ? 'Cloud SQL Active' : 'Persistence Ready'}</span>
-                </div>
-
-                {activeTab !== 'sop' && (
-                  <button
-                    onClick={() => setActiveTab('sop')}
-                    className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition flex items-center gap-1 text-[11px] font-medium"
-                  >
-                    <span>SOP Rules</span>
-                    <ArrowUpRight className="w-3 h-3" />
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Executive Operations Telemetry Ribbon (Responsive CSS Grid for Core Modules) */}
+        <ExecutiveOperationsRibbon />
 
         {/* Main Content Body */}
-        <main className="px-4 sm:px-6 lg:px-8 py-6 flex-1 w-full animate-fadeIn max-w-7xl">
+        <main className="px-4 sm:px-6 lg:px-8 py-6 flex-1 w-full animate-fadeIn max-w-[1440px] mx-auto">
           {renderActiveView()}
         </main>
 
-        {/* Clean Corporate Enterprise Footer */}
-        <footer className="border-t border-slate-200 dark:border-slate-800 py-4 px-4 sm:px-6 lg:px-8 bg-slate-900 dark:bg-[#0a192f] text-xs text-slate-400 flex flex-col sm:flex-row items-center justify-between gap-2 shadow-xs">
-          <div className="flex items-center gap-2">
-            <span className="font-semibold text-white">AgencyOps ALM</span>
-            <span>&bull;</span>
-            <span>Client Handling &amp; Project Operations Suite</span>
-          </div>
+        {/* Clean Enterprise Footer */}
+        <footer className="border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0a192f] text-xs text-slate-600 dark:text-slate-400">
+          <div className="max-w-[1440px] mx-auto py-3.5 px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-slate-900 dark:text-white">ClientOps Operations Suite</span>
+              <span>&bull;</span>
+              <span>International Client Handling &amp; Project Operations</span>
+            </div>
 
-          <div className="flex items-center gap-3 text-[11px] font-mono text-slate-400">
-            <span className="text-emerald-400 font-medium flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-              SOP Gate 17/17 Passed
-            </span>
-            <span>&bull;</span>
-            <span>GDPR Ready</span>
-            <span>&bull;</span>
-            <span>v2.7.0 Enterprise</span>
+            <div className="flex items-center gap-3 text-[11px] font-mono tabular-nums text-slate-600 dark:text-slate-400">
+              <span className="text-emerald-700 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                SOP Gate {automatedTestsPassedCount}/17
+              </span>
+              <span>&bull;</span>
+              <span>Multi-Tenant Isolation</span>
+            </div>
           </div>
         </footer>
       </div>

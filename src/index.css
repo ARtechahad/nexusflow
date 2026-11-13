@@ -65,23 +65,25 @@
 }
 
 /* Enterprise Structured Surface & Card Utility Classes */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
 html.dark .glass-surface {
-  background: rgba(10, 25, 47, 0.90);
+  background: rgba(10, 25, 47, 0.92);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 html.light .glass-surface {
-  background: rgba(255, 255, 255, 0.96);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(226, 232, 240, 0.9);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
 html.dark .glass-card {
-  background: rgba(15, 23, 42, 0.85);
+  background: rgba(15, 23, 42, 0.88);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -91,23 +93,23 @@ html.dark .glass-card {
 html.light .glass-card {
   background: #ffffff;
   border: 1px solid #e2e8f0;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
 .glass-card-hover {
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 html.dark .glass-card-hover:hover {
   transform: translateY(-1px);
-  border-color: rgba(16, 185, 129, 0.3);
+  border-color: rgba(99, 102, 241, 0.35);
   box-shadow: 0 6px 20px -2px rgba(0, 0, 0, 0.4);
 }
 
 html.light .glass-card-hover:hover {
   transform: translateY(-1px);
-  border-color: rgba(15, 23, 42, 0.2);
-  box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.06);
+  border-color: #cbd5e1;
+  box-shadow: 0 6px 16px -4px rgba(15, 23, 42, 0.08);
 }
 
 html.dark .glass-navbar {
@@ -135,7 +137,7 @@ html.dark .glass-modal {
 html.light .glass-modal {
   background: #ffffff;
   border: 1px solid #e2e8f0;
-  box-shadow: 0 16px 36px -8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 20px 40px -12px rgba(15, 23, 42, 0.14);
 }
 
 /* Custom refined scrollbar */

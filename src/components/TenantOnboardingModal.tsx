@@ -120,10 +120,10 @@ export const TenantOnboardingModal: React.FC<TenantOnboardingModalProps> = ({ is
       companyName,
       logoUrl: '/icon.svg',
       branding: {
-        primaryColor: '#6366f1',
+        primaryColor: '#4f46e5',
         accentColor: '#06b6d4',
-        theme: 'dark',
-        geometricStyle: 'cyber_glass',
+        theme: 'light',
+        geometricStyle: 'enterprise_clean',
         logoPreset: 'hexagon_nexus'
       },
       businessInfo: {
@@ -150,7 +150,7 @@ export const TenantOnboardingModal: React.FC<TenantOnboardingModalProps> = ({ is
         linkedIn: { connected: true, accountHandle: '@enterprise-growth', syncIntervalMinutes: 15, autoOutreachEnabled: true },
         gmail: { connected: true, accountEmail: businessEmail || adminEmail, threadTracking: true, autoDraftReplies: true },
         stripe: { connected: true, liveMode: true, currency: operatingCurrency.split(' ')[0] },
-        resend: { apiKey: 're_LXiiEzAS_86mprrkSQfUGaJHZRK25Pp18', verified: true }
+        resend: { verified: true }
       }
     };
 
@@ -489,7 +489,7 @@ export const TenantOnboardingModal: React.FC<TenantOnboardingModalProps> = ({ is
                 <ul className="text-[11px] text-slate-600 dark:text-slate-300 space-y-1 list-disc list-inside">
                   <li>Tenant isolated in Neon Database with row-level <code className="font-mono">tenant_id</code> security.</li>
                   <li>Hierarchical RBAC assigned to master administrator account.</li>
-                  <li>Instant welcome notification dispatched via Resend Email API (<code className="font-mono">re_LXiiEzAS...</code>).</li>
+                  <li>Instant welcome notification dispatched via Resend Email Service.</li>
                 </ul>
               </div>
             </div>

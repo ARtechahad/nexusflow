@@ -281,7 +281,7 @@ export const RoleLoginView: React.FC<RoleLoginViewProps> = ({ onSuccess }) => {
           </div>
           <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
             <Mail className="w-4 h-4 text-purple-500" />
-            <span>Resend Dispatch: <strong>re_LXiiEzAS...</strong></span>
+            <span>Resend Dispatch: <strong>Transactional Active</strong></span>
           </div>
         </div>
 

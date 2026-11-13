@@ -57,6 +57,7 @@ import { generateDefaultTasksForProject } from '../lib/timeTrackingDefaults';
 import { SkeletonKanban, SkeletonTable } from './SkeletonLoader';
 import { EmptyState } from './EmptyState';
 import { KanbanTaskSwimlanes } from './KanbanTaskSwimlanes';
+import { ExecutiveTriadOverview } from './ExecutiveTriadOverview';
 
 export const ProjectsPipeline: React.FC = () => {
   const {
@@ -393,32 +394,53 @@ export const ProjectsPipeline: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
-      
-      {/* Top Filter and Actions Bar */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 glass-card p-4 rounded-2xl border border-white/10 shadow-xl">
-        
-        {/* Search */}
-        <div className="relative w-full sm:w-80">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            id="input-pipeline-search"
-            type="text"
-            placeholder={t('searchPlaceholder')}
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border border-white/10 bg-slate-900/60 text-white placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
-          />
+    <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+      {/* Executive Operations Triad: Live Deals Pipeline, Cold Outreach Stats & Commission Ledger */}
+      <div className="xl:col-span-12 space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <h2 className="text-lg sm:text-xl font-extrabold text-slate-950 dark:text-white tracking-tight">
+              Executive Operations Dashboard
+            </h2>
+            <p className="text-xs font-medium text-slate-600 dark:text-slate-400">
+              Real-time overview across Live Deals Pipeline, Cold Outreach Stats, and Commission Ledger.
+            </p>
+          </div>
+          <div className="hidden sm:flex items-center gap-2">
+            <AutoSaveIndicator
+              status={pipelineSaveStatus}
+              lastSavedAt={pipelineLastSaved}
+              size="sm"
+            />
+          </div>
         </div>
+        <ExecutiveTriadOverview />
+      </div>
 
-        {/* Dropdowns and View Switcher */}
-        <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
+      {/* Top Filter and Actions Grid Bar */}
+      <div className="xl:col-span-12 bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-center">
+          {/* Search */}
+          <div className="relative lg:col-span-3">
+            <Search className="w-4 h-4 text-slate-500 dark:text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              id="input-pipeline-search"
+              type="text"
+              placeholder={t('searchPlaceholder')}
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-950 dark:text-white placeholder:text-slate-500 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+
+          {/* Dropdowns and View Switcher */}
+          <div className="lg:col-span-9 flex flex-wrap items-center justify-start lg:justify-end gap-2">
           {/* Channel Filter */}
           <select
             id="select-pipeline-channel"
             value={selectedChannel}
             onChange={e => setSelectedChannel(e.target.value)}
-            className="px-2.5 py-1.5 text-xs rounded-xl border border-white/10 bg-slate-900/60 text-slate-300 focus:outline-hidden cursor-pointer"
+            className="px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:outline-hidden cursor-pointer"
           >
             <option value="all">All Channels (Upwork, LinkedIn...)</option>
             <option value="linkedin">LinkedIn</option>
@@ -432,7 +454,7 @@ export const ProjectsPipeline: React.FC = () => {
             id="select-pipeline-type"
             value={selectedType}
             onChange={e => setSelectedType(e.target.value)}
-            className="px-2.5 py-1.5 text-xs rounded-xl border border-white/10 bg-slate-900/60 text-slate-300 focus:outline-hidden cursor-pointer"
+            className="px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:outline-hidden cursor-pointer"
           >
             <option value="all">All Types (Landing, Store...)</option>
             <option value="landing">Landing Page ($200–$300)</option>
@@ -445,19 +467,20 @@ export const ProjectsPipeline: React.FC = () => {
             id="select-pipeline-score-tier"
             value={selectedScoreTier}
             onChange={e => setSelectedScoreTier(e.target.value)}
-            className="px-2.5 py-1.5 text-xs rounded-xl border border-white/10 bg-slate-900/60 text-slate-300 focus:outline-hidden cursor-pointer"
+            className="px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:outline-hidden cursor-pointer"
           >
             <option value="all">All Lead Scores</option>
-            <option value="vip">⚡ VIP Leads (88+)</option>
-            <option value="hot">🔥 Hot Leads (78-87)</option>
-            <option value="warm">⚠️ Warm Leads (50-77)</option>
-            <option value="cold">❄️ Cold Leads (&lt;50)</option>
+            <option value="vip">VIP Leads (88+)</option>
+            <option value="hot">Hot Leads (78-87)</option>
+            <option value="warm">Warm Leads (50-77)</option>
+            <option value="cold">Cold Leads (&lt;50)</option>
           </select>
 
           {/* Time Tracking & Active Timer Module Trigger */}
           <div className="flex items-center gap-1.5">
             {globalRunningTimer && (
               <button
+                type="button"
                 onClick={() => {
                   const targetProj = projects.find(p => p.id === globalRunningTimer.projectId) || projects[0];
                   if (targetProj) {
@@ -465,10 +488,10 @@ export const ProjectsPipeline: React.FC = () => {
                     setTimeTrackingInitialTab('timer');
                   }
                 }}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 text-xs font-mono font-bold animate-pulse hover:bg-emerald-500/30 transition cursor-pointer"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-500/20 border border-emerald-200 dark:border-emerald-500/40 text-emerald-700 dark:text-emerald-400 text-xs font-mono font-bold animate-pulse hover:bg-emerald-100 dark:hover:bg-emerald-500/30 transition cursor-pointer whitespace-nowrap"
                 title={`Active stopwatch timer on: ${globalRunningTimer.projectName || 'Active Task'} (${globalRunningTimer.taskTitle})`}
               >
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping inline-block" />
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping inline-block" />
                 <span className="hidden lg:inline">{globalRunningTimer.projectName ? `${globalRunningTimer.projectName}: ` : ''}</span>
                 <span>Timer Running</span>
               </button>
@@ -476,17 +499,18 @@ export const ProjectsPipeline: React.FC = () => {
 
             <button
               id="btn-pipeline-time-tracker"
+              type="button"
               onClick={() => {
                 const targetProj = projects[0] || null;
                 setTimeTrackingProject(targetProj);
                 setTimeTrackingInitialTab('tasks');
               }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/10 bg-slate-900/60 hover:bg-slate-800 text-slate-200 text-xs font-semibold shadow-xs transition cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-semibold shadow-2xs transition cursor-pointer whitespace-nowrap"
               title="Open Project Time Tracking & Developer Sprint Tasks"
             >
-              <Clock className="w-3.5 h-3.5 text-indigo-400" />
+              <Clock className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
               <span className="hidden sm:inline">Time Tracker</span>
-              <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded-full bg-indigo-500/20 text-indigo-300">
+              <span className="text-[11px] font-mono tabular-nums font-semibold text-indigo-600 dark:text-indigo-300">
                 {totalPipelineLoggedHours.toFixed(1)}h
               </span>
             </button>
@@ -496,9 +520,10 @@ export const ProjectsPipeline: React.FC = () => {
           {role !== 'collaborator' && (
             <button
               id="btn-score-all-leads"
+              type="button"
               onClick={handleScoreAllLeads}
               disabled={isScoringLeads}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-xs font-semibold shadow-xs transition"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold shadow-2xs transition cursor-pointer whitespace-nowrap"
               title="Calculate AI Lead Scores for all prospects"
             >
               <Sparkles className={`w-3.5 h-3.5 ${isScoringLeads ? 'animate-spin' : ''}`} />
@@ -507,14 +532,15 @@ export const ProjectsPipeline: React.FC = () => {
           )}
 
           {/* View Mode Toggle */}
-          <div className="flex items-center border border-white/10 rounded-xl p-0.5 bg-slate-900/60">
+          <div className="flex items-center border border-slate-200 dark:border-slate-700 rounded-lg p-0.5 bg-slate-100 dark:bg-slate-900">
             <button
               id="btn-view-kanban"
+              type="button"
               onClick={() => setViewMode('kanban')}
-              className={`p-1.5 rounded-lg transition duration-200 cursor-pointer ${
+              className={`p-1.5 rounded-md transition duration-150 cursor-pointer ${
                 viewMode === 'kanban'
-                  ? 'bg-slate-800/80 text-indigo-400 shadow-md'
-                  : 'text-slate-500 hover:text-slate-300'
+                  ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-2xs'
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'
               }`}
               title="Kanban Board View"
             >
@@ -522,11 +548,12 @@ export const ProjectsPipeline: React.FC = () => {
             </button>
             <button
               id="btn-view-table"
+              type="button"
               onClick={() => setViewMode('table')}
-              className={`p-1.5 rounded-lg transition duration-200 cursor-pointer ${
+              className={`p-1.5 rounded-md transition duration-150 cursor-pointer ${
                 viewMode === 'table'
-                  ? 'bg-slate-800/80 text-indigo-400 shadow-md'
-                  : 'text-slate-500 hover:text-slate-300'
+                  ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-2xs'
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'
               }`}
               title="Table Grid View"
             >
@@ -534,11 +561,12 @@ export const ProjectsPipeline: React.FC = () => {
             </button>
             <button
               id="btn-view-timeline"
+              type="button"
               onClick={() => setViewMode('timeline')}
-              className={`p-1.5 rounded-lg transition duration-200 cursor-pointer ${
+              className={`p-1.5 rounded-md transition duration-150 cursor-pointer ${
                 viewMode === 'timeline'
-                  ? 'bg-slate-800/80 text-indigo-400 shadow-md'
-                  : 'text-slate-500 hover:text-slate-300'
+                  ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-2xs'
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'
               }`}
               title="Project Timeline & Milestone Gantt View"
             >
@@ -548,32 +576,29 @@ export const ProjectsPipeline: React.FC = () => {
 
           {/* Kanban Sub-View Switcher (Tasks Swimlanes vs Deals Pipeline) */}
           {viewMode === 'kanban' && (
-            <div className="flex items-center p-0.5 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-slate-900/80 shadow-2xs">
+            <div className="flex items-center p-0.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-900">
               <button
                 type="button"
                 id="btn-kanban-tasks-swimlanes"
                 onClick={() => setKanbanSubView('tasks_swimlanes')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
                   kanbanSubView === 'tasks_swimlanes'
-                    ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-xs ring-1 ring-black/5 dark:ring-white/10'
-                    : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                    ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-2xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                 }`}
                 title="Categorize project tasks into Horizontal Swimlanes by Urgency Level (Critical, High, Medium, Low)"
               >
                 <Layers className="w-3.5 h-3.5 text-rose-500" />
                 <span>Task Swimlanes</span>
-                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-rose-500/15 text-rose-600 dark:text-rose-400 font-extrabold">
-                  Urgency
-                </span>
               </button>
               <button
                 type="button"
                 id="btn-kanban-deals-pipeline"
                 onClick={() => setKanbanSubView('deals_pipeline')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
                   kanbanSubView === 'deals_pipeline'
-                    ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-xs ring-1 ring-black/5 dark:ring-white/10'
-                    : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                    ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-2xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                 }`}
                 title="SOP Stages Deals Pipeline"
               >
@@ -595,15 +620,16 @@ export const ProjectsPipeline: React.FC = () => {
           {/* Google Workspace Suite (Sheets, Tasks, Calendar, Docs) */}
           {role !== 'collaborator' && (
             <button
+              type="button"
               onClick={() => {
                 setSelectedWorkspaceProject(projects[0] || null);
                 setWorkspaceModalTab('sheets');
                 setIsWorkspaceModalOpen(true);
               }}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-gradient-to-r from-emerald-600 to-indigo-600 hover:from-emerald-500 hover:to-indigo-500 text-white shadow-xs transition cursor-pointer border border-white/10"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 shadow-2xs transition cursor-pointer whitespace-nowrap"
               title="Google Workspace Suite: Sheets, Tasks, Calendar & Docs"
             >
-              <Layers className="w-3.5 h-3.5" />
+              <Layers className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
               <span className="hidden sm:inline">Google Workspace</span>
             </button>
           )}
@@ -612,40 +638,39 @@ export const ProjectsPipeline: React.FC = () => {
           {role !== 'collaborator' && (
             <button
               id="btn-pipeline-new-client"
+              type="button"
               onClick={() => setIsNewLeadModalOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs transition ml-auto sm:ml-0 cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-2xs transition ml-auto sm:ml-0 cursor-pointer whitespace-nowrap"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>{t('newLead')}</span>
             </button>
           )}
+          </div>
         </div>
       </div>
 
       {/* Partner Isolated Workspace Alert Banner */}
       {role === 'collaborator' && (
-        <div className="p-4 rounded-2xl bg-gradient-to-r from-cyan-950/80 via-slate-900 to-cyan-950/80 border-2 border-cyan-500/40 text-white flex flex-wrap items-center justify-between gap-3 shadow-md animate-fadeIn">
+        <div className="xl:col-span-12 p-4 rounded-xl bg-cyan-50 dark:bg-cyan-950/60 border border-cyan-200 dark:border-cyan-500/40 text-slate-950 dark:text-white flex flex-wrap items-center justify-between gap-3 shadow-2xs animate-fadeIn">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+            <div className="p-2.5 rounded-lg bg-cyan-100 dark:bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-500/40">
               <Building2 className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h4 className="text-sm font-bold text-cyan-200">
-                  Institutional Partner Workspace (Marcus Vance • Vance Capital)
+                <h4 className="text-sm font-bold text-slate-900 dark:text-cyan-200">
+                  Institutional Partner Workspace (Isolated NDA Role)
                 </h4>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
-                  Isolated NDA Role
-                </span>
               </div>
-              <p className="text-xs text-slate-300 mt-0.5">
+              <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
                 Displaying deal sheets explicitly shared with you for evaluation and appraisal sign-off. Internal agency commissions and sales payout rates are masked.
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2 text-xs">
-            <span className="px-3 py-1.5 rounded-xl bg-cyan-900/60 border border-cyan-700/50 text-cyan-200 font-semibold">
-              Authorized Deals: {roleFilteredProjects.length} of {projects.length} Total
+            <span className="px-3 py-1.5 rounded-lg bg-white dark:bg-cyan-900/60 border border-cyan-200 dark:border-cyan-700/50 text-cyan-800 dark:text-cyan-200 font-semibold font-mono tabular-nums">
+              Authorized Deals: {roleFilteredProjects.length} / {projects.length}
             </span>
           </div>
         </div>
@@ -653,45 +678,51 @@ export const ProjectsPipeline: React.FC = () => {
 
       {/* Collaborator No-Authorized-Deals Empty Notice */}
       {role === 'collaborator' && roleFilteredProjects.length === 0 && (
-        <EmptyState
-          icon={Building2}
-          title="No Authorized Deals Assigned"
-          description="You do not currently have any active deal sheets or project scopes explicitly shared with your collaborator account. When an agency administrator authorizes a deal for your evaluation, it will appear here."
-          variant="generic"
-        />
+        <div className="xl:col-span-12">
+          <EmptyState
+            icon={Building2}
+            title="No Authorized Deals Assigned"
+            description="You do not currently have any active deal sheets or project scopes explicitly shared with your collaborator account. When an agency administrator authorizes a deal for your evaluation, it will appear here."
+            variant="generic"
+          />
+        </div>
       )}
 
       {/* Security Rule 8 Reminder Banner */}
-      <div className="p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-between text-xs text-indigo-300">
-        <div className="flex items-center gap-2">
-          <ShieldAlert className="w-4 h-4 text-indigo-400 shrink-0" />
-          <span>{t('securityNotice')}</span>
+      <div className="xl:col-span-12 px-4 py-3 rounded-xl bg-indigo-50/90 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/20 flex items-center justify-between gap-3 text-xs text-indigo-950 dark:text-indigo-200">
+        <div className="flex items-center gap-2.5">
+          <ShieldAlert className="w-4 h-4 text-indigo-700 dark:text-indigo-400 shrink-0" />
+          <span className="font-semibold">{t('securityNotice')}</span>
         </div>
-        <span className="text-[11px] font-mono text-indigo-400 hidden sm:inline">
+        <span className="text-[11px] font-mono font-semibold text-indigo-800 dark:text-indigo-300 hidden sm:inline shrink-0">
           SOP Section 8.3 Enforcement
         </span>
       </div>
 
       {/* Project Milestones & Deadlines Horizontal Scrollable Bar */}
       {!loadingProjects && roleFilteredProjects.length > 0 && (
-        <ProjectTimelineBar
-          projects={roleFilteredProjects}
-          onSelectProject={(proj) => {
-            if (role === 'collaborator') {
-              setEvaluatingProject(proj);
-            } else {
+        <div className="xl:col-span-12">
+          <ProjectTimelineBar
+            projects={roleFilteredProjects}
+            onSelectProject={(proj) => {
+              if (role === 'collaborator') {
+                setEvaluatingProject(proj);
+              } else {
+                setTimeTrackingProject(proj);
+                setTimeTrackingInitialTab('tasks');
+              }
+            }}
+            onOpenTimeTracker={(proj) => {
               setTimeTrackingProject(proj);
               setTimeTrackingInitialTab('tasks');
-            }
-          }}
-          onOpenTimeTracker={(proj) => {
-            setTimeTrackingProject(proj);
-            setTimeTrackingInitialTab('tasks');
-          }}
-          formatMoney={(amt) => `$${amt.toLocaleString()}`}
-        />
+            }}
+            formatMoney={(amt) => `$${amt.toLocaleString()}`}
+          />
+        </div>
       )}
 
+      {/* Primary Operational Workspace Grid Cell */}
+      <div className="xl:col-span-12 space-y-5">
       {/* Loading Skeleton */}
       {loadingProjects ? (
         viewMode === 'kanban' ? (
@@ -1295,9 +1326,9 @@ export const ProjectsPipeline: React.FC = () => {
 
       {/* TABLE VIEW */}
       {viewMode === 'table' && (
-        <div className="glass-card rounded-2xl border border-white/10 overflow-x-auto shadow-xl">
-          <table className="w-full text-left text-xs text-slate-300">
-            <thead className="bg-slate-950/60 text-[11px] uppercase font-bold text-slate-400 border-b border-white/10">
+        <div className="bg-white dark:bg-slate-900/90 rounded-xl border border-slate-200 dark:border-slate-800 overflow-x-auto shadow-2xs">
+          <table className="w-full text-left text-xs text-slate-700 dark:text-slate-300">
+            <thead className="bg-slate-50 dark:bg-slate-950/60 text-[11px] uppercase font-semibold text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
               <tr>
                 <th className="p-3.5">Client &amp; Channel</th>
                 <th className="p-3.5">Website Type &amp; Purpose</th>
@@ -1310,9 +1341,9 @@ export const ProjectsPipeline: React.FC = () => {
                 <th className="p-3.5 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-white/5 font-medium">
+            <tbody className="divide-y divide-slate-100 dark:divide-white/5 font-medium">
               {filteredProjects.map(p => (
-                <tr key={p.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition">
+                <tr key={p.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition">
                   <td className="p-3.5">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="font-bold text-slate-900 dark:text-white">{p.clientName}</span>
@@ -1518,15 +1549,20 @@ export const ProjectsPipeline: React.FC = () => {
       )}
 
       {/* Grounding & Voice Intelligence Hub */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pt-4">
-        <VoiceTaskProcessorWidget />
-        <GoogleMapsWidget
-          locationName={filteredProjects[0]?.clientCompany || filteredProjects[0]?.clientName || 'LeadFlow Enterprise Hub'}
-          initialAddress={filteredProjects[0]?.clientCompany ? `${filteredProjects[0].clientCompany} HQ` : 'Global Tech District'}
-        />
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 pt-2">
+        <div className="lg:col-span-6">
+          <VoiceTaskProcessorWidget />
+        </div>
+        <div className="lg:col-span-6">
+          <GoogleMapsWidget
+            locationName={filteredProjects[0]?.clientCompany || filteredProjects[0]?.clientName || 'LeadFlow Enterprise Hub'}
+            initialAddress={filteredProjects[0]?.clientCompany ? `${filteredProjects[0].clientCompany} HQ` : 'Global Tech District'}
+          />
+        </div>
       </div>
       </>
       )}
+      </div>
 
       {/* Partner Modals */}
       <PartnerEvaluationModal
