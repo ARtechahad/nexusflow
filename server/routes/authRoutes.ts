@@ -30,7 +30,7 @@ router.post('/login', (req: Request, res: Response) => {
   }
 
   const userRole = result.user?.role;
-  const dashboardRedirect = userRole === 'client_guest' ? '/portal' : '/profile';
+  const dashboardRedirect = userRole === 'client_guest' ? '/portal' : '/';
 
   return res.json({
     ...result,
@@ -97,7 +97,7 @@ router.post('/oauth', (req: Request, res: Response) => {
       tenantId: tenantId
     },
     token,
-    dashboardRedirect: user.role === 'client_guest' ? '/portal' : '/profile'
+    dashboardRedirect: user.role === 'client_guest' ? '/portal' : '/'
   });
 });
 
@@ -123,6 +123,22 @@ router.post('/register', (req: Request, res: Response) => {
   }
 
   return res.json(result);
+});
+
+// Forgot Password Recovery Dispatch
+router.post('/forgot-password', (req: Request, res: Response) => {
+  const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+  if (!email || !email.includes('@')) {
+    return res.status(400).json({
+      success: false,
+      message: 'Please enter a valid work email address.'
+    });
+  }
+
+  return res.json({
+    success: true,
+    message: `If an account exists for ${email}, password recovery instructions have been dispatched.`
+  });
 });
 
 // Current User Me

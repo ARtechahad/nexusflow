@@ -1,38 +1,32 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Search, 
-  Command, 
-  Kanban, 
-  Sparkles, 
-  Layers, 
-  Mail, 
-  Inbox, 
-  Send, 
-  BookOpen, 
-  BarChart3, 
-  Globe2, 
-  Coins, 
-  MessageSquare, 
-  FolderLock, 
-  ExternalLink, 
-  Globe, 
-  Plus, 
-  Play, 
-  RefreshCw, 
-  Building2, 
-  User, 
-  Sun, 
-  Moon, 
-  ArrowRight, 
+import {
+  Search,
+  Command,
+  Kanban,
+  Layers,
+  Mail,
+  Inbox,
+  Send,
+  BookOpen,
+  BarChart3,
+  Coins,
+  MessageSquare,
+  FolderLock,
+  ExternalLink,
+  Globe,
+  Plus,
+  Play,
+  RefreshCw,
+  Building2,
+  User,
+  Sun,
+  Moon,
   X,
-  Zap,
   Activity,
-  CheckCircle2,
-  Lock
+  CheckCircle2
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { offlineSyncService } from '../services/offlineSyncService';
-import { UserRole } from '../types';
 
 interface GlobalCommandPaletteProps {
   isOpen: boolean;
@@ -45,13 +39,9 @@ export const GlobalCommandPalette: React.FC<GlobalCommandPaletteProps> = ({ isOp
     projects,
     setIsNewLeadModalOpen,
     setIsTestModalOpen,
-    openAIModal,
-    setIsAISettingsModalOpen,
     setIsOnboardingModalOpen,
     setIsPlatformHealthModalOpen,
     setIsWikiModalOpen,
-    setIsAuthModalOpen,
-    switchPersona,
     toggleTheme,
     isDark,
     showToast,
@@ -70,7 +60,6 @@ export const GlobalCommandPalette: React.FC<GlobalCommandPaletteProps> = ({ isOp
     }
   }, [isOpen]);
 
-  // Keyboard navigation & global shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
@@ -90,110 +79,90 @@ export const GlobalCommandPalette: React.FC<GlobalCommandPaletteProps> = ({ isOp
 
   if (!isOpen) return null;
 
-  // Build searchable commands
   const navigationItems = [
-    { id: 'nav-pipeline', label: 'Pipeline & Deals (Kanban)', group: 'Navigation', icon: Kanban, action: () => setActiveTab('pipeline'), shortcut: 'G P' },
-    { id: 'nav-leadflow', label: 'LeadFlow Agency (GTM Website)', group: 'Navigation', icon: Sparkles, action: () => setActiveTab('leadflow'), shortcut: 'G L' },
-    { id: 'nav-dept', label: 'Department Velocity & Tracking', group: 'Navigation', icon: Layers, action: () => setActiveTab('departmental'), shortcut: 'G D' },
-    { id: 'nav-gmail', label: 'Gmail Workspace & Mail Sync', group: 'Navigation', icon: Mail, action: () => setActiveTab('gmail'), shortcut: 'G M' },
-    { id: 'nav-inbox', label: 'Unified Omni-Inbox', group: 'Navigation', icon: Inbox, action: () => setActiveTab('inbox'), shortcut: 'G I' },
-    { id: 'nav-outreach', label: 'Outreach Engine & Scrapers', group: 'Navigation', icon: Send, action: () => setActiveTab('outreach'), shortcut: 'G O' },
-    { id: 'nav-sop', label: 'SOP 1–11 Quality Gate Guide', group: 'Navigation', icon: BookOpen, action: () => setActiveTab('sop'), shortcut: 'G S' },
-    { id: 'nav-analytics', label: 'Executive Revenue Analytics', group: 'Navigation', icon: BarChart3, action: () => setActiveTab('analytics'), shortcut: 'G A' },
-    { id: 'nav-tools', label: 'Live Free APIs (Forex & DNS)', group: 'Navigation', icon: Globe2, action: () => setActiveTab('free_apis'), shortcut: 'G F' },
-    { id: 'nav-commissions', label: 'Commission Ledger & Payouts', group: 'Navigation', icon: Coins, action: () => setActiveTab('commissions'), shortcut: 'G C' },
-    { id: 'nav-chat', label: 'Team Collaboration Chat', group: 'Navigation', icon: MessageSquare, action: () => setActiveTab('chat'), shortcut: 'G T' },
-    { id: 'nav-vault', label: 'Secure File Vault & Credentials', group: 'Navigation', icon: FolderLock, action: () => setActiveTab('vault'), shortcut: 'G V' },
-    { id: 'nav-portal', label: 'Isolated Client Portal', group: 'Navigation', icon: ExternalLink, action: () => setActiveTab('portal'), shortcut: 'G K' },
-    { id: 'nav-integrations', label: 'Webhooks & External Connectors', group: 'Navigation', icon: Globe, action: () => setActiveTab('integrations'), shortcut: 'G X' }
+    { id: 'nav-pipeline', label: 'Executive Dashboard & Deals Pipeline', group: 'Navigation', icon: Kanban, action: () => setActiveTab('pipeline'), shortcut: 'G P' },
+    { id: 'nav-outreach', label: 'Email Hub (Mailboxes & Campaigns)', group: 'Navigation', icon: Send, action: () => setActiveTab('outreach_suite'), shortcut: 'G E' },
+    { id: 'nav-inbox', label: 'Unified Client Inbox', group: 'Navigation', icon: Inbox, action: () => setActiveTab('inbox'), shortcut: 'G I' },
+    { id: 'nav-gmail', label: 'Google Mailbox Sync', group: 'Navigation', icon: Mail, action: () => setActiveTab('gmail'), shortcut: 'G M' },
+    { id: 'nav-dept', label: 'Team Tasks & Department Velocity', group: 'Navigation', icon: Layers, action: () => setActiveTab('departmental'), shortcut: 'G D' },
+    { id: 'nav-sop', label: 'SOP Stage Gates', group: 'Navigation', icon: BookOpen, action: () => setActiveTab('sop'), shortcut: 'G S' },
+    { id: 'nav-commissions', label: 'Commission & Payout Ledger', group: 'Navigation', icon: Coins, action: () => setActiveTab('commissions'), shortcut: 'G C' },
+    { id: 'nav-analytics', label: 'Revenue Analytics', group: 'Navigation', icon: BarChart3, action: () => setActiveTab('analytics'), shortcut: 'G A' },
+    { id: 'nav-chat', label: 'Team Channels', group: 'Navigation', icon: MessageSquare, action: () => setActiveTab('chat'), shortcut: 'G T' },
+    { id: 'nav-vault', label: 'Secure File Vault', group: 'Navigation', icon: FolderLock, action: () => setActiveTab('vault'), shortcut: 'G V' },
+    { id: 'nav-portal', label: 'Client Portal', group: 'Navigation', icon: ExternalLink, action: () => setActiveTab('portal'), shortcut: 'G K' },
+    { id: 'nav-integrations', label: 'Webhooks & API', group: 'Navigation', icon: Globe, action: () => setActiveTab('integrations'), shortcut: 'G X' },
+    { id: 'nav-profile', label: 'Workspace & Team', group: 'Navigation', icon: User, action: () => setActiveTab('profile'), shortcut: 'G U' }
   ];
 
   const actionItems = [
-    { 
-      id: 'act-new-deal', 
-      label: 'Create New Client Lead / Deal', 
-      group: 'Quick Actions', 
-      icon: Plus, 
-      action: () => setIsNewLeadModalOpen(true), 
-      shortcut: 'N' 
+    {
+      id: 'act-new-deal',
+      label: 'Create New Client Deal',
+      group: 'Quick Actions',
+      icon: Plus,
+      action: () => setIsNewLeadModalOpen(true),
+      shortcut: 'N'
     },
-    { 
-      id: 'act-test-gate', 
-      label: 'Run Automated SOP 1–11 Test Suite', 
-      group: 'Quick Actions', 
-      icon: Play, 
-      action: () => setIsTestModalOpen(true), 
-      shortcut: 'T' 
+    {
+      id: 'act-test-gate',
+      label: 'Run Automated SOP 1–11 Test Suite',
+      group: 'Quick Actions',
+      icon: Play,
+      action: () => setIsTestModalOpen(true),
+      shortcut: 'T'
     },
-    { 
-      id: 'act-ai-assistant', 
-      label: 'Launch Gemini AI Scoper & Pitch Assistant', 
-      group: 'Quick Actions', 
-      icon: Sparkles, 
-      action: () => openAIModal({ mode: 'custom_pitch' }), 
-      shortcut: 'A' 
-    },
-    { 
-      id: 'act-sync-cache', 
-      label: 'Trigger Offline-to-Cloud Sync Now', 
-      group: 'Quick Actions', 
-      icon: RefreshCw, 
+    {
+      id: 'act-sync-cache',
+      label: 'Trigger Cloud Sync Now',
+      group: 'Quick Actions',
+      icon: RefreshCw,
       action: async () => {
-        showToast('Initiating offline sync queue flush...', 'info');
+        showToast('Initiating sync queue flush...', 'info');
         await offlineSyncService.processQueue();
         await refreshProjects();
-        showToast('Local database synced with cloud backend!', 'success');
-      }, 
-      shortcut: 'S' 
+        showToast('Workspace synchronized with cloud database.', 'success');
+      },
+      shortcut: 'S'
     },
-    { 
-      id: 'act-tenant-onboard', 
-      label: 'Open Multi-Tenant Onboarding Wizard', 
-      group: 'Quick Actions', 
-      icon: Building2, 
-      action: () => setIsOnboardingModalOpen(true), 
-      shortcut: 'O' 
+    {
+      id: 'act-tenant-onboard',
+      label: 'Register New Company Workspace',
+      group: 'Quick Actions',
+      icon: Building2,
+      action: () => setIsOnboardingModalOpen(true),
+      shortcut: 'O'
     },
-    { 
-      id: 'act-platform-health', 
-      label: 'Inspect API Platform Health & Latency', 
-      group: 'Quick Actions', 
-      icon: Activity, 
-      action: () => setIsPlatformHealthModalOpen(true), 
-      shortcut: 'H' 
+    {
+      id: 'act-platform-health',
+      label: 'Inspect API Platform Health',
+      group: 'Quick Actions',
+      icon: Activity,
+      action: () => setIsPlatformHealthModalOpen(true),
+      shortcut: 'H'
     },
-    { 
-      id: 'act-company-wiki', 
-      label: 'Open Internal Company Wiki & SOP Docs', 
-      group: 'Quick Actions', 
-      icon: BookOpen, 
-      action: () => setIsWikiModalOpen(true), 
-      shortcut: 'W' 
+    {
+      id: 'act-company-wiki',
+      label: 'Open Company SOP & Knowledge Base',
+      group: 'Quick Actions',
+      icon: BookOpen,
+      action: () => setIsWikiModalOpen(true),
+      shortcut: 'W'
     },
-    { 
-      id: 'act-toggle-theme', 
-      label: `Switch Theme to ${isDark ? 'Light' : 'Dark'} Mode`, 
-      group: 'Quick Actions', 
-      icon: isDark ? Sun : Moon, 
-      action: () => toggleTheme(), 
-      shortcut: 'M' 
+    {
+      id: 'act-toggle-theme',
+      label: `Switch Theme to ${isDark ? 'Light' : 'Dark'} Mode`,
+      group: 'Quick Actions',
+      icon: isDark ? Sun : Moon,
+      action: () => toggleTheme(),
+      shortcut: 'M'
     }
   ];
 
-  const roleItems: Array<{ id: string; label: string; group: string; icon: any; action: () => void; shortcut: string }> = [
-    { id: 'role-admin', label: 'Switch to Executive (Admin/CEO: Tariq Mehmood)', group: 'Role Switcher', icon: User, action: () => switchPersona('admin'), shortcut: 'R 1' },
-    { id: 'role-sales', label: 'Switch to Sales Specialist (Hamza Farooq)', group: 'Role Switcher', icon: User, action: () => switchPersona('sales'), shortcut: 'R 2' },
-    { id: 'role-coord', label: 'Switch to Project Operations QA (Fatima Noor)', group: 'Role Switcher', icon: User, action: () => switchPersona('coordinator'), shortcut: 'R 3' },
-    { id: 'role-dev', label: 'Switch to Lead Software Engineer (Zain Ul Abideen)', group: 'Role Switcher', icon: User, action: () => switchPersona('developer'), shortcut: 'R 4' },
-    { id: 'role-client', label: 'Switch to Client Stakeholder (Alexander Vance)', group: 'Role Switcher', icon: User, action: () => switchPersona('client_guest'), shortcut: 'R 5' },
-    { id: 'role-partner', label: 'Switch to Partner Deal Evaluator (Marcus Vance)', group: 'Role Switcher', icon: User, action: () => switchPersona('collaborator'), shortcut: 'R 6' }
-  ];
-
-  // Projects as dynamic items
   const projectItems = projects.slice(0, 8).map(p => ({
     id: `proj-${p.id}`,
     label: `${p.clientName} (${p.clientCompany || p.websiteType}) - $${p.finalPrice || p.estimatedPrice}`,
-    group: 'Active Deals & Projects',
+    group: 'Active Deals',
     icon: CheckCircle2,
     action: () => {
       setActiveTab('pipeline');
@@ -202,9 +171,9 @@ export const GlobalCommandPalette: React.FC<GlobalCommandPaletteProps> = ({ isOp
     shortcut: p.status.toUpperCase()
   }));
 
-  const allItems = [...navigationItems, ...actionItems, ...roleItems, ...projectItems];
+  const allItems = [...navigationItems, ...actionItems, ...projectItems];
 
-  const filteredItems = allItems.filter(item => 
+  const filteredItems = allItems.filter(item =>
     item.label.toLowerCase().includes(search.toLowerCase()) ||
     item.group.toLowerCase().includes(search.toLowerCase())
   );
@@ -226,13 +195,15 @@ export const GlobalCommandPalette: React.FC<GlobalCommandPaletteProps> = ({ isOp
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-16 sm:pt-24 px-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
-      <div 
-        className="w-full max-w-2xl bg-white dark:bg-[#0c1220] border border-slate-200 dark:border-white/10 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]"
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center pt-16 sm:pt-24 px-4 bg-black/70 backdrop-blur-sm animate-fadeIn"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-2xl bg-[#FFFFFF] dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]"
         onClick={e => e.stopPropagation()}
       >
-        {/* Search Header Bar */}
-        <div className="p-4 border-b border-slate-200 dark:border-white/10 flex items-center gap-3 bg-slate-50 dark:bg-slate-900/60">
+        <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-3 bg-[#F8FAFC] dark:bg-[#090D16]">
           <Command className="w-5 h-5 text-indigo-600 dark:text-indigo-400 shrink-0" />
           <input
             ref={inputRef}
@@ -243,29 +214,29 @@ export const GlobalCommandPalette: React.FC<GlobalCommandPaletteProps> = ({ isOp
               setSelectedIndex(0);
             }}
             onKeyDown={handleKeyDown}
-            placeholder="Type a command, screen name, deal, or shortcut..."
+            placeholder="Type a command, workspace module, deal, or shortcut..."
             className="w-full bg-transparent text-sm text-slate-900 dark:text-white placeholder-slate-400 outline-none font-medium"
           />
           {search && (
             <button
+              type="button"
               onClick={() => setSearch('')}
-              className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white"
+              className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
           )}
-          <span className="hidden sm:inline-block text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-300 dark:border-white/5">
+          <span className="hidden sm:inline-block text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-300 dark:border-slate-700">
             ESC
           </span>
         </div>
 
-        {/* Results List */}
-        <div className="p-2 overflow-y-auto divide-y divide-slate-100 dark:divide-white/5">
+        <div className="p-2 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800/70">
           {filteredItems.length === 0 ? (
             <div className="p-8 text-center text-xs text-slate-500 space-y-1">
               <Search className="w-8 h-8 mx-auto text-slate-400 mb-2 opacity-50" />
               <p className="font-bold text-slate-700 dark:text-slate-300">No matching commands or deals found</p>
-              <p>Try searching for "Pipeline", "LeadFlow", "SOP", "Sync", or a client name.</p>
+              <p>Try searching for &quot;Email Hub&quot;, &quot;Dashboard&quot;, &quot;Commission&quot;, or a client name.</p>
             </div>
           ) : (
             filteredItems.map((item, idx) => {
@@ -279,17 +250,17 @@ export const GlobalCommandPalette: React.FC<GlobalCommandPaletteProps> = ({ isOp
                     onClose();
                   }}
                   onMouseEnter={() => setSelectedIndex(idx)}
-                  className={`p-3 rounded-2xl flex items-center justify-between gap-3 cursor-pointer transition ${
-                    isSelected 
-                      ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20' 
-                      : 'hover:bg-slate-50 dark:hover:bg-white/5 text-slate-800 dark:text-slate-200'
+                  className={`p-3 rounded-xl flex items-center justify-between gap-3 cursor-pointer transition ${
+                    isSelected
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'hover:bg-slate-50 dark:hover:bg-slate-800/60 text-slate-800 dark:text-slate-200'
                   }`}
                 >
                   <div className="flex items-center gap-3 truncate">
-                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
-                      isSelected 
-                        ? 'bg-white/20 text-white' 
-                        : 'bg-slate-100 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400'
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                      isSelected
+                        ? 'bg-white/20 text-white'
+                        : 'bg-[#F8FAFC] dark:bg-[#090D16] text-indigo-600 dark:text-indigo-400 border border-slate-200 dark:border-slate-800'
                     }`}>
                       <Icon className="w-4 h-4" />
                     </div>
@@ -307,9 +278,9 @@ export const GlobalCommandPalette: React.FC<GlobalCommandPaletteProps> = ({ isOp
 
                   {item.shortcut && (
                     <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-md shrink-0 ${
-                      isSelected 
-                        ? 'bg-white/20 text-white' 
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-white/5'
+                      isSelected
+                        ? 'bg-white/20 text-white'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700'
                     }`}>
                       {item.shortcut}
                     </span>
@@ -320,15 +291,14 @@ export const GlobalCommandPalette: React.FC<GlobalCommandPaletteProps> = ({ isOp
           )}
         </div>
 
-        {/* Footer Shortcut Legend */}
-        <div className="p-3 border-t border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-[#080c16] flex items-center justify-between text-[11px] text-slate-500 font-mono">
+        <div className="p-3 border-t border-slate-200 dark:border-slate-800 bg-[#F8FAFC] dark:bg-[#090D16] flex items-center justify-between text-[11px] text-slate-500 font-mono">
           <div className="flex items-center gap-3">
             <span>&uarr;&darr; Navigate</span>
             <span>&crarr; Select</span>
             <span>ESC Close</span>
           </div>
           <span className="text-indigo-600 dark:text-indigo-400 font-bold">
-            ALM Nexus Command Engine
+            ClientOps Command Palette
           </span>
         </div>
       </div>

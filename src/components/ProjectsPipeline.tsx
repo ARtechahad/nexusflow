@@ -1,8 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { ProjectLead, WebsiteType, LeadChannel } from '../types';
-import { GoogleMapsWidget } from './GoogleMapsWidget';
-import { VoiceTaskProcessorWidget } from './VoiceTaskProcessorWidget';
 import {
   Search,
   Filter,
@@ -41,7 +39,10 @@ import {
   CheckSquare,
   Calendar,
   FileText,
-  Layers
+  Layers,
+  Mail,
+  UserPlus,
+  X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { PartnerEvaluationModal } from './PartnerEvaluationModal';
@@ -74,7 +75,9 @@ export const ProjectsPipeline: React.FC = () => {
     showToast,
     t,
     role,
-    currentUser
+    currentUser,
+    showSetupChecklist,
+    dismissSetupChecklist
   } = useApp();
 
   const [viewMode, setViewMode] = useState<'kanban' | 'table' | 'timeline'>('kanban');
@@ -395,6 +398,99 @@ export const ProjectsPipeline: React.FC = () => {
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+      {/* Subtle Dismissible 3-Item Quick-Start Checklist for New Accounts */}
+      {showSetupChecklist && role !== 'collaborator' && (
+        <div
+          id="workspace-setup-checklist"
+          className="xl:col-span-12 rounded-xl bg-[#FFFFFF] dark:bg-[#111827] border border-indigo-200 dark:border-indigo-500/30 p-4 sm:p-5 shadow-2xs animate-fadeIn"
+        >
+          <div className="flex items-start justify-between gap-4 mb-3">
+            <div>
+              <h3 className="text-sm font-bold text-slate-950 dark:text-white tracking-tight">
+                Finish setting up your workspace
+              </h3>
+              <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
+                Complete these three steps to connect your company email and launch daily operations.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={dismissSetupChecklist}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer shrink-0"
+              title="Dismiss setup checklist"
+              aria-label="Dismiss setup checklist"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <button
+              type="button"
+              onClick={() => setActiveTab('outreach_suite')}
+              className="btn-tactile-secondary p-3.5 rounded-xl text-left flex items-center justify-between gap-3 cursor-pointer"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                  <Mail className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-xs font-bold text-slate-950 dark:text-white truncate">
+                    1. Connect Company Email
+                  </div>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                    Link SMTP/IMAP or Google mailbox
+                  </div>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsNewLeadModalOpen(true)}
+              className="btn-tactile-secondary p-3.5 rounded-xl text-left flex items-center justify-between gap-3 cursor-pointer"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                  <Plus className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-xs font-bold text-slate-950 dark:text-white truncate">
+                    2. Add Your First Client/Deal
+                  </div>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                    Track scope, deposits &amp; delivery
+                  </div>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('profile')}
+              className="btn-tactile-secondary p-3.5 rounded-xl text-left flex items-center justify-between gap-3 cursor-pointer"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                  <UserPlus className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-xs font-bold text-slate-950 dark:text-white truncate">
+                    3. Invite Team Members
+                  </div>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                    Assign roles &amp; commission splits
+                  </div>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Executive Operations Triad: Live Deals Pipeline, Cold Outreach Stats & Commission Ledger */}
       <div className="xl:col-span-12 space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -418,7 +514,7 @@ export const ProjectsPipeline: React.FC = () => {
       </div>
 
       {/* Top Filter and Actions Grid Bar */}
-      <div className="xl:col-span-12 bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
+      <div className="xl:col-span-12 bg-[#FFFFFF] dark:bg-[#111827] p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-center">
           {/* Search */}
           <div className="relative lg:col-span-3">
@@ -640,7 +736,7 @@ export const ProjectsPipeline: React.FC = () => {
               id="btn-pipeline-new-client"
               type="button"
               onClick={() => setIsNewLeadModalOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-2xs transition ml-auto sm:ml-0 cursor-pointer whitespace-nowrap"
+              className="btn-tactile-primary flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg ml-auto sm:ml-0 cursor-pointer whitespace-nowrap"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>{t('newLead')}</span>
@@ -1548,18 +1644,6 @@ export const ProjectsPipeline: React.FC = () => {
         </div>
       )}
 
-      {/* Grounding & Voice Intelligence Hub */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 pt-2">
-        <div className="lg:col-span-6">
-          <VoiceTaskProcessorWidget />
-        </div>
-        <div className="lg:col-span-6">
-          <GoogleMapsWidget
-            locationName={filteredProjects[0]?.clientCompany || filteredProjects[0]?.clientName || 'LeadFlow Enterprise Hub'}
-            initialAddress={filteredProjects[0]?.clientCompany ? `${filteredProjects[0].clientCompany} HQ` : 'Global Tech District'}
-          />
-        </div>
-      </div>
       </>
       )}
       </div>

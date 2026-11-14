@@ -5,7 +5,7 @@ import { WebsiteType, LeadChannel } from '../types';
 import { X, Plus, DollarSign, UserCheck, ShieldCheck, RefreshCw, Sparkles } from 'lucide-react';
 
 export const NewClientLeadModal: React.FC = () => {
-  const { isNewLeadModalOpen, setIsNewLeadModalOpen, refreshProjects, showToast, t, currentTenant, authToken } = useApp();
+  const { isNewLeadModalOpen, setIsNewLeadModalOpen, refreshProjects, showToast, t, currentTenant, authToken, currentUser } = useApp();
   
   const [clientName, setClientName] = useState('');
   const [clientEmail, setClientEmail] = useState('');
@@ -14,7 +14,7 @@ export const NewClientLeadModal: React.FC = () => {
   const [websiteType, setWebsiteType] = useState<WebsiteType>('landing');
   const [finalPrice, setFinalPrice] = useState<number>(250);
   const [purpose, setPurpose] = useState('');
-  const [assignedSalesperson, setAssignedSalesperson] = useState('Sarah Jenkins');
+  const [assignedSalesperson, setAssignedSalesperson] = useState(currentUser?.name || '');
   const [submitting, setSubmitting] = useState(false);
   const [enriching, setEnriching] = useState(false);
 

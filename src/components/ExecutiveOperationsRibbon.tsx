@@ -33,14 +33,12 @@ export const ExecutiveOperationsRibbon: React.FC = () => {
   const canOpenOutreach = ['admin', 'ceo', 'bd_head', 'sales', 'coordinator', 'project_manager', 'developer'].includes(role);
   const canOpenSop = ['admin', 'bd_head', 'coordinator', 'developer'].includes(role);
 
-  // 1. Live Deals Pipeline Telemetry
   const totalPipelineValue = projects.reduce((acc, p) => acc + (p.finalPrice || p.estimatedPrice || 0), 0);
   const advancesCleared = projects.filter(p => p.advancePaid).length;
   const inStaging = projects.filter(
     p => !p.domainTransferred && (p.internalQAPassed || p.status === 'staging_dev' || p.status === 'client_review')
   ).length;
 
-  // 2. Commission Ledger Telemetry
   const commissionTotals = projects.reduce(
     (acc, p) => {
       const value = p.finalPrice || p.estimatedPrice || 0;
@@ -60,7 +58,7 @@ export const ExecutiveOperationsRibbon: React.FC = () => {
   return (
     <section
       aria-label="Executive Operations Telemetry Ribbon"
-      className="border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0a192f] transition-colors"
+      className="border-b border-slate-200 dark:border-slate-800 bg-[#FFFFFF] dark:bg-[#111827] transition-colors"
     >
       <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-12 gap-px bg-slate-200 dark:bg-slate-800 border-x border-slate-200/70 dark:border-slate-800/70">
@@ -70,14 +68,14 @@ export const ExecutiveOperationsRibbon: React.FC = () => {
             onClick={() => setActiveTab('pipeline')}
             className={`xl:col-span-3 text-left px-4 py-2.5 transition flex items-center justify-between gap-3 cursor-pointer ${
               activeTab === 'pipeline'
-                ? 'bg-indigo-50/50 dark:bg-indigo-950/30'
-                : 'bg-white dark:bg-[#0a192f] hover:bg-slate-50 dark:hover:bg-slate-900/70'
+                ? 'bg-indigo-50/60 dark:bg-indigo-950/35'
+                : 'bg-[#FFFFFF] dark:bg-[#111827] hover:bg-slate-50 dark:hover:bg-slate-800/60'
             }`}
           >
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
                 <Kanban className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
-                <span className="truncate">Live Deals Pipeline</span>
+                <span className="truncate">Deals Pipeline</span>
               </div>
               <div className="mt-1 flex items-baseline gap-2">
                 <span className="text-sm font-bold text-slate-950 dark:text-white font-mono tabular-nums tracking-tight">
@@ -99,7 +97,7 @@ export const ExecutiveOperationsRibbon: React.FC = () => {
             </div>
           </button>
 
-          {/* TELEMETRY CELL 2: COLD OUTREACH STATS */}
+          {/* TELEMETRY CELL 2: CONNECTED EMAIL HUB */}
           <button
             type="button"
             onClick={() => canOpenOutreach && setActiveTab('outreach_suite')}
@@ -108,21 +106,21 @@ export const ExecutiveOperationsRibbon: React.FC = () => {
               canOpenOutreach ? 'cursor-pointer' : 'cursor-default opacity-80'
             } ${
               activeTab === 'outreach_suite'
-                ? 'bg-emerald-50/50 dark:bg-emerald-950/30'
-                : 'bg-white dark:bg-[#0a192f] hover:bg-slate-50 dark:hover:bg-slate-900/70'
+                ? 'bg-emerald-50/60 dark:bg-emerald-950/30'
+                : 'bg-[#FFFFFF] dark:bg-[#111827] hover:bg-slate-50 dark:hover:bg-slate-800/60'
             }`}
           >
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
                 <Send className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                <span className="truncate">Cold Outreach Stats</span>
+                <span className="truncate">Connected Email Hub</span>
               </div>
 
               {outreach.loading ? (
                 <div className="mt-1.5 h-4 w-28 rounded bg-slate-100 dark:bg-slate-800 animate-pulse" />
               ) : outreach.postgresConnected === false ? (
                 <div className="mt-1 text-xs font-semibold text-amber-800 dark:text-amber-300 truncate">
-                  Outreach DB Offline
+                  Mailbox DB Offline
                 </div>
               ) : (
                 <div className="mt-1 flex items-baseline gap-2">
@@ -158,8 +156,8 @@ export const ExecutiveOperationsRibbon: React.FC = () => {
               canOpenCommissions && !isCollaborator ? 'cursor-pointer' : 'cursor-default'
             } ${
               activeTab === 'commissions'
-                ? 'bg-amber-50/50 dark:bg-amber-950/30'
-                : 'bg-white dark:bg-[#0a192f] hover:bg-slate-50 dark:hover:bg-slate-900/70'
+                ? 'bg-amber-50/60 dark:bg-amber-950/30'
+                : 'bg-[#FFFFFF] dark:bg-[#111827] hover:bg-slate-50 dark:hover:bg-slate-800/60'
             }`}
           >
             <div className="min-w-0">
@@ -179,7 +177,7 @@ export const ExecutiveOperationsRibbon: React.FC = () => {
                     {formatMoney(commissionTotals.total)}
                   </span>
                   <span className="text-[11px] font-medium text-slate-600 dark:text-slate-300">
-                    SOP pool
+                    split pool
                   </span>
                 </div>
               )}
@@ -198,7 +196,7 @@ export const ExecutiveOperationsRibbon: React.FC = () => {
           </button>
 
           {/* TELEMETRY CELL 4: SOP GATE & PERSISTENCE */}
-          <div className="xl:col-span-3 px-4 py-2.5 bg-white dark:bg-[#0a192f] flex items-center justify-between gap-3">
+          <div className="xl:col-span-3 px-4 py-2.5 bg-[#FFFFFF] dark:bg-[#111827] flex items-center justify-between gap-3">
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
@@ -209,8 +207,7 @@ export const ExecutiveOperationsRibbon: React.FC = () => {
                   {automatedTestsPassedCount}/17 Passed
                 </span>
                 <span className="text-slate-300 dark:text-slate-700">|</span>
-                <span className="inline-flex items-center gap-1.5 text-[11px] font-mono font-semibold text-slate-700 dark:text-slate-200 truncate">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                <span className="text-[11px] font-mono font-semibold text-slate-700 dark:text-slate-200 truncate">
                   {databaseStatus?.engine === 'postgresql' ? 'Neon PG' : 'Local Sync'}
                 </span>
               </div>
@@ -220,7 +217,7 @@ export const ExecutiveOperationsRibbon: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setActiveTab('sop')}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-900 dark:text-slate-100 text-[11px] font-semibold transition cursor-pointer shrink-0"
+                className="btn-tactile-secondary inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold cursor-pointer shrink-0 whitespace-nowrap"
               >
                 <span>SOP</span>
                 <ArrowUpRight className="w-3 h-3" />

@@ -362,7 +362,7 @@ projectRouter.post('/:id/evaluate', (req: Request, res: Response) => {
 
   logAuditAction({
     userId: authUser?.id || 'collaborator',
-    userName: authUser?.name || 'Marcus Vance',
+    userName: authUser?.name || 'Partner Evaluator',
     userRole: authUser?.role || 'collaborator',
     action: 'COLLABORATOR_DEAL_EVALUATED',
     entityType: 'project',
@@ -506,8 +506,8 @@ leadScoreRouter.post('/', (req: Request, res: Response) => {
     balancePaid: false,
     internalQAPassed: false,
     domainTransferred: false,
-    assignedSalesperson: body.assignedSalesperson || 'Sarah Jenkins',
-    salespersonEmail: 'sarah.jenkins@agencyops.dev',
+    assignedSalesperson: body.assignedSalesperson || 'Sales Desk',
+    salespersonEmail: body.salespersonEmail || '',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };

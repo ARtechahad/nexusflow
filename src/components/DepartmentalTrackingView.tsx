@@ -45,114 +45,123 @@ export const DepartmentalTrackingView: React.FC = () => {
     showToast('Departmental velocity metrics refreshed.', 'info');
   };
 
-  const departments = departmentalProgress.length > 0 ? departmentalProgress : [
-    {
-      department: 'sales_bd' as const,
-      name: 'Business Development & Sales Engine',
-      leadName: 'Hamza Farooq',
-      leadAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150',
-      healthStatus: 'optimal' as const,
-      metrics: {
-        primaryMetricLabel: 'Pipeline Value',
-        primaryMetricValue: '$14,250',
-        velocityScore: 94,
-        activeTasksCount: 18,
-        completedThisWeekCount: 12,
-        slaAdherencePercent: 97
+  const derivedDepartments: DepartmentalProgress[] = React.useMemo(() => {
+    const pipelineVal = projects.reduce((sum, p) => sum + (p.finalPrice || p.estimatedPrice || 0), 0);
+    const activeLeads = projects.filter(p => ['lead', 'scoped'].includes(p.status));
+    const activeSprints = projects.filter(p => ['advance_paid', 'in_development', 'staging_dev', 'client_review'].includes(p.status));
+    const completedDeals = projects.filter(p => ['completed', 'transferred', 'balance_paid'].includes(p.status));
+    const qaPassedCount = projects.filter(p => p.internalQAPassed).length;
+    const qaRate = projects.length > 0 ? Math.round((qaPassedCount / projects.length) * 100) : 0;
+    const designReadyCount = projects.filter(p => p.hasLogo || p.hasImages).length;
+
+    return [
+      {
+        department: 'sales_bd',
+        name: 'Business Development & Sales Engine',
+        leadName: 'Sales & BD Desk',
+        leadAvatar: '',
+        healthStatus: 'optimal',
+        metrics: {
+          primaryMetricLabel: 'Pipeline Value',
+          primaryMetricValue: formatMoney(pipelineVal),
+          velocityScore: projects.length > 0 ? Math.min(100, Math.round((activeSprints.length + completedDeals.length) / projects.length * 100)) : 0,
+          activeTasksCount: activeLeads.length,
+          completedThisWeekCount: completedDeals.length,
+          slaAdherencePercent: projects.length > 0 ? 100 : 0
+        },
+        highlights: activeLeads.length > 0
+          ? [`${activeLeads.length} active deal(s) in discovery & scoping`, `${completedDeals.length} deal(s) closed & delivered`]
+          : ['No active discovery leads yet. Create a lead or run outbound sequences to track velocity.'],
+        activeMilestones: activeLeads.slice(0, 3).map(p => ({
+          title: `${p.clientName}${p.clientCompany ? ` (${p.clientCompany})` : ''} — ${p.status.replace('_', ' ')}`,
+          owner: p.assignedSalesperson || 'Sales Desk',
+          status: p.advancePaid ? 'completed' as const : 'in_progress' as const,
+          dueDate: p.targetDeliveryDate || 'TBD',
+          progressPercent: p.advancePaid ? 100 : 40
+        }))
       },
-      highlights: [
-        'LinkedIn scraper captured 24 qualified leads today',
-        'InMail discovery response time averaging 14 mins',
-        '2 deals currently negotiating 50% advance invoice'
-      ],
-      activeMilestones: [
-        { title: 'Scale LinkedIn InMail campaign to 50 founders/day', owner: 'Hamza Farooq', status: 'in_progress' as const, dueDate: '2026-09-30', progressPercent: 75 },
-        { title: 'Finalize Nordic Art Pottery contract amendment', owner: 'Hamza Farooq', status: 'completed' as const, dueDate: '2026-09-26', progressPercent: 100 },
-        { title: 'Upwork Enterprise RFP response for FinTech landing page', owner: 'Hamza Farooq', status: 'in_progress' as const, dueDate: '2026-09-28', progressPercent: 60 }
-      ]
-    },
-    {
-      department: 'project_management' as const,
-      name: 'Project Management & Sprints',
-      leadName: 'Fatima Noor',
-      leadAvatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150',
-      healthStatus: 'optimal' as const,
-      metrics: {
-        primaryMetricLabel: 'Active Sprints',
-        primaryMetricValue: '4 Sprints',
-        velocityScore: 92,
-        activeTasksCount: 14,
-        completedThisWeekCount: 9,
-        slaAdherencePercent: 99
+      {
+        department: 'project_management',
+        name: 'Project Management & Sprints',
+        leadName: 'Operations & PM Desk',
+        leadAvatar: '',
+        healthStatus: 'optimal',
+        metrics: {
+          primaryMetricLabel: 'Active Sprints',
+          primaryMetricValue: `${activeSprints.length} Sprint${activeSprints.length === 1 ? '' : 's'}`,
+          velocityScore: activeSprints.length > 0 ? Math.round((activeSprints.filter(p => p.kickOffConfirmed).length / activeSprints.length) * 100) : 0,
+          activeTasksCount: activeSprints.length,
+          completedThisWeekCount: completedDeals.length,
+          slaAdherencePercent: projects.length > 0 ? 100 : 0
+        },
+        highlights: activeSprints.length > 0
+          ? [`${activeSprints.length} sprint(s) currently governed by SOP 1–11 gates`, `${activeSprints.filter(p => p.discordShared).length} Discord handoff(s) synced`]
+          : ['No active project sprints in progress.'],
+        activeMilestones: activeSprints.slice(0, 3).map(p => ({
+          title: `${p.clientCompany || p.clientName} (${p.websiteType})`,
+          owner: p.assignedSalesperson || 'PM Desk',
+          status: p.clientApproved ? 'completed' as const : 'in_progress' as const,
+          dueDate: p.targetDeliveryDate || 'TBD',
+          progressPercent: p.clientApproved ? 90 : p.internalQAPassed ? 70 : 45
+        }))
       },
-      highlights: [
-        '100% SOP Step 1–11 protocol adherence maintained',
-        'Zero unauthorized live transfers without balance clearance',
-        'Automated Discord milestone broadcasts running smoothly'
-      ],
-      activeMilestones: [
-        { title: 'Lumina Health Staging QA verification sign-off', owner: 'Fatima Noor', status: 'completed' as const, dueDate: '2026-09-25', progressPercent: 100 },
-        { title: 'Prepare kickoff briefing for GreenLeaf Solar', owner: 'Fatima Noor', status: 'in_progress' as const, dueDate: '2026-09-28', progressPercent: 60 },
-        { title: 'Conduct bi-weekly sprint velocity retrospective', owner: 'Fatima Noor', status: 'in_progress' as const, dueDate: '2026-09-29', progressPercent: 40 }
-      ]
-    },
-    {
-      department: 'engineering_dev' as const,
-      name: 'Full-Stack Software & Systems',
-      leadName: 'Zain Ul Abideen',
-      leadAvatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150',
-      healthStatus: 'optimal' as const,
-      metrics: {
-        primaryMetricLabel: 'QA Pass Rate',
-        primaryMetricValue: '100% (17/17)',
-        velocityScore: 96,
-        activeTasksCount: 22,
-        completedThisWeekCount: 16,
-        slaAdherencePercent: 98
+      {
+        department: 'engineering_dev',
+        name: 'Full-Stack Software & Systems',
+        leadName: 'Engineering & QA Desk',
+        leadAvatar: '',
+        healthStatus: 'optimal',
+        metrics: {
+          primaryMetricLabel: 'QA Pass Rate',
+          primaryMetricValue: projects.length > 0 ? `${qaRate}% (${qaPassedCount}/${projects.length})` : '0% (0/0)',
+          velocityScore: qaRate,
+          activeTasksCount: projects.filter(p => !p.internalQAPassed && p.advancePaid).length,
+          completedThisWeekCount: qaPassedCount,
+          slaAdherencePercent: qaRate
+        },
+        highlights: projects.length > 0
+          ? [`${qaPassedCount} of ${projects.length} project(s) passed internal staging QA`, 'Strict SOP Rule 8 live transfer lock enforced']
+          : ['No engineering builds queued yet.'],
+        activeMilestones: activeSprints.slice(0, 3).map(p => ({
+          title: `Staging QA: ${p.clientCompany || p.clientName}`,
+          owner: 'Engineering',
+          status: p.internalQAPassed ? 'completed' as const : 'in_progress' as const,
+          dueDate: p.targetDeliveryDate || 'TBD',
+          progressPercent: p.internalQAPassed ? 100 : 50
+        }))
       },
-      highlights: [
-        'Staging subdomains running with auto-provisioned SSL',
-        'Dual persistence active (PostgreSQL pool + atomic JSON fallback)',
-        'Sub-50ms API response time across all tenant routes'
-      ],
-      activeMilestones: [
-        { title: 'Multi-tenant database foreign key partitioning', owner: 'Zain Ul Abideen', status: 'completed' as const, dueDate: '2026-09-27', progressPercent: 100 },
-        { title: 'Cloudflare DNS auto-cutover automation test', owner: 'Zain Ul Abideen', status: 'in_progress' as const, dueDate: '2026-09-29', progressPercent: 80 },
-        { title: 'Webhook retry worker with exponential backoff', owner: 'Zain Ul Abideen', status: 'in_progress' as const, dueDate: '2026-10-02', progressPercent: 50 }
-      ]
-    },
-    {
-      department: 'ui_ux_design' as const,
-      name: 'UI/UX Design & Brand Architecture',
-      leadName: 'Sara Jenkins',
-      leadAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
-      healthStatus: 'optimal' as const,
-      metrics: {
-        primaryMetricLabel: 'Design Deliverables',
-        primaryMetricValue: '14 Approved',
-        velocityScore: 89,
-        activeTasksCount: 11,
-        completedThisWeekCount: 8,
-        slaAdherencePercent: 95
-      },
-      highlights: [
-        'Minimalist dark-mode geometric design library published',
-        'Responsive wireframes for Lumina Health 9-page clinic portal',
-        'Client presentation decks prepared for high-ticket pitches'
-      ],
-      activeMilestones: [
-        { title: 'Interactive design mockup for FinTech SaaS client', owner: 'Sara Jenkins', status: 'in_progress' as const, dueDate: '2026-09-30', progressPercent: 65 },
-        { title: 'Social share cards & OpenGraph asset bundle', owner: 'Sara Jenkins', status: 'completed' as const, dueDate: '2026-09-26', progressPercent: 100 }
-      ]
-    }
-  ];
+      {
+        department: 'ui_ux_design',
+        name: 'UI/UX Design & Brand Architecture',
+        leadName: 'Design & Creative Desk',
+        leadAvatar: '',
+        healthStatus: 'optimal',
+        metrics: {
+          primaryMetricLabel: 'Brand Assets Ready',
+          primaryMetricValue: `${designReadyCount} / ${projects.length}`,
+          velocityScore: projects.length > 0 ? Math.round((designReadyCount / projects.length) * 100) : 0,
+          activeTasksCount: projects.filter(p => !p.hasLogo || !p.hasImages).length,
+          completedThisWeekCount: designReadyCount,
+          slaAdherencePercent: projects.length > 0 ? Math.round((designReadyCount / projects.length) * 100) : 0
+        },
+        highlights: projects.length > 0
+          ? [`${designReadyCount} project(s) have verified brand & visual assets ready`]
+          : ['No design asset bundles queued yet.'],
+        activeMilestones: []
+      }
+    ];
+  }, [projects, formatMoney]);
+
+  const departments = departmentalProgress.length > 0 ? departmentalProgress : derivedDepartments;
 
   const filteredDepts = activeDeptTab === 'all' 
     ? departments 
     : departments.filter(d => d.department === activeDeptTab);
 
   // Overall Velocity Average
-  const avgVelocity = Math.round(departments.reduce((acc, d) => acc + d.metrics.velocityScore, 0) / departments.length);
+  const avgVelocity = departments.length > 0
+    ? Math.round(departments.reduce((acc, d) => acc + d.metrics.velocityScore, 0) / departments.length)
+    : 0;
   const totalActiveTasks = departments.reduce((acc, d) => acc + d.metrics.activeTasksCount, 0);
   const totalCompletedThisWeek = departments.reduce((acc, d) => acc + d.metrics.completedThisWeekCount, 0);
 
@@ -160,22 +169,22 @@ export const DepartmentalTrackingView: React.FC = () => {
     <div className="space-y-6 pb-12 animate-fadeIn max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
       
       {/* Top Banner / Executive Oversight Header */}
-      <div className="bg-gradient-to-r from-indigo-950/70 via-slate-900/90 to-slate-950/80 border border-slate-200 dark:border-white/10 rounded-3xl p-6 sm:p-8 backdrop-blur-md shadow-xl relative overflow-hidden">
+      <div className="bg-white dark:bg-[#0d1322] border border-slate-200 dark:border-white/10 rounded-3xl p-6 sm:p-8 shadow-sm relative overflow-hidden">
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
             <div className="flex items-center gap-2 mb-2">
-              <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 font-mono">
+              <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/30 font-mono">
                 Cross-Departmental Oversight
               </span>
-              <span className="text-[10px] font-mono text-slate-400">
-                Tenant: <strong className="text-white">{currentTenant?.name || 'ALM Nexus'}</strong>
+              <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400">
+                Tenant: <strong className="text-slate-900 dark:text-white">{currentTenant?.name || 'Workspace'}</strong>
               </span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight">
               Departmental Velocity &amp; Team Workflow
             </h1>
             <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 mt-1 max-w-2xl">
-              Real-time synchronization across Business Development, Project Management, Engineering, and UI/UX Design without micromanagement.
+              Live synchronization across Business Development, Project Management, Engineering, and UI/UX Design derived directly from workspace records.
             </p>
           </div>
 
@@ -183,7 +192,7 @@ export const DepartmentalTrackingView: React.FC = () => {
             <button
               onClick={handleRefresh}
               disabled={refreshing}
-              className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-slate-900 dark:text-white text-xs font-bold border border-slate-200 dark:border-white/10 transition cursor-pointer"
+              className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-white/10 dark:hover:bg-white/15 text-slate-900 dark:text-white text-xs font-bold border border-slate-200 dark:border-white/10 transition cursor-pointer"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
               <span>Sync Metrics</span>
@@ -196,8 +205,7 @@ export const DepartmentalTrackingView: React.FC = () => {
           <div>
             <span className="text-slate-500 dark:text-slate-400 text-xs font-medium block">Org Velocity Score</span>
             <div className="flex items-baseline gap-2 mt-1">
-              <span className="text-2xl font-black text-indigo-400 font-mono">{avgVelocity}%</span>
-              <span className="text-[10px] text-emerald-400 font-bold font-mono">+4.2%</span>
+              <span className="text-2xl font-black text-indigo-600 dark:text-indigo-400 font-mono">{avgVelocity}%</span>
             </div>
           </div>
 
@@ -205,22 +213,21 @@ export const DepartmentalTrackingView: React.FC = () => {
             <span className="text-slate-500 dark:text-slate-400 text-xs font-medium block">In-Flight Tasks</span>
             <div className="flex items-baseline gap-2 mt-1">
               <span className="text-2xl font-black text-slate-900 dark:text-white font-mono">{totalActiveTasks}</span>
-              <span className="text-[10px] text-slate-400">Across 4 Squads</span>
+              <span className="text-[10px] text-slate-500 dark:text-slate-400">Across {departments.length} Squads</span>
             </div>
           </div>
 
           <div>
-            <span className="text-slate-500 dark:text-slate-400 text-xs font-medium block">Completed This Week</span>
+            <span className="text-slate-500 dark:text-slate-400 text-xs font-medium block">Completed Milestones</span>
             <div className="flex items-baseline gap-2 mt-1">
-              <span className="text-2xl font-black text-emerald-400 font-mono">{totalCompletedThisWeek}</span>
-              <span className="text-[10px] text-emerald-400 font-bold font-mono">100% On-Time</span>
+              <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400 font-mono">{totalCompletedThisWeek}</span>
             </div>
           </div>
 
           <div>
             <span className="text-slate-500 dark:text-slate-400 text-xs font-medium block">Active Revenue Pipeline</span>
             <div className="flex items-baseline gap-2 mt-1">
-              <span className="text-2xl font-black text-amber-400 font-mono">
+              <span className="text-2xl font-black text-amber-600 dark:text-amber-400 font-mono">
                 {formatMoney(projects.reduce((acc, p) => acc + (p.finalPrice || p.estimatedPrice || 0), 0))}
               </span>
             </div>
@@ -262,17 +269,23 @@ export const DepartmentalTrackingView: React.FC = () => {
           return (
             <div
               key={dept.department}
-              className="bg-white dark:bg-[#0d1322] border border-slate-200 dark:border-white/10 rounded-3xl p-6 shadow-xl shadow-slate-900/5 flex flex-col justify-between"
+              className="bg-white dark:bg-[#0d1322] border border-slate-200 dark:border-white/10 rounded-3xl p-6 shadow-sm flex flex-col justify-between"
             >
               <div>
                 {/* Department Header */}
                 <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-white/10">
                   <div className="flex items-center gap-3">
-                    <img 
-                      src={dept.leadAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'} 
-                      alt={dept.leadName} 
-                      className="w-10 h-10 rounded-2xl object-cover ring-2 ring-indigo-500/20"
-                    />
+                    {dept.leadAvatar ? (
+                      <img 
+                        src={dept.leadAvatar} 
+                        alt={dept.leadName} 
+                        className="w-10 h-10 rounded-2xl object-cover ring-2 ring-indigo-500/20"
+                      />
+                    ) : (
+                      <div className="w-10 h-10 rounded-2xl bg-indigo-50 dark:bg-indigo-500/15 border border-indigo-200 dark:border-indigo-500/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400 font-black text-xs">
+                        {dept.name.slice(0, 2).toUpperCase()}
+                      </div>
+                    )}
                     <div>
                       <h3 className="text-sm font-black text-slate-900 dark:text-white">
                         {dept.name}
@@ -284,8 +297,8 @@ export const DepartmentalTrackingView: React.FC = () => {
                   </div>
 
                   <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs font-bold border border-emerald-500/20 font-mono">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                    <span>Optimal</span>
+                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                    <span>Live</span>
                   </span>
                 </div>
 

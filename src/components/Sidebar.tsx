@@ -4,7 +4,6 @@ import {
   Inbox,
   Send,
   Mail,
-  BookOpen,
   BarChart3,
   Coins,
   MessageSquare,
@@ -12,14 +11,12 @@ import {
   Globe,
   ExternalLink,
   Plus,
-  Sparkles,
   LogOut,
   LogIn,
   CheckCircle2,
   Layers,
   User,
   Database,
-  Globe2,
   PanelLeftClose,
   PanelLeftOpen,
   X
@@ -56,7 +53,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
     logout,
     setIsAuthModalOpen,
     setIsNewLeadModalOpen,
-    openAIModal,
     setIsTestModalOpen,
     setIsDatabaseModalOpen,
     databaseStatus,
@@ -80,49 +76,66 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
 
   const navGroups: NavGroup[] = [
     {
-      label: 'Command Center',
+      label: 'Operations & Deals',
       items: [
         {
-          id: 'profile',
-          label: 'Profile & Workspaces',
-          icon: User,
-          roles: ['admin', 'ceo', 'bd_head', 'sales', 'coordinator', 'project_manager', 'developer', 'designer', 'collaborator', 'client_guest', 'team_member']
-        },
-        {
           id: 'pipeline',
-          label: 'Pipeline & Deals',
+          label: 'Executive Dashboard',
           icon: Kanban,
           roles: ['admin', 'ceo', 'bd_head', 'sales', 'coordinator', 'project_manager', 'developer', 'designer', 'collaborator']
         },
         {
+          id: 'departmental',
+          label: 'Team Tasks & Velocity',
+          icon: Layers,
+          roles: ['admin', 'ceo', 'bd_head', 'coordinator', 'project_manager', 'sales', 'developer', 'designer']
+        },
+        {
+          id: 'sop',
+          label: 'SOP Stage Gates',
+          icon: CheckCircle2,
+          roles: ['admin', 'ceo', 'bd_head', 'coordinator', 'project_manager', 'developer']
+        },
+        {
+          id: 'vault',
+          label: 'Secure File Vault',
+          icon: FolderLock,
+          roles: ['admin', 'ceo', 'bd_head', 'coordinator', 'project_manager', 'developer', 'designer']
+        },
+        {
+          id: 'chat',
+          label: 'Team Channels',
+          icon: MessageSquare,
+          roles: ['admin', 'ceo', 'bd_head', 'sales', 'coordinator', 'project_manager', 'developer', 'designer', 'collaborator']
+        }
+      ]
+    },
+    {
+      label: 'Email Hub',
+      items: [
+        {
           id: 'outreach_suite',
-          label: 'Outreach Suite',
+          label: 'Mailboxes & Campaigns',
           icon: Send,
           roles: ['admin', 'ceo', 'bd_head', 'sales', 'coordinator', 'project_manager', 'developer']
         },
         {
           id: 'inbox',
-          label: 'Unified Inbox',
+          label: 'Unified Client Inbox',
           icon: Inbox,
           dynamicCount: unreadInboxCount > 0 ? unreadInboxCount : undefined,
           roles: ['admin', 'ceo', 'bd_head', 'sales', 'coordinator', 'project_manager']
         },
         {
           id: 'gmail',
-          label: 'Gmail Workspace',
+          label: 'Google Mailbox Sync',
           icon: Mail,
           roles: ['admin', 'ceo', 'bd_head', 'sales', 'coordinator', 'project_manager', 'developer']
-        },
-        {
-          id: 'outreach',
-          label: 'AI Lead Finder',
-          icon: Sparkles,
-          roles: ['admin', 'ceo', 'bd_head', 'sales']
         }
       ]
     },
     {
-      label: 'Revenue & Splits',
+      label: 'Team & Commission Ledger',
       items: [
         {
           id: 'commissions',
@@ -135,70 +148,29 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
           label: 'Revenue Analytics',
           icon: BarChart3,
           roles: ['admin', 'ceo', 'bd_head']
+        },
+        {
+          id: 'profile',
+          label: 'Workspace & Team',
+          icon: User,
+          roles: ['admin', 'ceo', 'bd_head', 'sales', 'coordinator', 'project_manager', 'developer', 'designer', 'collaborator', 'client_guest', 'team_member']
         }
       ]
     },
     {
-      label: 'Delivery & SOP',
+      label: 'External & System',
       items: [
-        {
-          id: 'departmental',
-          label: 'Department Velocity',
-          icon: Layers,
-          roles: ['admin', 'ceo', 'bd_head', 'coordinator', 'project_manager', 'sales', 'developer', 'designer']
-        },
-        {
-          id: 'sop',
-          label: 'SOP 1–11 Rules',
-          icon: CheckCircle2,
-          roles: ['admin', 'ceo', 'bd_head', 'coordinator', 'project_manager', 'developer']
-        },
-        {
-          id: 'vault',
-          label: 'Secure File Vault',
-          icon: FolderLock,
-          roles: ['admin', 'ceo', 'bd_head', 'coordinator', 'project_manager', 'developer', 'designer']
-        },
         {
           id: 'portal',
           label: 'Client Portal',
           icon: ExternalLink,
           roles: ['admin', 'ceo', 'bd_head', 'client_guest', 'team_member', 'collaborator']
-        }
-      ]
-    },
-    {
-      label: 'Platform & Tools',
-      items: [
-        {
-          id: 'chat',
-          label: 'Team Channels',
-          icon: MessageSquare,
-          roles: ['admin', 'ceo', 'bd_head', 'sales', 'coordinator', 'project_manager', 'developer', 'designer', 'collaborator']
-        },
-        {
-          id: 'free_apis',
-          label: 'Forex & DNS Tools',
-          icon: Globe2,
-          roles: ['admin', 'ceo', 'bd_head', 'sales', 'coordinator', 'project_manager', 'developer', 'designer']
         },
         {
           id: 'integrations',
-          label: 'Integrations & Hooks',
+          label: 'Webhooks & API',
           icon: Globe,
           roles: ['admin', 'ceo', 'bd_head']
-        },
-        {
-          id: 'docs',
-          label: 'API & MCP Docs',
-          icon: BookOpen,
-          roles: ['admin', 'ceo', 'bd_head', 'sales', 'coordinator', 'project_manager', 'developer', 'designer', 'collaborator', 'client_guest', 'team_member']
-        },
-        {
-          id: 'leadflow',
-          label: 'Product Showcase',
-          icon: Sparkles,
-          roles: ['admin', 'ceo', 'bd_head', 'sales', 'coordinator', 'project_manager', 'developer', 'designer', 'collaborator', 'client_guest', 'team_member']
         }
       ]
     }
@@ -229,7 +201,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
         className={`fixed top-0 left-0 bottom-0 z-50 flex flex-col justify-between transition-all duration-200 ease-in-out border-r
           ${mobileOpen ? 'translate-x-0 w-64' : '-translate-x-full lg:translate-x-0'}
           ${sidebarCollapsed ? 'lg:w-16' : 'lg:w-60'}
-          bg-white dark:bg-[#0a192f] border-slate-200 dark:border-slate-800 shadow-lg lg:shadow-none`}
+          bg-[#FFFFFF] dark:bg-[#111827] border-slate-200 dark:border-slate-800 shadow-lg lg:shadow-none`}
       >
         {/* Top: Brand Header & Collapse Control */}
         <div className="border-b border-slate-200 dark:border-slate-800">
@@ -240,11 +212,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
                 onClick={() => handleNavClick('pipeline')}
               >
                 <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs">
-                  <img src="/icon.svg" alt="ClientOps" className="w-5 h-5 rounded-xs" />
+                  <Layers className="w-4 h-4" />
                 </div>
                 <div className="min-w-0">
-                  <span className="font-bold text-sm tracking-tight text-slate-900 dark:text-white truncate block leading-tight">
-                    {currentTenant?.name || 'ClientOps Suite'}
+                  <span className="font-bold text-sm tracking-tight text-slate-950 dark:text-white truncate block leading-tight">
+                    {currentTenant?.name || 'ClientOps'}
                   </span>
                   <span className="text-[11px] text-slate-500 dark:text-slate-400 block truncate">
                     Operations Workspace
@@ -257,7 +229,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
               <button
                 type="button"
                 onClick={() => setSidebarCollapsed(false)}
-                className="w-9 h-9 rounded-lg bg-indigo-600 text-white flex items-center justify-center cursor-pointer hover:bg-indigo-700 transition"
+                className="btn-tactile-primary w-9 h-9 rounded-lg flex items-center justify-center cursor-pointer"
                 title="Expand Navigation Sidebar"
                 aria-label="Expand Navigation Sidebar"
               >
@@ -293,8 +265,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
             <div className="px-3 pb-3">
               <div
                 onClick={() => handleNavClick('profile')}
-                className="p-2 rounded-lg bg-slate-50 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2 cursor-pointer hover:border-indigo-300 dark:hover:border-indigo-500/40 transition-colors"
-                title="Open Personal Profile & Workspaces"
+                className="p-2 rounded-lg bg-[#F8FAFC] dark:bg-[#090D16] border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2 cursor-pointer hover:border-indigo-300 dark:hover:border-indigo-500/40 transition-colors"
+                title="Open Workspace & Team Settings"
               >
                 <div className="flex items-center gap-2 min-w-0">
                   <div className="w-7 h-7 rounded-md bg-slate-900 dark:bg-indigo-600 text-white flex items-center justify-center font-bold text-xs shrink-0">
@@ -309,16 +281,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
                     </span>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setIsAuthModalOpen(true);
-                  }}
-                  className="px-2 py-1 rounded-md bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-[11px] font-medium border border-slate-200 dark:border-slate-700 transition cursor-pointer shrink-0 whitespace-nowrap"
-                >
-                  Role
-                </button>
               </div>
             </div>
           ) : (
@@ -326,7 +288,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
               <button
                 type="button"
                 onClick={() => handleNavClick('profile')}
-                className="w-9 h-9 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-bold text-xs flex items-center justify-center cursor-pointer hover:border-indigo-400 transition"
+                className="w-9 h-9 rounded-lg bg-[#F8FAFC] dark:bg-[#090D16] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-bold text-xs flex items-center justify-center cursor-pointer hover:border-indigo-400 transition"
                 title={`${currentUser?.name || 'Profile'} (${currentRoleInfo.title})`}
               >
                 {currentUser?.name ? currentUser.name[0].toUpperCase() : 'U'}
@@ -335,36 +297,21 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
           )}
         </div>
 
-        {/* Primary Quick Actions */}
+        {/* Primary Quick Action */}
         {['admin', 'ceo', 'bd_head', 'sales', 'coordinator', 'project_manager'].includes(role) && (
-          <div className={`px-2.5 pt-2.5 pb-1 space-y-1.5 ${isCollapsedDesktop ? 'flex flex-col items-center' : ''}`}>
+          <div className={`px-2.5 pt-2.5 pb-1 ${isCollapsedDesktop ? 'flex flex-col items-center' : ''}`}>
             <button
               id="btn-sidebar-new-lead"
               type="button"
               onClick={() => setIsNewLeadModalOpen(true)}
-              className={`${
+              className={`btn-tactile-primary ${
                 isCollapsedDesktop ? 'w-10 h-10 p-0 justify-center' : 'w-full py-2 px-3 justify-center gap-1.5'
-              } flex items-center rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer whitespace-nowrap`}
-              title="New Client Lead"
+              } flex items-center rounded-lg text-xs font-semibold cursor-pointer whitespace-nowrap`}
+              title="New Client Deal"
             >
               <Plus className="w-4 h-4 shrink-0" />
-              {!isCollapsedDesktop && <span>New Client Lead</span>}
+              {!isCollapsedDesktop && <span>New Client Deal</span>}
             </button>
-
-            {['admin', 'ceo', 'bd_head', 'sales'].includes(role) && (
-              <button
-                id="btn-sidebar-ai-pitch"
-                type="button"
-                onClick={() => openAIModal()}
-                className={`${
-                  isCollapsedDesktop ? 'w-10 h-9 p-0 justify-center' : 'w-full py-1.5 px-3 justify-center gap-1.5'
-                } flex items-center rounded-lg bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-medium border border-slate-200 dark:border-slate-800 transition-colors cursor-pointer whitespace-nowrap`}
-                title="AI Proposal & Pitch Assistant"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
-                {!isCollapsedDesktop && <span>AI Proposal &amp; Pitch</span>}
-              </button>
-            )}
           </div>
         )}
 
@@ -431,10 +378,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
         </nav>
 
         {/* Bottom Utility & Session Section */}
-        <div className="p-2.5 border-t border-slate-200 dark:border-slate-800 space-y-2 bg-slate-50/70 dark:bg-[#0a192f]">
+        <div className="p-2.5 border-t border-slate-200 dark:border-slate-800 space-y-2 bg-[#F8FAFC] dark:bg-[#090D16]">
           {!isCollapsedDesktop ? (
             <>
-              <div className="p-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+              <div className="p-1.5 rounded-lg bg-[#FFFFFF] dark:bg-[#111827] border border-slate-200 dark:border-slate-800">
                 <ThemeToggle variant="segmented" showLabels={true} className="w-full justify-between" />
               </div>
 
@@ -475,18 +422,18 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
             <button
               type="button"
               onClick={logout}
-              title={`Sign Out (${currentUser.name})`}
-              className={`w-full flex items-center justify-center gap-2 py-1.5 px-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-red-300 hover:text-red-600 dark:hover:text-red-400 text-slate-700 dark:text-slate-300 text-xs font-medium transition cursor-pointer whitespace-nowrap`}
+              title={`Log Out (${currentUser.name})`}
+              className="btn-tactile-secondary w-full flex items-center justify-center gap-2 py-1.5 px-2.5 rounded-lg text-xs font-semibold hover:text-red-600 dark:hover:text-red-400 cursor-pointer whitespace-nowrap"
             >
               <LogOut className="w-3.5 h-3.5 shrink-0" />
-              {!isCollapsedDesktop && <span>Sign Out</span>}
+              {!isCollapsedDesktop && <span>Log Out</span>}
             </button>
           ) : (
             <button
               type="button"
               onClick={() => setIsAuthModalOpen(true)}
               title="Sign In"
-              className="w-full flex items-center justify-center gap-2 py-1.5 px-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition cursor-pointer whitespace-nowrap"
+              className="btn-tactile-primary w-full flex items-center justify-center gap-2 py-1.5 px-2.5 rounded-lg text-xs font-semibold cursor-pointer whitespace-nowrap"
             >
               <LogIn className="w-3.5 h-3.5 shrink-0" />
               {!isCollapsedDesktop && <span>Sign In</span>}

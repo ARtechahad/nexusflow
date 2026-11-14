@@ -287,7 +287,7 @@ export const CampaignEditor: React.FC<CampaignEditorProps> = ({
     b = b.replace(/\{\{last_name(?:\|[^}]+)?\}\}/g, previewProspect.last_name);
     b = b.replace(/\{\{company(?:\|[^}]+)?\}\}/g, previewProspect.company);
     b = b.replace(/\{\{title(?:\|[^}]+)?\}\}/g, previewProspect.title);
-    b = b.replace(/\{\{sender_name\}\}/g, 'Sarah Jenkins');
+    b = b.replace(/\{\{sender_name\}\}/g, 'Sender Name');
     b = b.replace(/\{([^|{}]+)\|[^}]+\}/g, '$1');
 
     return { subject: s, body: b };

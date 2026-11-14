@@ -68,15 +68,9 @@ export const TeamChatView: React.FC = () => {
     if (e) e.preventDefault();
     if (!inputText.trim()) return;
 
-    const senderNames: Record<string, string> = {
-      sales: 'Sarah Jenkins (Sales)',
-      coordinator: 'Alex Chen (Coordination)',
-      developer: 'Marcus Vance (Dev Lead)',
-      admin: 'Elena Rostova (Admin)',
-      client_guest: 'Guest Client'
-    };
-
-    const senderName = currentUser?.name ? `${currentUser.name} (${role.toUpperCase()})` : (senderNames[role] || 'Team Member');
+    const senderName = currentUser?.name
+      ? `${currentUser.name} (${role.replace('_', ' ').toUpperCase()})`
+      : role.replace('_', ' ').toUpperCase();
 
     const newMsgPayload = {
       channel: selectedChannel,

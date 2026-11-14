@@ -438,7 +438,7 @@ Format as structured JSON with keys: transcript, summary, actionItems (array of 
             title: item,
             status: 'todo',
             urgency: 'high',
-            assignedTo: 'Marcus Vance',
+            assignedTo: 'Engineering Lead',
             createdAt: new Date().toISOString()
           });
           createdCount++;

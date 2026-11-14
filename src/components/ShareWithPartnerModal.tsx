@@ -25,7 +25,7 @@ export const ShareWithPartnerModal: React.FC<ShareWithPartnerModalProps> = ({
 }) => {
   const { showToast, refreshProjects } = useApp();
 
-  const [collaboratorEmail, setCollaboratorEmail] = useState<string>('partner@vance-capital.com');
+  const [collaboratorEmail, setCollaboratorEmail] = useState<string>('');
   const [partnerNotes, setPartnerNotes] = useState<string>('');
   const [sharing, setSharing] = useState<boolean>(false);
 
@@ -101,29 +101,17 @@ export const ShareWithPartnerModal: React.FC<ShareWithPartnerModalProps> = ({
 
           <div>
             <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              Select Partner / Collaborator Account
+              Partner / Collaborator Email Address
             </label>
-            <select
+            <input
+              type="email"
+              required
               value={collaboratorEmail}
               onChange={(e) => setCollaboratorEmail(e.target.value)}
+              placeholder="collaborator@partner-firm.com"
               className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
-            >
-              <option value="partner@vance-capital.com">Marcus Vance (partner@vance-capital.com) • Vance Capital</option>
-              <option value="appraisal@realty-group.us">Elena Rostova (appraisal@realty-group.us) • Apex Valuation</option>
-              <option value="custom">Enter Custom Email...</option>
-            </select>
+            />
           </div>
-
-          {collaboratorEmail === 'custom' && (
-            <div>
-              <input
-                type="email"
-                placeholder="collaborator@institution.com"
-                onChange={(e) => setCollaboratorEmail(e.target.value)}
-                className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
-          )}
 
           <div>
             <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">

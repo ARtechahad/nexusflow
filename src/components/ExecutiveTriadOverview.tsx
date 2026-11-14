@@ -25,7 +25,6 @@ export const ExecutiveTriadOverview: React.FC = () => {
 
   const outreachState = useOutreachTelemetry();
 
-  // 1. Live Deals Pipeline calculations (strictly from real context projects)
   const totalPipelineValue = projects.reduce((sum, p) => sum + (p.finalPrice || p.estimatedPrice || 0), 0);
   const advancesCleared = projects.filter(p => p.advancePaid).length;
   const advanceClearancePct = projects.length > 0 ? Math.round((advancesCleared / projects.length) * 100) : 0;
@@ -36,13 +35,11 @@ export const ExecutiveTriadOverview: React.FC = () => {
     p => p.domainTransferred || p.status === 'completed' || p.status === 'transferred'
   ).length;
 
-  // 2. Cold Outreach real aggregates
   const sendUtilizationPct =
     outreachState.dailyCapacity > 0
       ? Math.min(Math.round((outreachState.sentToday / outreachState.dailyCapacity) * 100), 100)
       : 0;
 
-  // 3. Commission Ledger real aggregates (SOP Section 6 matrix)
   const isCollaborator = role === 'collaborator';
   const canOpenCommissions = !isCollaborator && ['admin', 'ceo', 'bd_head', 'sales'].includes(role);
   const commissionTotals = projects.reduce(
@@ -69,7 +66,7 @@ export const ExecutiveTriadOverview: React.FC = () => {
       className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 items-stretch"
     >
       {/* PRIMARY CARD 1: LIVE DEALS PIPELINE */}
-      <article className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 border-t-[3px] border-t-indigo-600 dark:border-t-indigo-500 rounded-xl p-5 sm:p-6 shadow-2xs hover:border-slate-300 dark:hover:border-slate-700 transition-colors flex flex-col justify-between gap-6">
+      <article className="bg-[#FFFFFF] dark:bg-[#111827] border border-slate-200 dark:border-slate-800 border-t-[3px] border-t-indigo-600 dark:border-t-indigo-500 rounded-xl p-5 sm:p-6 shadow-2xs hover:border-slate-300 dark:hover:border-slate-700 transition-colors flex flex-col justify-between gap-6">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-[11px] font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider">
@@ -91,10 +88,10 @@ export const ExecutiveTriadOverview: React.FC = () => {
             <button
               type="button"
               onClick={() => setIsNewLeadModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-2xs transition cursor-pointer shrink-0 whitespace-nowrap"
+              className="btn-tactile-primary inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer shrink-0 whitespace-nowrap"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span>New Lead</span>
+              <span>New Deal</span>
             </button>
           )}
         </div>
@@ -136,13 +133,13 @@ export const ExecutiveTriadOverview: React.FC = () => {
         </div>
       </article>
 
-      {/* PRIMARY CARD 2: COLD OUTREACH STATS */}
-      <article className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 border-t-[3px] border-t-emerald-600 dark:border-t-emerald-500 rounded-xl p-5 sm:p-6 shadow-2xs hover:border-slate-300 dark:hover:border-slate-700 transition-colors flex flex-col justify-between gap-6">
+      {/* PRIMARY CARD 2: CONNECTED MAILBOXES & OUTREACH STATS */}
+      <article className="bg-[#FFFFFF] dark:bg-[#111827] border border-slate-200 dark:border-slate-800 border-t-[3px] border-t-emerald-600 dark:border-t-emerald-500 rounded-xl p-5 sm:p-6 shadow-2xs hover:border-slate-300 dark:hover:border-slate-700 transition-colors flex flex-col justify-between gap-6">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-[11px] font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider">
               <Send className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-              <span>Cold Outreach Stats</span>
+              <span>Email Hub &amp; Mailboxes</span>
             </div>
 
             {outreachState.loading ? (
@@ -150,7 +147,7 @@ export const ExecutiveTriadOverview: React.FC = () => {
             ) : outreachState.postgresConnected === false ? (
               <div className="mt-3 flex items-center gap-2 text-xs font-semibold text-amber-800 dark:text-amber-300">
                 <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>PostgreSQL offline — connect Outreach DB to stream telemetry</span>
+                <span>PostgreSQL offline — connect Email DB to stream mailbox status</span>
               </div>
             ) : outreachState.mailboxes.length === 0 && outreachState.campaigns.length === 0 ? (
               <div className="mt-3">
@@ -158,7 +155,7 @@ export const ExecutiveTriadOverview: React.FC = () => {
                   No mailboxes connected
                 </span>
                 <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
-                  Connect an SMTP/IMAP sender to track live sends &amp; replies.
+                  Connect an SMTP/IMAP or Google sender to manage threads &amp; campaigns.
                 </span>
               </div>
             ) : (
@@ -179,10 +176,10 @@ export const ExecutiveTriadOverview: React.FC = () => {
           <button
             type="button"
             onClick={() => setActiveTab('outreach_suite')}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-950 dark:text-slate-100 text-xs font-semibold transition cursor-pointer shrink-0 whitespace-nowrap"
+            className="btn-tactile-secondary inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer shrink-0 whitespace-nowrap"
           >
             <Mail className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-            <span>{outreachState.mailboxes.length === 0 ? 'Connect' : 'Open Suite'}</span>
+            <span>{outreachState.mailboxes.length === 0 ? 'Connect' : 'Email Hub'}</span>
           </button>
         </div>
 
@@ -223,19 +220,19 @@ export const ExecutiveTriadOverview: React.FC = () => {
         </div>
       </article>
 
-      {/* PRIMARY CARD 3: COMMISSION LEDGER */}
-      <article className="md:col-span-2 xl:col-span-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 border-t-[3px] border-t-amber-600 dark:border-t-amber-500 rounded-xl p-5 sm:p-6 shadow-2xs hover:border-slate-300 dark:hover:border-slate-700 transition-colors flex flex-col justify-between gap-6">
+      {/* PRIMARY CARD 3: COMMISSION & PAYMENT SPLITS */}
+      <article className="md:col-span-2 xl:col-span-1 bg-[#FFFFFF] dark:bg-[#111827] border border-slate-200 dark:border-slate-800 border-t-[3px] border-t-amber-600 dark:border-t-amber-500 rounded-xl p-5 sm:p-6 shadow-2xs hover:border-slate-300 dark:hover:border-slate-700 transition-colors flex flex-col justify-between gap-6">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-[11px] font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider">
               <Coins className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
-              <span>Commission Ledger</span>
+              <span>Financial &amp; Commission Ledger</span>
             </div>
 
             {isCollaborator ? (
               <div className="mt-3 flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
                 <Lock className="w-4 h-4 text-slate-500 shrink-0" />
-                <span>Internal agency splits masked for Partner NDA role.</span>
+                <span>Internal splits masked for Partner NDA role.</span>
               </div>
             ) : (
               <div className="mt-3 flex items-baseline gap-2.5 flex-wrap">
@@ -243,7 +240,7 @@ export const ExecutiveTriadOverview: React.FC = () => {
                   {formatMoney(commissionTotals.total)}
                 </span>
                 <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">
-                  SOP 6 pool
+                  total split pool
                 </span>
               </div>
             )}
@@ -253,7 +250,7 @@ export const ExecutiveTriadOverview: React.FC = () => {
             <button
               type="button"
               onClick={() => setActiveTab('commissions')}
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-950 dark:text-slate-100 text-xs font-semibold transition cursor-pointer shrink-0 whitespace-nowrap"
+              className="btn-tactile-secondary inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer shrink-0 whitespace-nowrap"
             >
               <span>Ledger</span>
               <ArrowUpRight className="w-3.5 h-3.5" />
@@ -285,13 +282,13 @@ export const ExecutiveTriadOverview: React.FC = () => {
               </span>
             </div>
             <div>
-              <span className="text-slate-600 dark:text-slate-400 block text-[11px] font-semibold">Escrow</span>
+              <span className="text-slate-600 dark:text-slate-400 block text-[11px] font-semibold">Pending Escrow</span>
               <span className="mt-1 block text-base font-bold text-slate-950 dark:text-white font-mono tabular-nums">
                 {isCollaborator ? 'Masked' : formatMoney(commissionTotals.pending)}
               </span>
             </div>
             <div>
-              <span className="text-slate-600 dark:text-slate-400 block text-[11px] font-semibold">Rate Tiers</span>
+              <span className="text-slate-600 dark:text-slate-400 block text-[11px] font-semibold">Split Tiers</span>
               <span className="mt-1 text-base font-bold text-slate-900 dark:text-slate-100 font-mono tabular-nums flex items-center gap-1">
                 <CheckCircle2 className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
                 25–35%

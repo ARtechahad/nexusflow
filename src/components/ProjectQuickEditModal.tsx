@@ -144,7 +144,7 @@ export const ProjectQuickEditModal: React.FC<ProjectQuickEditModalProps> = ({
                   value={formData.clientName || ''}
                   onChange={e => handleFieldChange('clientName', e.target.value)}
                   className="w-full px-3 py-2 text-xs rounded-xl bg-slate-950/60 border border-white/10 text-white placeholder-slate-500 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
-                  placeholder="e.g. Alexander Vance"
+                  placeholder="e.g. Client Full Name"
                 />
               </div>
 
@@ -157,7 +157,7 @@ export const ProjectQuickEditModal: React.FC<ProjectQuickEditModalProps> = ({
                   value={formData.clientCompany || ''}
                   onChange={e => handleFieldChange('clientCompany', e.target.value)}
                   className="w-full px-3 py-2 text-xs rounded-xl bg-slate-950/60 border border-white/10 text-white placeholder-slate-500 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
-                  placeholder="e.g. Lumina Health Clinics UK"
+                  placeholder="e.g. Acme Holdings Ltd."
                 />
               </div>
             </div>

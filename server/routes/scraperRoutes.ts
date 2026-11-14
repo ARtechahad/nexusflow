@@ -190,8 +190,8 @@ scraperRouter.post('/scan', (req: Request, res: Response) => {
           balanceAmount: Number((item.budget * 0.5).toFixed(2)),
           paymentMethod: 'paypal',
           currency: 'USD',
-          assignedSalesperson: 'Tariq Mehmood',
-          salespersonEmail: 'tariq@agencyops.dev',
+          assignedSalesperson: (req as any).user?.name || 'Sales Desk',
+          salespersonEmail: (req as any).user?.email || '',
           commissionRate,
           commissionAmount,
           commissionStatus: 'pending',
@@ -299,8 +299,8 @@ scraperRouter.post('/inject/:id', (req: Request, res: Response) => {
     balanceAmount: Number((lead.estimatedBudget * 0.5).toFixed(2)),
     paymentMethod: 'paypal',
     currency: 'USD',
-    assignedSalesperson: 'Tariq Mehmood',
-    salespersonEmail: 'tariq@agencyops.dev',
+    assignedSalesperson: (req as any).user?.name || 'Sales Desk',
+    salespersonEmail: (req as any).user?.email || '',
     commissionRate,
     commissionAmount,
     commissionStatus: 'pending',
@@ -337,8 +337,8 @@ scraperRouter.post('/inject/:id', (req: Request, res: Response) => {
   // Post to Sales chat channel
   db.chatMessages.push({
     id: `msg-inject-${Date.now()}`,
-    senderId: 'user-sales-1',
-    senderName: 'Tariq Mehmood',
+    senderId: (req as any).user?.id || 'bot-scraper',
+    senderName: (req as any).user?.name || 'Lead Ingestion Desk',
     senderRole: 'sales',
     channel: 'sales-leads',
     content: `📥 **Injected Scraped Lead into Discovery Pipeline**\nClient: ${lead.authorName} (${lead.companyName || 'Prospect'})\nSource: ${lead.platform.toUpperCase()}\nEstimated Value: $${lead.estimatedBudget} USD (${lead.detectedWebsiteType})\nDirect Link: ${lead.url}`,
@@ -367,20 +367,13 @@ ingestRouter.get('/ingest', (req: Request, res: Response) => {
     description: 'Direct Inbound Automation ingestion endpoint for n8n workflows, Python scrapers, and external Real Estate IDX parsers.',
     authentication: 'Header X-API-Key: sk_live_... OR Authorization: Bearer sk_live_...',
     payloadExample: {
-      clientName: 'Alexander Vance',
-      clientEmail: 'vance@apexholdings.us',
-      clientCompany: 'Apex Prime Commercial Real Estate',
+      clientName: 'Client Contact Name',
+      clientEmail: 'contact@client-company.com',
+      clientCompany: 'Client Company Name',
       websiteType: 'corporate',
-      purpose: 'Luxury commercial portfolio portal with virtual property tours & investor portal',
-      budget: 1850,
-      source: 'python_idx_scraper',
-      propertyDetails: {
-        mlsId: 'IDX-77189',
-        location: 'Brickell Avenue, Miami, FL',
-        assetType: 'Commercial Mixed-Use',
-        estimatedValuation: '$4.2M'
-      },
-      assignedCollaborators: ['partner@vance-capital.com']
+      purpose: 'Corporate web portal scope description',
+      budget: 1500,
+      source: 'n8n_automation'
     }
   });
 });
@@ -467,8 +460,8 @@ ingestRouter.post('/ingest', authenticateApiKey, (req: Request, res: Response) =
       balanceAmount: Number((budget * 0.5).toFixed(2)),
       paymentMethod: 'stripe',
       currency: 'USD',
-      assignedSalesperson: 'Tariq Mehmood',
-      salespersonEmail: 'tariq@agencyops.dev',
+      assignedSalesperson: item.assignedSalesperson || 'Sales Desk',
+      salespersonEmail: item.salespersonEmail || '',
       commissionRate,
       commissionAmount,
       commissionStatus: 'pending',

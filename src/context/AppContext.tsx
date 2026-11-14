@@ -142,6 +142,9 @@ interface AppContextType {
   // Creative Studio & Media Vault
   isCreativeStudioOpen: boolean;
   setIsCreativeStudioOpen: (open: boolean) => void;
+  // Brand-new account onboarding checklist banner
+  showSetupChecklist: boolean;
+  dismissSetupChecklist: () => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -347,6 +350,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
+  const [showSetupChecklist, setShowSetupChecklist] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('clientops_setup_checklist') === 'true';
+    }
+    return false;
+  });
+
+  const dismissSetupChecklist = () => {
+    setShowSetupChecklist(false);
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('clientops_setup_checklist');
+    }
+  };
+
   // Load Tenants from API
   const refreshTenants = async () => {
     try {
@@ -459,7 +476,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           localStorage.setItem('alm_nexus_token', data.token);
           localStorage.setItem('alm_nexus_user', JSON.stringify(data.user));
         }
-        showToast(`Workspace "${data.tenant.name}" created! Welcome, ${data.user?.name || 'Administrator'}!`, 'success');
+        showToast(`Workspace "${data.tenant.name}" created! Welcome, ${data.user?.name || 'Administrator'}.`, 'success');
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('clientops_setup_checklist', 'true');
+        }
+        setShowSetupChecklist(true);
         refreshProjects();
         refreshActivityFeed();
         refreshWikiDocs();
@@ -631,8 +652,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         // Refresh projects from Firestore
         await refreshProjects();
 
-        setActiveTabState('profile');
-        showToast(`Signed in with Google as ${userObj.name}!`, 'success');
+        setActiveTabState('pipeline');
+        showToast(`Signed in with Google as ${userObj.name}.`, 'success');
         return { success: true };
       } else if (res.cancelled) {
         // User closed or dismissed the popup; gently notify without error
@@ -654,7 +675,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     try {
       const email = fallbackUser?.email || (provider === 'github' ? 'dev@agencyops.dev' : 'admin@agencyops.dev');
       const name = fallbackUser?.name || (provider === 'github' ? 'GitHub Developer' : 'Google Operator');
-      const avatar = fallbackUser?.avatar || (provider === 'github' ? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150' : undefined);
+      const avatar = fallbackUser?.avatar || '';
 
       const res = await fetch('/api/auth/oauth', {
         method: 'POST',
@@ -668,8 +689,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setRoleState(data.user.role);
         localStorage.setItem('alm_nexus_token', data.token);
         localStorage.setItem('alm_nexus_user', JSON.stringify(data.user));
-        showToast(`Authenticated via ${provider === 'github' ? 'GitHub' : 'Google'} as ${data.user.name}!`, 'success');
-        setActiveTabState('profile');
+        showToast(`Signed in via ${provider === 'github' ? 'GitHub' : 'Google'} as ${data.user.name}.`, 'success');
+        setActiveTabState('pipeline');
         return { success: true };
       } else {
         return { success: false, message: data.message || 'OAuth authentication failed.' };
@@ -702,11 +723,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         if (data.user.role === 'client_guest') {
           setActiveTabState('portal');
         } else {
-          setActiveTabState('profile');
+          setActiveTabState('pipeline');
         }
         return { success: true };
       } else {
-        return { success: false, message: data.message || 'Invalid credentials or PIN.' };
+        return { success: false, message: data.message || 'Invalid credentials.' };
       }
     } catch (e: any) {
       return { success: false, message: e.message || 'Authentication error.' };
@@ -718,11 +739,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setFirebaseUser(null);
     setAuthToken(null);
     setCurrentUser(null);
-    setRoleState('client_guest');
-    setActiveTabState('portal');
+    setRoleState('admin');
+    setActiveTabState('pipeline');
     localStorage.removeItem('alm_nexus_token');
     localStorage.removeItem('alm_nexus_user');
-    showToast('Signed out of AgencyOps and Firebase session.');
+    showToast('Logged out successfully.');
   };
 
   const switchPersona = async (targetRole: UserRole) => {
@@ -826,26 +847,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const res = await fetch('/api/projects', { headers });
       if (res.ok) {
         const data = await res.json();
-        const projs = data.projects || [];
-        if (projs.length > 0) {
-          setProjects(projs);
-          localDatabase.saveProjects(projs);
+        const projs = Array.isArray(data.projects) ? data.projects : [];
+        setProjects(projs);
+        localDatabase.saveProjects(projs);
 
-          // Seed to Firestore in background only if authenticated
-          if (auth.currentUser) {
-            seedProjectsToFirestore(projs).catch(() => {});
-          }
-          return;
+        // Sync to Firestore in background only if authenticated and projects exist
+        if (auth.currentUser && projs.length > 0) {
+          seedProjectsToFirestore(projs).catch(() => {});
         }
+        return;
       }
     } catch {
-      // Fallback to local storage
-    }
-
-    // 3. Fallback to local storage database
-    const local = localDatabase.getProjects();
-    if (local.length > 0) {
-      setProjects(local);
+      // Fallback to local storage only when network/server fails
+      const local = localDatabase.getProjects();
+      if (local.length > 0) {
+        setProjects(local);
+      }
     }
   };
 
@@ -1109,7 +1126,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         sidebarCollapsed,
         setSidebarCollapsed,
         isCreativeStudioOpen,
-        setIsCreativeStudioOpen
+        setIsCreativeStudioOpen,
+        showSetupChecklist,
+        dismissSetupChecklist
       }}
     >
       {children}

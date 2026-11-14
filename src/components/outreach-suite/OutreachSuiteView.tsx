@@ -149,61 +149,59 @@ export const OutreachSuiteView: React.FC = () => {
   // 1. PostgreSQL Required State
   if (health && !health.postgresConnected) {
     return (
-      <div className="p-6 max-w-7xl mx-auto space-y-6">
-        {/* Header */}
+      <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-5">
           <div>
-            <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-400 border border-indigo-200/60 dark:border-indigo-800/60 mb-2">
-              <Sparkles className="w-3.5 h-3.5" />
-              LeadFlow Outreach Suite • Cold Email & Warmup Engine
-            </div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-              Outreach Suite
+            <span className="text-xs font-mono font-semibold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
+              Email Hub &amp; Mailbox Engine
+            </span>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-950 dark:text-white mt-0.5">
+              Connected Mailboxes &amp; Campaigns
             </h1>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-              Enterprise multi-mailbox deliverability, email warm-up, and sequence automation.
+              Connect company SMTP/IMAP mailboxes, verify deliverability, and manage outbound sequences.
             </p>
           </div>
 
           <button
+            type="button"
             onClick={handleManualRefresh}
             disabled={refreshing}
-            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors"
+            className="btn-tactile-secondary inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold cursor-pointer whitespace-nowrap"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-            Check Connection
+            <span>Check Connection</span>
           </button>
         </div>
 
-        {/* PostgreSQL Required Callout Banner */}
-        <div className="relative overflow-hidden rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-500/5 via-amber-500/10 to-transparent p-8">
+        <div className="rounded-xl border border-amber-300 dark:border-amber-500/30 bg-[#FFFFFF] dark:bg-[#111827] p-6 sm:p-8">
           <div className="flex items-start gap-4">
-            <div className="p-3 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 shrink-0">
-              <Database className="w-8 h-8" />
+            <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-500/30 text-amber-600 dark:text-amber-400 shrink-0">
+              <Database className="w-7 h-7" />
             </div>
             <div className="space-y-4 max-w-3xl">
               <div>
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-                  <span>PostgreSQL Database Required</span>
-                  <span className="text-xs px-2 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 font-medium">
-                    ox_* schema pending
+                <h3 className="text-lg font-semibold text-slate-950 dark:text-white flex items-center gap-2.5 flex-wrap">
+                  <span>PostgreSQL Database Required for Email Hub</span>
+                  <span className="text-xs font-mono text-amber-700 dark:text-amber-300">
+                    (ox_* schema pending)
                   </span>
                 </h3>
                 <p className="text-sm text-slate-600 dark:text-slate-300 mt-2 leading-relaxed">
-                  The <span className="font-semibold text-slate-900 dark:text-white">LeadFlow Outreach Suite</span> requires a persistent PostgreSQL connection to operate. Unlike lightweight CRM tools, cold outreach sequences and warm-up algorithms require row-level database locking (<code>SELECT FOR UPDATE SKIP LOCKED</code>) to prevent concurrent mailbox sends and guarantee ISP rate compliance.
+                  The <span className="font-semibold text-slate-950 dark:text-white">Email Hub</span> requires a persistent PostgreSQL connection to run row-level mailbox locking (<code>SELECT FOR UPDATE SKIP LOCKED</code>), preventing concurrent sends and enforcing ISP rate caps.
                 </p>
               </div>
 
-              <div className="p-4 rounded-xl bg-slate-900/90 text-slate-200 font-mono text-xs space-y-2 border border-slate-800">
-                <div className="text-slate-400">// To enable the Outreach Suite, provide your PostgreSQL connection string in .env:</div>
-                <div className="text-emerald-400">DATABASE_URL="postgresql://postgres:password@host:5432/dbname?sslmode=require"</div>
+              <div className="p-4 rounded-xl bg-slate-950 text-slate-200 font-mono text-xs space-y-2 border border-slate-800">
+                <div className="text-slate-400">// Provide your PostgreSQL connection string in .env:</div>
+                <div className="text-emerald-400">DATABASE_URL=&quot;postgresql://postgres:password@host:5432/dbname?sslmode=require&quot;</div>
                 <div className="text-slate-400">// Ensure your 32-byte AES-256 encryption key is configured:</div>
-                <div className="text-sky-400">ENCRYPTION_KEY="&lt;base64-encoded-32-byte-key&gt;"</div>
+                <div className="text-sky-400">ENCRYPTION_KEY=&quot;&lt;base64-encoded-32-byte-key&gt;&quot;</div>
               </div>
 
               <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                <ShieldCheck className="w-4 h-4 text-emerald-500" />
-                <span>All other ALM Nexus modules (Deals, Commissions, File Vault, Free GTM Tools) continue operating normally in local storage mode.</span>
+                <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0" />
+                <span>Deals pipeline, tasks, commission ledger, and client portal remain operational in local/cloud mode.</span>
               </div>
             </div>
           </div>
@@ -214,30 +212,30 @@ export const OutreachSuiteView: React.FC = () => {
 
   // 2. Active PostgreSQL Dashboard & Tabs
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
+    <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6">
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-5">
         <div>
-          <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/60 mb-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            PostgreSQL Connected • ox_* Tables Active
-          </div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-            LeadFlow Outreach Suite
+          <span className="text-xs font-mono font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
+            PostgreSQL Connected &bull; Email Hub Active
+          </span>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-950 dark:text-white mt-0.5">
+            Connected Mailboxes &amp; Campaigns
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-            Durable Cold Email, Warmup Network, and Multi-Channel Automation.
+            Manage company SMTP/IMAP mailboxes, client threads, warmup, and outbound campaigns.
           </p>
         </div>
 
         <div className="flex items-center gap-3">
           <button
+            type="button"
             onClick={handleManualRefresh}
             disabled={refreshing}
-            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors"
+            className="btn-tactile-secondary inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold cursor-pointer whitespace-nowrap"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-            Refresh
+            <span>Refresh</span>
           </button>
         </div>
       </div>
@@ -278,16 +276,16 @@ export const OutreachSuiteView: React.FC = () => {
           {/* Engine Health Metric Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Card 1: Queue Worker */}
-            <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
+            <div className="p-5 rounded-xl bg-[#FFFFFF] dark:bg-[#111827] border border-slate-200 dark:border-slate-800 shadow-2xs">
               <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-xs font-medium">
                 <span>Durable Worker Loop</span>
                 <Cpu className="w-4 h-4 text-indigo-500" />
               </div>
               <div className="mt-3 flex items-baseline gap-2">
-                <span className="text-2xl font-bold text-slate-900 dark:text-white">
+                <span className="text-2xl font-bold text-slate-950 dark:text-white">
                   {queueData?.workerRunning ? 'Active' : 'Standby'}
                 </span>
-                <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium">
+                <span className="text-xs font-mono text-emerald-700 dark:text-emerald-400 font-semibold">
                   5s Interval
                 </span>
               </div>
@@ -364,20 +362,22 @@ export const OutreachSuiteView: React.FC = () => {
 
                 <div className="flex items-center gap-2">
                   <button
+                    type="button"
                     onClick={() => handleRunTestJob(false)}
                     disabled={triggeringTest}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-700 text-white transition-colors disabled:opacity-50"
+                    className="btn-tactile-primary inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-50 whitespace-nowrap"
                   >
                     <Play className="w-3.5 h-3.5" />
-                    Enqueue Test Job
+                    <span>Enqueue Test Job</span>
                   </button>
                   <button
+                    type="button"
                     onClick={() => handleRunTestJob(true)}
                     disabled={triggeringTest}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-600 hover:bg-amber-700 text-white transition-colors disabled:opacity-50"
+                    className="btn-tactile-secondary inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-50 whitespace-nowrap"
                   >
-                    <AlertTriangle className="w-3.5 h-3.5" />
-                    Simulate Retry Backoff
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                    <span>Simulate Retry Backoff</span>
                   </button>
                 </div>
               </div>

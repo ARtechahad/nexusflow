@@ -105,7 +105,7 @@ router.post('/onboard', (req: Request, res: Response) => {
         syncIntervalMinutes: integrations?.linkedIn?.syncIntervalMinutes || 15,
         autoOutreachEnabled: Boolean(integrations?.linkedIn?.autoOutreachEnabled),
         lastSync: integrations?.linkedIn?.connected ? new Date().toISOString() : undefined,
-        messagesSyncedCount: integrations?.linkedIn?.connected ? 12 : 0
+        messagesSyncedCount: 0
       },
       gmail: {
         connected: Boolean(integrations?.gmail?.connected),
@@ -113,7 +113,7 @@ router.post('/onboard', (req: Request, res: Response) => {
         threadTracking: Boolean(integrations?.gmail?.threadTracking ?? true),
         autoDraftReplies: Boolean(integrations?.gmail?.autoDraftReplies ?? true),
         lastSync: integrations?.gmail?.connected ? new Date().toISOString() : undefined,
-        emailsSyncedCount: integrations?.gmail?.connected ? 35 : 0
+        emailsSyncedCount: 0
       },
       stripe: {
         connected: Boolean(integrations?.stripe?.connected),
@@ -121,7 +121,7 @@ router.post('/onboard', (req: Request, res: Response) => {
         publishableKeyMasked: integrations?.stripe?.publishableKeyMasked || (integrations?.stripe?.connected ? 'pk_live_...vault' : undefined),
         currency: integrations?.stripe?.currency || 'USD',
         lastSync: integrations?.stripe?.connected ? new Date().toISOString() : undefined,
-        mrrUSD: integrations?.stripe?.connected ? 5000 : 0
+        mrrUSD: 0
       }
     },
     rolesConfig: rolesConfig || {
@@ -148,7 +148,7 @@ router.post('/onboard', (req: Request, res: Response) => {
     passwordHash: hashPassword(adminPassword),
     role: 'admin',
     title: adminUser.title || `${companyName} CEO & Managing Director`,
-    avatar: `https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150`,
+    avatar: adminUser.avatar || '',
     tenantId: tenantId,
     permissions: [
       'admin:all',
@@ -160,55 +160,6 @@ router.post('/onboard', (req: Request, res: Response) => {
       'integrations:manage'
     ],
     createdAt: new Date().toISOString()
-  };
-
-  // Seed initial starter project lead for this tenant
-  const starterProject = {
-    id: `proj-${cleanSlug}-1`,
-    tenantId: tenantId,
-    clientName: 'Sarah Jenkins',
-    clientEmail: 'sarah.j@crestview-consulting.com',
-    clientCompany: 'Crestview Capital UK',
-    channel: 'linkedin',
-    websiteType: 'corporate',
-    purpose: 'Flagship enterprise client portal & interactive proposal booking',
-    inspirationUrls: ['https://stripe.com', 'https://linear.app'],
-    hasLogo: true,
-    hasContent: true,
-    hasImages: true,
-    useStockPhotos: false,
-    needsContentWriting: false,
-    hostingStatus: 'has_both',
-    hostingProvider: 'Cloudflare Pages & Workers',
-    credentialsShared: true,
-    estimatedPrice: 1500,
-    finalPrice: 1500,
-    advancePaid: true,
-    advanceAmount: 750,
-    advanceTxId: 'STRIPE-TX-99014',
-    balancePaid: false,
-    balanceAmount: 750,
-    paymentMethod: 'stripe',
-    currency: 'USD',
-    assignedSalesperson: adminUser.name,
-    salespersonEmail: adminUser.email,
-    commissionRate: 35,
-    commissionAmount: 525,
-    commissionStatus: 'pending',
-    discordShared: true,
-    internalQAPassed: true,
-    clientApproved: false,
-    domainTransferred: false,
-    kickOffConfirmed: true,
-    timelineDays: 10,
-    startDate: new Date().toISOString().split('T')[0],
-    targetDeliveryDate: new Date(Date.now() + 86400000 * 10).toISOString().split('T')[0],
-    maintenanceOfferSent: false,
-    maintenanceRetainer: false,
-    referralEnrolled: false,
-    status: 'staging_dev',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
   };
 
   // Activity log for onboarding
@@ -225,10 +176,9 @@ router.post('/onboard', (req: Request, res: Response) => {
     isRead: false
   };
 
-  // Persist into database
+  // Persist into database cleanly without dummy project records
   db.tenants = [newTenant, ...tenants];
   db.users = [registeredAdmin, ...users];
-  db.projects = [starterProject, ...(db.projects || [])];
   db.activityFeed = [onboardingActivity, ...(db.activityFeed || DEFAULT_ACTIVITY_FEED)];
 
   saveDB(db);
@@ -268,7 +218,9 @@ router.post('/onboard', (req: Request, res: Response) => {
     role: registeredAdmin.role,
     name: registeredAdmin.name,
     title: registeredAdmin.title,
-    permissions: registeredAdmin.permissions
+    permissions: registeredAdmin.permissions,
+    tenant_id: tenantId,
+    tenantId: tenantId
   });
 
   logAuditAction({

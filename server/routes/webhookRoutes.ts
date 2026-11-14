@@ -96,7 +96,6 @@ integrationRouter.post('/sync-all', (req: Request, res: Response) => {
 
   (db.connectors || DEFAULT_CONNECTORS).forEach((c: any) => {
     c.lastSyncTime = now;
-    c.eventsHandledCount = (c.eventsHandledCount || 10) + Math.floor(Math.random() * 3);
   });
 
   writeDB(db);

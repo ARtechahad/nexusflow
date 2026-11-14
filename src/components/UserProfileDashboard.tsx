@@ -1,7 +1,6 @@
 import React from 'react';
 import {
   Building2,
-  Sparkles,
   ArrowRight,
   ShieldCheck,
   Users,
@@ -9,7 +8,7 @@ import {
   Mail,
   Kanban,
   Send,
-  BarChart3,
+  Coins,
   Database,
   Plus,
   Briefcase
@@ -28,7 +27,6 @@ export const UserProfileDashboard: React.FC = () => {
     projects,
     unreadInboxCount,
     logout,
-    setIsAuthModalOpen,
     formatMoney
   } = useApp();
 
@@ -44,8 +42,8 @@ export const UserProfileDashboard: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto py-2 space-y-6 animate-fadeIn">
-      {/* 1. Account Identity Banner (Clean Enterprise Light / Dark Parity) */}
-      <div className="rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xs p-6">
+      {/* 1. Account Identity Banner */}
+      <div className="rounded-xl bg-[#FFFFFF] dark:bg-[#111827] border border-slate-200 dark:border-slate-800 shadow-2xs p-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="flex items-center gap-4">
             <div className="w-16 h-16 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold text-xl shrink-0 overflow-hidden shadow-xs">
@@ -62,15 +60,14 @@ export const UserProfileDashboard: React.FC = () => {
 
             <div className="space-y-1 min-w-0">
               <div className="flex items-center gap-2.5 flex-wrap">
-                <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+                <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-950 dark:text-white">
                   {currentUser?.name || 'Workspace Member'}
                 </h1>
                 <span className="text-xs font-mono font-semibold text-indigo-600 dark:text-indigo-400">
                   {role.replace('_', ' ').toUpperCase()}
                 </span>
-                <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                  Verified Session
+                <span className="text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                  &bull; Session Verified
                 </span>
               </div>
               <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 font-medium">
@@ -85,83 +82,78 @@ export const UserProfileDashboard: React.FC = () => {
           <div className="flex items-center gap-2.5 shrink-0">
             <button
               type="button"
-              onClick={() => setIsAuthModalOpen(true)}
-              className="px-3.5 py-2 rounded-lg bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 transition cursor-pointer whitespace-nowrap"
+              onClick={() => setActiveTab('commissions')}
+              className="btn-tactile-secondary px-3.5 py-2 rounded-lg text-xs font-semibold cursor-pointer whitespace-nowrap"
             >
-              Switch Role
+              Team Splits &amp; Ledger
             </button>
             <button
               type="button"
               onClick={logout}
-              className="px-3.5 py-2 rounded-lg bg-white dark:bg-slate-800 hover:border-red-300 hover:text-red-600 dark:hover:text-red-400 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold transition cursor-pointer whitespace-nowrap"
+              className="btn-tactile-secondary px-3.5 py-2 rounded-lg hover:text-red-600 dark:hover:text-red-400 text-xs font-semibold cursor-pointer whitespace-nowrap"
             >
-              Sign Out
+              Log Out
             </button>
           </div>
         </div>
 
-        {/* Security & Infrastructure Status Strip */}
+        {/* Workspace Configuration Status Strip */}
         <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs text-slate-600 dark:text-slate-300">
           <div className="flex items-center gap-2">
             <Database className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-            <span>Neon DB: <strong className="text-slate-900 dark:text-white">Multi-Tenant Isolated</strong></span>
+            <span>Workspace Data: <strong className="text-slate-950 dark:text-white">Isolated &amp; Synced</strong></span>
           </div>
           <div className="flex items-center gap-2">
             <ShieldCheck className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
-            <span>Clerk Auth: <strong className="text-slate-900 dark:text-white">Session Verified</strong></span>
+            <span>Account Status: <strong className="text-slate-950 dark:text-white">Verified Member</strong></span>
           </div>
           <div className="flex items-center gap-2">
             <Mail className="w-4 h-4 text-slate-500 dark:text-slate-400 shrink-0" />
-            <span>Resend Dispatch: <strong className="text-slate-900 dark:text-white">Transactional Ready</strong></span>
+            <span>Email Hub: <strong className="text-slate-950 dark:text-white">Mailbox Sync Ready</strong></span>
           </div>
         </div>
       </div>
 
-      {/* 2. Company Onboarding CTA: "Get Started" */}
-      <div className="rounded-xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-500/30 p-6">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="space-y-1.5 max-w-2xl">
-            <div className="flex items-center gap-1.5 text-xs font-mono font-semibold text-indigo-700 dark:text-indigo-300 uppercase tracking-wider">
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Company Onboarding</span>
-            </div>
-            <h2 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white tracking-tight">
-              Register a New Company Workspace
+      {/* 2. Additional Company Workspace CTA */}
+      <div className="rounded-xl bg-[#FFFFFF] dark:bg-[#111827] border border-slate-200 dark:border-slate-800 p-5">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="space-y-1 max-w-2xl">
+            <h2 className="text-base font-bold text-slate-950 dark:text-white tracking-tight">
+              Need a separate workspace for another company or division?
             </h2>
-            <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-              Launch an isolated company workspace in four quick steps—enter your company name, website, email, industry, and team size without any Tax ID or EIN fields.
+            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+              Create an isolated workspace with its own connected mailboxes, client pipeline, team roles, and commission ledger.
             </p>
           </div>
 
           <button
             type="button"
             onClick={() => setIsOnboardingModalOpen(true)}
-            className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm shadow-xs transition cursor-pointer shrink-0 whitespace-nowrap"
+            className="btn-tactile-secondary inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-semibold text-xs cursor-pointer shrink-0 whitespace-nowrap"
           >
-            <Sparkles className="w-4 h-4" />
-            <span>Get Started</span>
-            <ArrowRight className="w-4 h-4" />
+            <Plus className="w-3.5 h-3.5" />
+            <span>Create Additional Workspace</span>
           </button>
         </div>
       </div>
 
-      {/* 3. Registered Companies & Enterprise Workspaces */}
+      {/* 3. Registered Companies & Workspaces */}
       <div className="space-y-4">
         <div className="flex items-center justify-between gap-4">
           <div>
-            <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <h3 className="text-base font-bold text-slate-950 dark:text-white flex items-center gap-2">
               <Building2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
               <span>Your Registered Company Workspaces</span>
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Select a workspace to enter its deals pipeline, outreach suite, and commission ledger
+              Select a workspace to manage its connected mailboxes, deals pipeline, team tasks, and commission splits
             </p>
           </div>
 
           <button
             type="button"
             onClick={() => setIsOnboardingModalOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 transition cursor-pointer whitespace-nowrap"
+            className="btn-tactile-secondary inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer whitespace-nowrap"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>Add Company</span>
@@ -174,7 +166,7 @@ export const UserProfileDashboard: React.FC = () => {
             return (
               <div
                 key={t.id}
-                className={`rounded-xl border p-5 transition flex flex-col justify-between bg-white dark:bg-slate-900/80 ${
+                className={`rounded-xl border p-5 transition flex flex-col justify-between bg-[#FFFFFF] dark:bg-[#111827] ${
                   isCurrent
                     ? 'border-indigo-500 ring-1 ring-indigo-500/20 shadow-xs'
                     : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
@@ -183,11 +175,11 @@ export const UserProfileDashboard: React.FC = () => {
                 <div className="space-y-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-9 h-9 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center font-bold text-xs text-slate-800 dark:text-white shrink-0">
+                      <div className="w-9 h-9 rounded-lg bg-[#F8FAFC] dark:bg-[#090D16] border border-slate-200 dark:border-slate-700 flex items-center justify-center font-bold text-xs text-slate-800 dark:text-white shrink-0">
                         {t.name ? t.name.slice(0, 2).toUpperCase() : 'CO'}
                       </div>
                       <div className="min-w-0">
-                        <h4 className="font-bold text-sm text-slate-900 dark:text-white truncate">
+                        <h4 className="font-bold text-sm text-slate-950 dark:text-white truncate">
                           {t.name}
                         </h4>
                         <span className="text-[11px] text-slate-500 dark:text-slate-400 font-mono truncate block">
@@ -204,7 +196,7 @@ export const UserProfileDashboard: React.FC = () => {
                   </div>
 
                   <p className="text-xs text-slate-600 dark:text-slate-400 line-clamp-2">
-                    {t.businessInfo?.description || 'International client operations & multi-tenant workspace.'}
+                    {t.businessInfo?.description || 'Multi-tenant company operations & client communication workspace.'}
                   </p>
 
                   <div className="flex items-center gap-4 text-[11px] text-slate-500 dark:text-slate-400 pt-1">
@@ -227,7 +219,7 @@ export const UserProfileDashboard: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => handleEnterWorkspace(t)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition cursor-pointer shrink-0 whitespace-nowrap"
+                    className="btn-tactile-primary inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer shrink-0 whitespace-nowrap"
                   >
                     <span>Enter Dashboard</span>
                     <ArrowRight className="w-3.5 h-3.5" />
@@ -239,19 +231,19 @@ export const UserProfileDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* 4. Direct Workspace Shortcuts */}
+      {/* 4. Core Operational Shortcuts */}
       <div className="space-y-3">
-        <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+        <h3 className="text-base font-bold text-slate-950 dark:text-white flex items-center gap-2">
           <Layers className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-          <span>Workspace Modules</span>
+          <span>Core Workspace Modules</span>
         </h3>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {[
-            { id: 'pipeline', title: 'Deals & Pipeline', desc: `${totalDeals} deals (${formatMoney(totalPipelineValue)})`, icon: Kanban },
-            { id: 'outreach_suite', title: 'Outreach Suite', desc: 'Mailboxes, warmup & A–Z sequences', icon: Send },
-            { id: 'inbox', title: 'Unified Omni-Inbox', desc: `${unreadInboxCount} unread threads`, icon: Mail },
-            { id: 'analytics', title: 'Revenue Analytics', desc: 'Conversions & SLA monitoring', icon: BarChart3 }
+            { id: 'pipeline', title: 'Executive Dashboard', desc: `${totalDeals} deals (${formatMoney(totalPipelineValue)})`, icon: Kanban },
+            { id: 'outreach_suite', title: 'Email Hub', desc: 'Mailboxes, campaigns & warmup', icon: Send },
+            { id: 'inbox', title: 'Unified Client Inbox', desc: `${unreadInboxCount} unread threads`, icon: Mail },
+            { id: 'commissions', title: 'Commission Ledger', desc: 'Splits, advances & payouts', icon: Coins }
           ].map((mod) => {
             const Icon = mod.icon;
             return (
@@ -259,13 +251,13 @@ export const UserProfileDashboard: React.FC = () => {
                 key={mod.id}
                 type="button"
                 onClick={() => setActiveTab(mod.id as any)}
-                className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 hover:border-indigo-300 dark:hover:border-slate-700 text-left transition cursor-pointer space-y-2"
+                className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-[#FFFFFF] dark:bg-[#111827] hover:border-indigo-300 dark:hover:border-slate-700 text-left transition cursor-pointer space-y-2"
               >
                 <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
                   <Icon className="w-4 h-4" />
                 </div>
                 <div>
-                  <div className="text-xs font-bold text-slate-900 dark:text-white">{mod.title}</div>
+                  <div className="text-xs font-bold text-slate-950 dark:text-white">{mod.title}</div>
                   <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate font-mono tabular-nums">{mod.desc}</div>
                 </div>
               </button>

@@ -329,7 +329,7 @@ export function registerNewUser(data: { name: string; email: string; password: s
     passwordHash: hashPassword(data.password),
     role: data.role || 'sales',
     title: data.title || `${(data.role || 'sales').toUpperCase()} Member`,
-    avatar: `https://images.unsplash.com/photo-${1500000000000 + Math.floor(Math.random() * 900000000)}?w=150`,
+    avatar: '',
     permissions: defaultRolePermissions[data.role] || defaultRolePermissions.sales,
     createdAt: new Date().toISOString()
   };

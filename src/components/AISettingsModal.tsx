@@ -122,7 +122,7 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({
         {
           taskType: 'general',
           prompt: testPrompt,
-          clientName: 'Alexander Vance',
+          clientName: 'Prospective Client',
           websiteType: 'corporate',
           channel: 'linkedin'
         },
