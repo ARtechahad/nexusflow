@@ -123,9 +123,9 @@ export async function clerkAuth(req: Request, res: Response, next: NextFunction)
             email: email || `${userId}@clerk.user`,
             name: payload.name || `${payload.first_name || ''} ${payload.last_name || ''}`.trim() || 'Clerk User',
             role: payload.role || payload.org_role || 'collaborator',
-            tenant_id: orgId || 'tenant-alm-nexus',
-            tenantId: orgId || 'tenant-alm-nexus',
-            permissions: ['*']
+            tenant_id: orgId || undefined,
+            tenantId: orgId || undefined,
+            permissions: ['workspace:member']
           };
         }
       }
@@ -215,9 +215,9 @@ export async function clerkAuth(req: Request, res: Response, next: NextFunction)
           email: email || `${userId}@clerk.user`,
           name: `${claims?.first_name || ''} ${claims?.last_name || ''}`.trim() || 'Clerk User',
           role: claims?.role || 'collaborator',
-          tenant_id: orgId || 'tenant-alm-nexus',
-          tenantId: orgId || 'tenant-alm-nexus',
-          permissions: ['*']
+          tenant_id: orgId || undefined,
+          tenantId: orgId || undefined,
+          permissions: ['workspace:member']
         };
       }
     } else {
@@ -252,9 +252,9 @@ export async function clerkAuth(req: Request, res: Response, next: NextFunction)
             email: email || `${userId}@clerk.user`,
             name: `${fallbackClaims.first_name || ''} ${fallbackClaims.last_name || ''}`.trim() || 'Clerk User',
             role: fallbackClaims.role || fallbackClaims.org_role || 'collaborator',
-            tenant_id: orgId || 'tenant-alm-nexus',
-            tenantId: orgId || 'tenant-alm-nexus',
-            permissions: ['*']
+            tenant_id: orgId || undefined,
+            tenantId: orgId || undefined,
+            permissions: ['workspace:member']
           };
         }
       } else {
@@ -297,9 +297,9 @@ export async function clerkAuth(req: Request, res: Response, next: NextFunction)
           email: email || `${userId}@clerk.user`,
           name: `${fallbackClaims.first_name || ''} ${fallbackClaims.last_name || ''}`.trim() || 'Clerk User',
           role: fallbackClaims.role || fallbackClaims.org_role || 'collaborator',
-          tenant_id: orgId || 'tenant-alm-nexus',
-          tenantId: orgId || 'tenant-alm-nexus',
-          permissions: ['*']
+          tenant_id: orgId || undefined,
+          tenantId: orgId || undefined,
+          permissions: ['workspace:member']
         };
       }
     } else {

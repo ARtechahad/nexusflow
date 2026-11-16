@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { MapPin, Phone, Star, Navigation, ExternalLink, ShieldCheck, RefreshCw, Building } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { buildAuthHeaders } from '../lib/api';
 
 interface Props {
   locationName: string;
@@ -12,13 +13,13 @@ interface Props {
 const widgetMapsCache = new Map<string, any>();
 
 export const GoogleMapsWidget: React.FC<Props> = ({ locationName, initialAddress, className = '' }) => {
-  const { currentTenant, authToken, showToast } = useApp();
+  const { currentTenant, showToast } = useApp();
   const [loading, setLoading] = useState(false);
-  const cacheKey = `${locationName || ''}_${initialAddress || ''}`.toLowerCase().trim();
+  const cacheKey = `${currentTenant?.id || 'global'}::${locationName || ''}_${initialAddress || ''}`.toLowerCase().trim();
   const [mapsData, setMapsData] = useState<any>(() => widgetMapsCache.get(cacheKey) || null);
 
   const fetchMapsVerification = async (force: boolean = false) => {
-    if (!locationName) return;
+    if (!locationName || !currentTenant?.id) return;
     if (!force && widgetMapsCache.has(cacheKey)) {
       setMapsData(widgetMapsCache.get(cacheKey));
       return;
@@ -28,11 +29,7 @@ export const GoogleMapsWidget: React.FC<Props> = ({ locationName, initialAddress
     try {
       const res = await fetch('/api/ai/maps-verify', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Tenant-Id': currentTenant?.id || 'tenant-alm-nexus',
-          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
-        },
+        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           locationName,
           address: initialAddress

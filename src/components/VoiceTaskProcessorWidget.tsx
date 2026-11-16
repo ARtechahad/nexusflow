@@ -1,9 +1,10 @@
 import React, { useState, useRef } from 'react';
 import { Mic, Square, CheckCircle2, ListTodo, RefreshCw, AlertCircle } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { buildAuthHeaders } from '../lib/api';
 
 export const VoiceTaskProcessorWidget: React.FC = () => {
-  const { currentTenant, authToken, showToast, refreshProjects } = useApp();
+  const { currentTenant, showToast, refreshProjects } = useApp();
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [processing, setProcessing] = useState(false);
@@ -66,11 +67,7 @@ export const VoiceTaskProcessorWidget: React.FC = () => {
 
         const res = await fetch('/api/ai/transcribe-voice', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Tenant-Id': currentTenant?.id || 'tenant-alm-nexus',
-            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
-          },
+          headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({
             base64Audio,
             mimeType: 'audio/webm',

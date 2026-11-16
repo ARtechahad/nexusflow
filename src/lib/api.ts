@@ -17,8 +17,14 @@ export function getStoredAuthToken(): string | null {
   );
 }
 
+export function getStoredTenantId(): string | null {
+  if (typeof window === 'undefined') return null;
+  const tid = localStorage.getItem('alm_nexus_tenant_id');
+  return tid && tid.trim() ? tid.trim() : null;
+}
+
 /**
- * Builds request headers with automatic Clerk Bearer token injection
+ * Builds request headers with automatic Bearer token and active Company X-Tenant-Id injection
  */
 export function buildAuthHeaders(
   customHeaders?: HeadersInit,
@@ -29,6 +35,11 @@ export function buildAuthHeaders(
   const token = tokenOverride !== undefined ? tokenOverride : getStoredAuthToken();
   if (token && !headers.has('Authorization')) {
     headers.set('Authorization', `Bearer ${token}`);
+  }
+
+  const tenantId = getStoredTenantId();
+  if (tenantId && !headers.has('X-Tenant-Id')) {
+    headers.set('X-Tenant-Id', tenantId);
   }
 
   if (!headers.has('Content-Type') && !headers.has('content-type')) {

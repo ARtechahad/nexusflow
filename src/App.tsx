@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { Sidebar } from './components/Sidebar';
 import { TopHeader } from './components/TopHeader';
@@ -20,6 +20,8 @@ import { ActivityFeedDrawer } from './components/ActivityFeedDrawer';
 import { CompanyWikiModal } from './components/CompanyWikiModal';
 import { PlatformHealthModal } from './components/PlatformHealthModal';
 import { ExecutiveOperationsRibbon } from './components/ExecutiveOperationsRibbon';
+import { CompanyOnboardingView } from './components/CompanyOnboardingView';
+import { DepartmentSelectorView } from './components/DepartmentSelectorView';
 
 // Modals
 import { NewClientLeadModal } from './components/NewClientLeadModal';
@@ -43,6 +45,12 @@ import { X } from 'lucide-react';
 const AppContent: React.FC = () => {
   const {
     currentUser,
+    tenants,
+    currentTenant,
+    companyRole,
+    departments,
+    selectedDepartmentId,
+    inviteToken,
     activeTab,
     setActiveTab,
     isAISettingsModalOpen,
@@ -64,13 +72,19 @@ const AppContent: React.FC = () => {
   } = useApp();
 
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const [authModalState, setAuthModalState] = useState<{ open: boolean; mode: 'signin' | 'signup' }>({
-    open: false,
+  const [authModalState, setAuthModalState] = useState<{ open: boolean; mode: 'signin' | 'signup' }>(() => ({
+    open: Boolean(typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('invite')),
     mode: 'signin'
-  });
+  }));
+
+  useEffect(() => {
+    if (!currentUser && inviteToken) {
+      setAuthModalState((prev) => ({ ...prev, open: true }));
+    }
+  }, [currentUser, inviteToken]);
 
   // Global Keyboard Navigation (⌘K / Ctrl+K Command Palette)
-  React.useEffect(() => {
+  useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
@@ -81,12 +95,11 @@ const AppContent: React.FC = () => {
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
   }, [isCommandPaletteOpen, setIsCommandPaletteOpen]);
 
-  // Support /docs route inside SPA directly
   const [isDocsRoute, setIsDocsRoute] = useState(() => {
     return typeof window !== 'undefined' && window.location.pathname.startsWith('/docs');
   });
 
-  React.useEffect(() => {
+  useEffect(() => {
     const checkPath = () => {
       setIsDocsRoute(window.location.pathname.startsWith('/docs'));
     };
@@ -102,13 +115,13 @@ const AppContent: React.FC = () => {
             window.history.pushState({}, '', '/');
           }
           setIsDocsRoute(false);
-          setActiveTab(currentUser ? 'pipeline' : 'leadflow');
+          setActiveTab(currentUser ? (companyRole === 'company_admin' ? 'pipeline' : 'departmental') : 'leadflow');
         }}
       />
     );
   }
 
-  // Unauthenticated Landing Page & Auth Gateway
+  // 1. Unauthenticated Landing Page & Auth Gateway
   if (!currentUser) {
     return (
       <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#090D16] bg-canvas-textured text-slate-900 dark:text-slate-100 flex flex-col font-sans selection:bg-indigo-600 selection:text-white transition-colors duration-200 relative">
@@ -150,78 +163,138 @@ const AppContent: React.FC = () => {
     );
   }
 
+  // 2. Authenticated Personal User with 0 Companies -> "Create Your First Company" / Accept Invite Screen
+  if (tenants.length === 0 || !currentTenant) {
+    return (
+      <>
+        <CompanyOnboardingView />
+        <ToastNotification toasts={toasts} onDismiss={dismissToast} />
+      </>
+    );
+  }
+
+  // 3. Multi-Department Non-Admin Selector Screen (when user belongs to > 1 department & none selected)
+  if (companyRole !== 'company_admin' && departments.length > 1 && !selectedDepartmentId) {
+    return (
+      <>
+        <DepartmentSelectorView />
+        <TenantOnboardingModal
+          isOpen={isOnboardingModalOpen}
+          onClose={() => setIsOnboardingModalOpen(false)}
+        />
+        <ToastNotification toasts={toasts} onDismiss={dismissToast} />
+      </>
+    );
+  }
+
   const renderActiveView = () => {
     switch (activeTab) {
       case 'pipeline':
         return (
-          <RoleRouteGuard allowedRoles={['admin', 'bd_head', 'sales', 'coordinator', 'developer', 'collaborator']} moduleName="Executive Dashboard & Deals">
+          <RoleRouteGuard
+            allowedCompanyRoles={['company_admin']}
+            moduleName="Executive Dashboard & Deals"
+          >
             <ProjectsPipeline />
           </RoleRouteGuard>
         );
       case 'departmental':
         return (
-          <RoleRouteGuard allowedRoles={['admin', 'ceo', 'bd_head', 'coordinator', 'project_manager', 'sales', 'developer', 'designer']} moduleName="Team Tasks & Velocity">
+          <RoleRouteGuard
+            allowedCompanyRoles={['company_admin', 'department_head', 'employee']}
+            moduleName="Department Operations & Roster"
+          >
             <DepartmentalTrackingView />
           </RoleRouteGuard>
         );
       case 'gmail':
         return (
-          <RoleRouteGuard allowedRoles={['admin', 'bd_head', 'sales', 'coordinator', 'developer']} moduleName="Google Mailbox Sync">
+          <RoleRouteGuard
+            allowedCompanyRoles={['company_admin']}
+            moduleName="Google Mailbox Sync"
+          >
             <GmailWorkspaceView />
           </RoleRouteGuard>
         );
       case 'inbox':
         return (
-          <RoleRouteGuard allowedRoles={['admin', 'bd_head', 'sales', 'coordinator']} moduleName="Unified Client Inbox">
+          <RoleRouteGuard
+            allowedCompanyRoles={['company_admin', 'department_head']}
+            moduleName="Unified Client Inbox"
+          >
             <UnifiedInboxView />
           </RoleRouteGuard>
         );
       case 'sop':
         return (
-          <RoleRouteGuard allowedRoles={['admin', 'bd_head', 'coordinator', 'developer']} moduleName="SOP Stage Gates">
+          <RoleRouteGuard
+            allowedCompanyRoles={['company_admin']}
+            moduleName="SOP Stage Gates"
+          >
             <SOPGuideView />
           </RoleRouteGuard>
         );
       case 'outreach':
       case 'outreach_suite':
         return (
-          <RoleRouteGuard allowedRoles={['admin', 'ceo', 'bd_head', 'sales', 'coordinator', 'project_manager', 'developer']} moduleName="Email Hub (Mailboxes & Campaigns)">
+          <RoleRouteGuard
+            allowedCompanyRoles={['company_admin', 'department_head']}
+            moduleName="Email Hub (Mailboxes & Campaigns)"
+          >
             <OutreachSuiteView />
           </RoleRouteGuard>
         );
       case 'analytics':
         return (
-          <RoleRouteGuard allowedRoles={['admin', 'bd_head']} moduleName="Revenue Analytics">
+          <RoleRouteGuard
+            allowedCompanyRoles={['company_admin']}
+            moduleName="Revenue Analytics"
+          >
             <DashboardAnalytics />
           </RoleRouteGuard>
         );
       case 'portal':
         return (
-          <RoleRouteGuard allowedRoles={['admin', 'bd_head', 'client_guest', 'collaborator']} moduleName="Client Portal">
+          <RoleRouteGuard
+            allowedCompanyRoles={['company_admin']}
+            moduleName="Client Portal"
+          >
             <ClientPortalView />
           </RoleRouteGuard>
         );
       case 'commissions':
         return (
-          <RoleRouteGuard allowedRoles={['admin', 'bd_head', 'sales']} moduleName="Commission & Payout Ledger">
+          <RoleRouteGuard
+            allowedCompanyRoles={['company_admin']}
+            moduleName="Commission & Payout Ledger"
+          >
             <CommissionCalculatorView />
           </RoleRouteGuard>
         );
       case 'chat':
         return (
-          <RoleRouteGuard allowedRoles={['admin', 'bd_head', 'sales', 'coordinator', 'developer', 'collaborator']} moduleName="Team Channels">
+          <RoleRouteGuard
+            allowedCompanyRoles={['company_admin', 'department_head', 'employee']}
+            moduleName="Department Chat & Status Updates"
+          >
             <TeamChatView />
           </RoleRouteGuard>
         );
       case 'vault':
         return (
-          <RoleRouteGuard allowedRoles={['admin', 'bd_head', 'coordinator', 'developer']} moduleName="Secure File Vault">
+          <RoleRouteGuard
+            allowedCompanyRoles={['company_admin']}
+            moduleName="Secure File Vault"
+          >
             <SecureFileVault />
           </RoleRouteGuard>
         );
       case 'integrations':
         return (
-          <RoleRouteGuard allowedRoles={['admin', 'bd_head']} moduleName="Webhooks & API">
+          <RoleRouteGuard
+            allowedCompanyRoles={['company_admin']}
+            moduleName="Webhooks & API"
+          >
             <IntegrationsView />
           </RoleRouteGuard>
         );
@@ -234,24 +307,22 @@ const AppContent: React.FC = () => {
               if (typeof window !== 'undefined') {
                 window.history.pushState({}, '', '/');
               }
-              setActiveTab('outreach_suite');
+              setActiveTab(companyRole === 'company_admin' ? 'outreach_suite' : 'departmental');
             }}
           />
         );
       default:
-        return <ProjectsPipeline />;
+        return companyRole === 'company_admin' ? <ProjectsPipeline /> : <DepartmentalTrackingView />;
     }
   };
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#090D16] bg-canvas-textured text-slate-900 dark:text-slate-100 flex font-sans antialiased selection:bg-indigo-600 selection:text-white transition-colors duration-200 relative">
-      {/* Left Sidebar */}
       <Sidebar
         mobileOpen={mobileSidebarOpen}
         setMobileOpen={setMobileSidebarOpen}
       />
 
-      {/* Main Workspace Area */}
       <div className={`${sidebarCollapsed ? 'lg:pl-16' : 'lg:pl-60'} flex flex-col flex-1 min-h-screen w-full transition-all duration-200 ease-in-out`}>
         <TopHeader onOpenMobileSidebar={() => setMobileSidebarOpen(true)} />
 
@@ -261,27 +332,27 @@ const AppContent: React.FC = () => {
           {renderActiveView()}
         </main>
 
-        {/* Clean Enterprise Footer */}
         <footer className="border-t border-slate-200 dark:border-slate-800 bg-[#FFFFFF] dark:bg-[#111827] text-xs text-slate-600 dark:text-slate-400">
           <div className="max-w-[1440px] mx-auto py-3.5 px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <span className="font-semibold text-slate-950 dark:text-white">ClientOps</span>
               <span>&bull;</span>
-              <span>Company Operations &amp; Client Communication Platform</span>
+              <span>{currentTenant.name}</span>
             </div>
 
-            <div className="flex items-center gap-3 text-[11px] font-mono tabular-nums text-slate-600 dark:text-slate-400">
-              <span className="text-emerald-700 dark:text-emerald-400 font-semibold">
-                SOP Gate {automatedTestsPassedCount}/17
-              </span>
-              <span>&bull;</span>
-              <span>Multi-Tenant Isolation</span>
-            </div>
+            {companyRole === 'company_admin' && (
+              <div className="flex items-center gap-3 text-[11px] font-mono tabular-nums text-slate-600 dark:text-slate-400">
+                <span className="text-emerald-700 dark:text-emerald-400 font-semibold">
+                  SOP Gate {automatedTestsPassedCount}/17
+                </span>
+                <span>&bull;</span>
+                <span>Multi-Tenant Isolation</span>
+              </div>
+            )}
           </div>
         </footer>
       </div>
 
-      {/* Core Workspace Modals */}
       <GlobalCommandPalette
         isOpen={isCommandPaletteOpen}
         onClose={() => setIsCommandPaletteOpen(false)}
@@ -299,7 +370,6 @@ const AppContent: React.FC = () => {
       <AuthModal />
       <DiscordExportModal />
 
-      {/* Enterprise Multi-Tenant Modals & Drawers */}
       <TenantOnboardingModal
         isOpen={isOnboardingModalOpen}
         onClose={() => setIsOnboardingModalOpen(false)}

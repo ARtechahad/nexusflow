@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { buildAuthHeaders } from '../lib/api';
 import {
   FileSpreadsheet,
   RefreshCw,
@@ -139,7 +140,7 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
           if (!exists) {
             await fetch('/api/projects', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
               body: JSON.stringify(lead)
             });
             addedCount++;

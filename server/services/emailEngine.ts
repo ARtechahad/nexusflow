@@ -73,12 +73,12 @@ export function renderEmailTemplate(template: string, vars: Record<string, any> 
 }
 
 import { resendService } from './resendService';
-import { requireClerkAuth } from '../middlewares/clerkAuth';
+import { AuthenticatedRequest, requireCompanyAccess } from '../middlewares/auth';
 
 export const emailRouter = Router();
 
-// POST /api/email/send or /api/emails/send - Dispatch email via Resend (guarded by requireClerkAuth)
-emailRouter.post(['/send', '/dispatch'], requireClerkAuth, async (req: Request, res: Response) => {
+// POST /api/email/send or /api/emails/send - Dispatch email via Resend (strictly company-isolated)
+emailRouter.post(['/send', '/dispatch'], requireCompanyAccess, async (req: AuthenticatedRequest, res: Response) => {
   const body: EmailDispatchOptions & {
     html?: string;
     text?: string;
@@ -95,7 +95,7 @@ emailRouter.post(['/send', '/dispatch'], requireClerkAuth, async (req: Request, 
     return;
   }
 
-  const tenantId = (req as any).userId ? ((req as any).orgId || (req as any).tenant_id || 'tenant-alm-nexus') : ((req as any).tenant_id || 'tenant-alm-nexus');
+  const tenantId = req.companyId!;
   const htmlContent = body.html || renderEmailTemplate(body.template || 'general', {
     clientName: body.clientName,
     ...body.variables
@@ -145,10 +145,10 @@ emailRouter.post(['/send', '/dispatch'], requireClerkAuth, async (req: Request, 
   }
 });
 
-// GET /api/email/logs - Retrieve recent email telemetry from Neon Database
-emailRouter.get('/logs', requireClerkAuth, async (req: Request, res: Response) => {
+// GET /api/email/logs - Retrieve recent email telemetry strictly scoped to active company
+emailRouter.get('/logs', requireCompanyAccess, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const tenantId = (req as any).orgId || (req as any).tenant_id || 'tenant-alm-nexus';
+    const tenantId = req.companyId!;
     const limit = parseInt(req.query.limit as string, 10) || 50;
     const logs = await resendService.getRecentLogs(tenantId, limit);
     res.json({ success: true, count: logs.length, logs });

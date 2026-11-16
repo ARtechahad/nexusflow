@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
+import { buildAuthHeaders } from '../lib/api';
 import { ClientCommunicationMessage, CommunicationChannel, MessageSentiment } from '../types';
 import { generateAI, generateOfflineFallback } from '../services/aiService';
 import { SkeletonInbox } from './SkeletonLoader';
@@ -55,11 +56,17 @@ export const UnifiedInboxView: React.FC = () => {
   const [simContent, setSimContent] = useState<string>('');
 
   const fetchMessages = async () => {
+    if (!currentTenant?.id) {
+      setMessages([]);
+      setLoading(false);
+      return;
+    }
     try {
       setLoading(true);
+      const headers = buildAuthHeaders();
       const [inboxRes, outreachRes] = await Promise.allSettled([
-        fetch('/api/inbox/messages').then(r => r.json()),
-        fetch('/api/outreach/inbox/threads').then(r => r.json())
+        fetch('/api/inbox/messages', { headers }).then(r => r.json()),
+        fetch('/api/outreach/inbox/threads', { headers }).then(r => r.json())
       ]);
 
       let combined: ClientCommunicationMessage[] = [];
@@ -107,8 +114,9 @@ export const UnifiedInboxView: React.FC = () => {
   };
 
   useEffect(() => {
+    setSelectedMessage(null);
     fetchMessages();
-  }, []);
+  }, [currentTenant?.id]);
 
   const handleSelectMessage = (msg: ClientCommunicationMessage) => {
     setSelectedMessage(msg);
@@ -122,7 +130,7 @@ export const UnifiedInboxView: React.FC = () => {
     if (msg.status === 'unread') {
       fetch(`/api/inbox/status/${msg.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ status: 'read' })
       }).then(() => {
         setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, status: 'read' } : m));
@@ -195,7 +203,7 @@ export const UnifiedInboxView: React.FC = () => {
       setIsSendingReply(true);
       const res = await fetch(`/api/inbox/reply/${selectedMessage.id}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           replyText,
           senderName: 'Tariq Mehmood (Senior Sales Partner)',
@@ -225,7 +233,7 @@ export const UnifiedInboxView: React.FC = () => {
     try {
       const res = await fetch('/api/inbox/messages', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           clientName: simName,
           clientCompany: simCompany || 'Prospective Client LLC',
@@ -749,11 +757,7 @@ export const UnifiedInboxView: React.FC = () => {
                         } else {
                           const res = await fetch('/api/projects', {
                             method: 'POST',
-                            headers: {
-                              'Content-Type': 'application/json',
-                              'X-Tenant-Id': currentTenant?.id || 'tenant-alm-nexus',
-                              ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {})
-                            },
+                            headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
                             body: JSON.stringify({
                               clientName: selectedMessage.clientName,
                               clientCompany: selectedMessage.clientCompany,
@@ -800,11 +804,7 @@ export const UnifiedInboxView: React.FC = () => {
                         try {
                           await fetch('/api/nudges/trigger', {
                             method: 'POST',
-                            headers: {
-                              'Content-Type': 'application/json',
-                              'X-Tenant-Id': currentTenant?.id || 'tenant-alm-nexus',
-                              ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {})
-                            },
+                            headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
                             body: JSON.stringify({
                               clientName: selectedMessage.clientName,
                               channel: selectedMessage.channel,

@@ -67,11 +67,131 @@ export interface TenantRoleConfig {
   dashboardLayout: 'executive_macro' | 'sales_outreach' | 'pm_sprint' | 'dev_tasks' | 'design_assets' | 'client_portal';
 }
 
+export type CompanyRole = 'company_admin' | 'department_head' | 'employee';
+export type AvailabilityStatus = 'Available' | 'In a Meeting' | 'Busy' | 'Offline';
+
+export interface Department {
+  id: string;
+  companyId: string;
+  name: string;
+  slug?: string;
+  description?: string;
+  headUserId?: string;
+  headNames?: string[];
+  memberCount?: number;
+  tasksTotal?: number;
+  tasksCompleted?: number;
+  tasksInProgress?: number;
+  taskStats?: {
+    total: number;
+    completed: number;
+    inProgress: number;
+  };
+  createdBy: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface CompanyMembership {
+  id: string;
+  companyId: string;
+  userId: string;
+  role: CompanyRole;
+  companyRole?: CompanyRole;
+  departmentIds: string[];
+  designation: string;
+  invitedBy?: string;
+  joinedAt: string;
+  updatedAt?: string;
+}
+
+export interface DepartmentMember {
+  userId: string;
+  name: string;
+  email: string;
+  avatar: string;
+  role: CompanyRole;
+  companyRole?: CompanyRole;
+  designation: string;
+  departmentIds: string[];
+  availabilityStatus: AvailabilityStatus;
+  availabilityUpdatedAt?: string;
+  tasksAssigned: number;
+  tasksTotal?: number;
+  tasksCompleted: number;
+  tasksInProgress: number;
+  completionPercent: number;
+  completionRate?: number;
+  joinedAt: string;
+}
+
+export interface CompanyInvite {
+  id: string;
+  companyId: string;
+  companyName: string;
+  email: string;
+  role: 'department_head' | 'employee';
+  companyRole?: 'department_head' | 'employee';
+  departmentId: string;
+  departmentName?: string;
+  designation: string;
+  token: string;
+  inviteUrl?: string;
+  invitedByUserId: string;
+  invitedByName: string;
+  status: 'pending' | 'accepted' | 'revoked' | 'expired' | 'superseded';
+  effectiveStatus?: 'pending' | 'accepted' | 'revoked' | 'expired' | 'superseded';
+  expiresAt: string;
+  createdAt: string;
+  acceptedAt?: string;
+}
+
+export interface PendingInvitePreview {
+  id: string;
+  token: string;
+  companyId: string;
+  companyName: string;
+  email: string;
+  role: 'department_head' | 'employee';
+  departmentId: string;
+  departmentName: string;
+  designation: string;
+  invitedByName: string;
+  status?: string;
+  expiresAt: string;
+}
+
+export interface DepartmentTask {
+  id: string;
+  companyId: string;
+  departmentId: string;
+  title: string;
+  description?: string;
+  status: 'todo' | 'in_progress' | 'review' | 'completed';
+  priority: 'low' | 'medium' | 'high' | 'urgent';
+  assigneeUserId?: string;
+  assigneeName?: string;
+  assigneeDesignation?: string;
+  createdByUserId: string;
+  createdByName: string;
+  dueDate?: string;
+  completedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Tenant {
-  id: string; // e.g. "tenant-alm-nexus"
-  name: string; // "ALM Nexus Enterprise"
+  id: string;
+  name: string;
   slug: string;
   logoUrl: string;
+  industry?: string;
+  companySize?: string;
+  ownerId?: string;
+  myRole?: CompanyRole;
+  myDepartmentIds?: string[];
+  myDesignation?: string;
+  departmentsCount?: number;
   branding: TenantBranding;
   businessInfo: TenantBusinessInfo;
   integrations: TenantIntegrations;
@@ -328,12 +448,17 @@ export interface ActiveTimerState {
 
 export interface ChatMessage {
   id: string;
+  companyId?: string;
+  tenantId?: string;
+  departmentId?: string;
   senderId?: string;
   senderName?: string;
   senderRole?: UserRole;
+  senderDesignation?: string;
   sender?: string;
   role?: UserRole;
-  channel: 'general' | 'sales-leads' | 'staging-dev' | 'coordination' | string;
+  channel: 'general' | 'work-status' | 'announcements' | 'sales-leads' | 'staging-dev' | 'coordination' | string;
+  isStatusUpdate?: boolean;
   content?: string;
   text?: string;
   timestamp: string;
@@ -789,6 +914,8 @@ export interface AuthUser {
   title: string;
   avatar: string;
   permissions: string[];
+  availabilityStatus?: AvailabilityStatus;
+  availabilityUpdatedAt?: string;
 }
 
 export interface AuthSession {

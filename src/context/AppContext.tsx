@@ -1,14 +1,17 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { 
-  ProjectLead, 
-  UserRole, 
-  SupportedLanguage, 
-  AutomatedTestResult, 
-  SupportedCurrency, 
-  AgencyScaleMode, 
-  AISettings, 
-  AuthUser, 
-  DatabaseEngineStatus, 
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import {
+  ProjectLead,
+  UserRole,
+  CompanyRole,
+  AvailabilityStatus,
+  Department,
+  PendingInvitePreview,
+  SupportedLanguage,
+  SupportedCurrency,
+  AgencyScaleMode,
+  AISettings,
+  AuthUser,
+  DatabaseEngineStatus,
   ThemeMode,
   Tenant,
   ActivityFeedItem,
@@ -18,12 +21,12 @@ import {
 import { TRANSLATIONS } from '../data/translations';
 import { getSavedAISettings, saveAISettings } from '../services/aiService';
 import { ToastItem, ToastType } from '../components/ToastNotification';
-import { 
-  auth, 
-  signInWithGoogle, 
-  signOutFirebase, 
-  syncUserProfile, 
-  saveUserPreferences, 
+import {
+  auth,
+  signInWithGoogle,
+  signOutFirebase,
+  syncUserProfile,
+  saveUserPreferences,
   getUserPreferences,
   loadProjectsFromFirestore,
   saveProjectToFirestore,
@@ -34,35 +37,92 @@ import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { offlineSyncService } from '../services/offlineSyncService';
 import { googleSheetsService } from '../services/googleSheetsService';
 import { localDatabase } from '../services/localDatabaseFallback';
+import { clearOutreachTelemetryCache } from '../hooks/useOutreachTelemetry';
 
-export type AppNavTab = 'sop' | 'pipeline' | 'outreach' | 'outreach_suite' | 'docs' | 'inbox' | 'analytics' | 'integrations' | 'commissions' | 'chat' | 'vault' | 'portal' | 'free_apis' | 'gmail' | 'departmental' | 'wiki' | 'leadflow' | 'profile';
+export type AppNavTab =
+  | 'sop'
+  | 'pipeline'
+  | 'outreach'
+  | 'outreach_suite'
+  | 'docs'
+  | 'inbox'
+  | 'analytics'
+  | 'integrations'
+  | 'commissions'
+  | 'chat'
+  | 'vault'
+  | 'portal'
+  | 'free_apis'
+  | 'gmail'
+  | 'departmental'
+  | 'wiki'
+  | 'leadflow'
+  | 'profile';
+
+export function mapCompanyRoleToUserRole(companyRole: CompanyRole | null | undefined, fallback?: UserRole): UserRole {
+  if (companyRole === 'company_admin') return 'admin';
+  if (companyRole === 'department_head') return 'coordinator';
+  if (companyRole === 'employee') return 'developer';
+  return fallback || 'team_member';
+}
 
 interface AppContextType {
   role: UserRole;
   setRole: (role: UserRole) => void;
+  companyRole: CompanyRole | null;
   currentUser: AuthUser | null;
   authToken: string | null;
   isAuthenticated: boolean;
   firebaseUser: FirebaseUser | null;
   isFirebaseConnected: boolean;
   loginWithGoogle: () => Promise<{ success: boolean; message?: string; cancelled?: boolean }>;
-  loginWithOAuth: (provider: 'github' | 'google', fallbackUser?: { name: string; email: string; avatar?: string }) => Promise<{ success: boolean; message?: string }>;
-  login: (email: string, password: string) => Promise<{ success: boolean; message?: string }>;
+  loginWithOAuth: (
+    provider: 'github' | 'google',
+    fallbackUser?: { name: string; email: string; avatar?: string }
+  ) => Promise<{ success: boolean; message?: string }>;
+  login: (
+    email: string,
+    password: string
+  ) => Promise<{ success: boolean; message?: string; companies?: Tenant[]; pendingInvites?: PendingInvitePreview[] }>;
   logout: () => void;
   switchPersona: (role: UserRole) => Promise<void>;
   isAuthModalOpen: boolean;
   setIsAuthModalOpen: (open: boolean) => void;
-  // Multi-Tenant Architecture & Onboarding
+  // Multi-Company & Department Architecture
   currentTenant: Tenant | null;
   tenants: Tenant[];
+  departments: Department[];
+  selectedDepartmentId: string | null;
+  setSelectedDepartmentId: (deptId: string | null) => void;
+  refreshDepartments: (companyId?: string, tokenOverride?: string | null) => Promise<Department[]>;
   switchTenant: (tenantId: string) => Promise<void>;
   refreshTenants: () => Promise<void>;
+  createCompany: (payload: {
+    name: string;
+    industry?: string;
+    size?: string;
+    description?: string;
+    initialDepartments?: string[];
+  }) => Promise<{ success: boolean; message?: string; company?: Tenant }>;
+  createDepartment: (
+    name: string,
+    description?: string
+  ) => Promise<{ success: boolean; message?: string; department?: Department }>;
+  deleteDepartment: (deptId: string) => Promise<{ success: boolean; message?: string }>;
+  pendingInvites: PendingInvitePreview[];
+  inviteToken: string | null;
+  setInviteToken: (token: string | null) => void;
+  invitePreview: PendingInvitePreview | null;
+  acceptInvite: (
+    token: string
+  ) => Promise<{ success: boolean; message?: string; companyId?: string; departmentId?: string }>;
+  updateMyAvailability: (status: AvailabilityStatus) => Promise<boolean>;
   isOnboardingModalOpen: boolean;
   setIsOnboardingModalOpen: (open: boolean) => void;
   onboardNewTenant: (data: any) => Promise<{ success: boolean; message?: string; tenant?: Tenant }>;
+  // Individual-first Email OTP Registration
   requestSignupOtp: (data: {
     fullName: string;
-    companyName: string;
     email: string;
     password: string;
   }) => Promise<{
@@ -87,7 +147,8 @@ interface AppContextType {
     success: boolean;
     message?: string;
     expired?: boolean;
-    tenant?: Tenant;
+    companies?: Tenant[];
+    pendingInvites?: PendingInvitePreview[];
   }>;
   // Real-time Activity Feed & System Alerts
   isActivityFeedOpen: boolean;
@@ -162,21 +223,23 @@ interface AppContextType {
   formatMoney: (amount: number, overrideCurr?: SupportedCurrency) => string;
   scaleMode: AgencyScaleMode;
   setScaleMode: (mode: AgencyScaleMode) => Promise<void>;
-  // Global Command Palette (⌘K)
   isCommandPaletteOpen: boolean;
   setIsCommandPaletteOpen: (open: boolean) => void;
-  // Collapsible Sidebar Rail
   sidebarCollapsed: boolean;
   setSidebarCollapsed: (collapsed: boolean) => void;
-  // Creative Studio & Media Vault
   isCreativeStudioOpen: boolean;
   setIsCreativeStudioOpen: (open: boolean) => void;
-  // Brand-new account onboarding checklist banner
   showSetupChecklist: boolean;
   dismissSetupChecklist: () => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
+
+function getDefaultTabForCompanyRole(companyRole: CompanyRole | null | undefined): AppNavTab {
+  if (companyRole === 'company_admin') return 'pipeline';
+  if (companyRole === 'department_head' || companyRole === 'employee') return 'departmental';
+  return 'departmental';
+}
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [authToken, setAuthToken] = useState<string | null>(() => {
@@ -185,10 +248,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
     return null;
   });
+
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => {
     if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('alm_nexus_token');
       const savedUser = localStorage.getItem('alm_nexus_user');
-      if (savedUser) {
+      if (token && savedUser) {
         try {
           return JSON.parse(savedUser);
         } catch {
@@ -198,6 +263,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
     return null;
   });
+
   const [role, setRoleState] = useState<UserRole>(() => {
     if (typeof window !== 'undefined') {
       const savedUser = localStorage.getItem('alm_nexus_user');
@@ -208,8 +274,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         } catch {}
       }
     }
-    return 'admin';
+    return 'team_member';
   });
+
   const [databaseStatus, setDatabaseStatus] = useState<DatabaseEngineStatus | null>(null);
   const [isDatabaseModalOpen, setIsDatabaseModalOpen] = useState<boolean>(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
@@ -241,25 +308,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return false;
   });
 
-  // Listen to system OS theme changes
   useEffect(() => {
     if (typeof window === 'undefined' || !window.matchMedia) return;
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    const handleChange = (e: MediaQueryListEvent) => {
-      setSystemPrefersDark(e.matches);
-    };
+    const handleChange = (e: MediaQueryListEvent) => setSystemPrefersDark(e.matches);
     if (mediaQuery.addEventListener) {
       mediaQuery.addEventListener('change', handleChange);
       return () => mediaQuery.removeEventListener('change', handleChange);
-    } else {
-      mediaQuery.addListener(handleChange);
-      return () => mediaQuery.removeListener(handleChange);
     }
+    mediaQuery.addListener(handleChange);
+    return () => mediaQuery.removeListener(handleChange);
   }, []);
 
   const isDark = themeMode === 'system' ? systemPrefersDark : themeMode === 'dark';
 
-  // Apply real theme classes and attributes to HTML document
   useEffect(() => {
     if (typeof document === 'undefined') return;
     const root = document.documentElement;
@@ -276,64 +338,84 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
     localStorage.setItem('clientops_theme_mode', themeMode);
     localStorage.setItem('clientops_theme', isDark ? 'dark' : 'light');
-
     const metaThemeColor = document.querySelector('meta[name="theme-color"]');
     if (metaThemeColor) {
-      metaThemeColor.setAttribute('content', isDark ? '#070a12' : '#ffffff');
+      metaThemeColor.setAttribute('content', isDark ? '#090D16' : '#ffffff');
     }
   }, [isDark, themeMode]);
 
-  const setThemeMode = (mode: ThemeMode) => {
-    setThemeModeState(mode);
-  };
-
-  const setIsDark = (dark: boolean) => {
-    setThemeModeState(dark ? 'dark' : 'light');
-  };
-
-  const toggleTheme = () => {
-    setThemeModeState(isDark ? 'light' : 'dark');
-  };
+  const setThemeMode = (mode: ThemeMode) => setThemeModeState(mode);
+  const setIsDark = (dark: boolean) => setThemeModeState(dark ? 'dark' : 'light');
+  const toggleTheme = () => setThemeModeState(isDark ? 'light' : 'dark');
 
   const [activeTab, setActiveTabState] = useState<AppNavTab>(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       if (params.get('portal')) return 'portal';
       const tabParam = params.get('tab');
-      if (tabParam && ['sop', 'pipeline', 'outreach', 'inbox', 'analytics', 'integrations', 'commissions', 'chat', 'vault', 'portal', 'free_apis', 'gmail', 'departmental', 'wiki'].includes(tabParam)) {
+      if (
+        tabParam &&
+        [
+          'sop',
+          'pipeline',
+          'outreach',
+          'outreach_suite',
+          'inbox',
+          'analytics',
+          'integrations',
+          'commissions',
+          'chat',
+          'vault',
+          'portal',
+          'free_apis',
+          'gmail',
+          'departmental',
+          'wiki',
+          'profile'
+        ].includes(tabParam)
+      ) {
         return tabParam as AppNavTab;
       }
     }
     return 'pipeline';
   });
 
-  const setActiveTab = (tab: AppNavTab) => {
-    // RBAC check: Guest role cannot leave portal
-    if (role === 'client_guest' && tab !== 'portal') {
-      showToast('Restricted: Guest client access is isolated to the Client Portal.', 'warning');
-      return;
-    }
-    setActiveTabState(tab);
-  };
-
-  // Multi-Tenant States
+  // Multi-Company & Department State
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [currentTenant, setCurrentTenant] = useState<Tenant | null>(null);
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [selectedDepartmentId, setSelectedDepartmentIdState] = useState<string | null>(null);
+  const [pendingInvites, setPendingInvites] = useState<PendingInvitePreview[]>([]);
+  const [inviteToken, setInviteToken] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('invite') || null;
+    }
+    return null;
+  });
+  const [invitePreview, setInvitePreview] = useState<PendingInvitePreview | null>(null);
   const [isOnboardingModalOpen, setIsOnboardingModalOpen] = useState<boolean>(false);
 
-  // Activity Feed & Notifications
+  const companyRole: CompanyRole | null = currentTenant?.myRole || null;
+
+  const setSelectedDepartmentId = useCallback((deptId: string | null) => {
+    setSelectedDepartmentIdState(deptId);
+    if (typeof window !== 'undefined') {
+      if (deptId) {
+        localStorage.setItem('alm_nexus_dept_id', deptId);
+      } else {
+        localStorage.removeItem('alm_nexus_dept_id');
+      }
+    }
+  }, []);
+
+  // Activity, Wiki & Dept Telemetry
   const [isActivityFeedOpen, setIsActivityFeedOpen] = useState<boolean>(false);
   const [activityFeed, setActivityFeed] = useState<ActivityFeedItem[]>([]);
   const [unreadActivityCount, setUnreadActivityCount] = useState<number>(0);
-
-  // Wiki & Knowledge Base
   const [isWikiModalOpen, setIsWikiModalOpen] = useState<boolean>(false);
   const [wikiDocs, setWikiDocs] = useState<WikiDocument[]>([]);
-
-  // Departmental Progress & Workflow Tracking
   const [departmentalProgress, setDepartmentalProgress] = useState<DepartmentalProgress[]>([]);
-
-  // Platform Health Modal
   const [isPlatformHealthModalOpen, setIsPlatformHealthModalOpen] = useState<boolean>(false);
 
   const [activePortalProjectId, setActivePortalProjectId] = useState<string | null>(() => {
@@ -344,25 +426,27 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return null;
   });
   const [unreadInboxCount, setUnreadInboxCount] = useState<number>(0);
-  const [projects, setProjects] = useState<ProjectLead[]>(() => {
-    return localDatabase.getProjects();
-  });
+  const [projects, setProjects] = useState<ProjectLead[]>([]);
   const [loadingProjects, setLoadingProjects] = useState<boolean>(false);
   const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [outreachInitialData, setOutreachInitialData] = useState<any>(null);
-  
-  // Modals
+
   const [isTestModalOpen, setIsTestModalOpen] = useState(false);
   const [isGDPRModalOpen, setIsGDPRModalOpen] = useState(false);
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [isAISettingsModalOpen, setIsAISettingsModalOpen] = useState(false);
   const [aiSettings, setAISettingsState] = useState<AISettings>(() => getSavedAISettings());
-  const [aiInitialData, setAiInitialData] = useState<{ clientName?: string; websiteType?: string; channel?: string; mode?: string } | null>(null);
+  const [aiInitialData, setAiInitialData] = useState<{
+    clientName?: string;
+    websiteType?: string;
+    channel?: string;
+    mode?: string;
+  } | null>(null);
   const [isNewLeadModalOpen, setIsNewLeadModalOpen] = useState(false);
   const [discordExportModalData, setDiscordExportModalData] = useState<ProjectLead | null>(null);
-  const [automatedTestsPassedCount, setAutomatedTestsPassedCount] = useState<number>(17);
+  const [automatedTestsPassedCount] = useState<number>(17);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isCreativeStudioOpen, setIsCreativeStudioOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsedState] = useState<boolean>(() => {
@@ -393,71 +477,229 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  // Load Tenants from API
-  const refreshTenants = async () => {
+  const dismissToast = (id: string) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  };
+
+  const showToast = useCallback((msg: string, type: ToastType = 'success') => {
+    setToastMessage(msg);
+    const id = Math.random().toString(36).substring(2, 9);
+    const newToast: ToastItem = { id, message: msg, type, duration: 4200 };
+    setToasts(prev => [...prev.slice(-4), newToast]);
+    setTimeout(() => {
+      setToastMessage(prev => (prev === msg ? null : prev));
+    }, 4200);
+  }, []);
+
+  const setActiveTab = (tab: AppNavTab) => {
+    if (role === 'client_guest' && tab !== 'portal') {
+      showToast('Restricted: Guest client access is isolated to the Client Portal.', 'warning');
+      return;
+    }
+    if (companyRole === 'employee' && !['departmental', 'chat', 'profile'].includes(tab)) {
+      showToast('Restricted: Employees only have access to their Department workspace, Chat, and Profile.', 'warning');
+      return;
+    }
+    if (
+      companyRole === 'department_head' &&
+      ['commissions', 'analytics', 'integrations'].includes(tab)
+    ) {
+      showToast('Restricted: Company financials, commissions, and integrations require Company Owner access.', 'warning');
+      return;
+    }
+    setActiveTabState(tab);
+  };
+
+  // Sync localDatabase scope key
+  useEffect(() => {
+    localDatabase.setActiveScope(currentUser?.id, currentTenant?.id);
+  }, [currentUser?.id, currentTenant?.id]);
+
+  // Keep localStorage alm_nexus_tenant_id synced strictly to active company
+  const applyActiveCompany = useCallback(
+    (company: Tenant | null, userBaseRole?: UserRole) => {
+      setCurrentTenant(company);
+      clearOutreachTelemetryCache();
+      if (typeof window !== 'undefined') {
+        if (company?.id) {
+          localStorage.setItem('alm_nexus_tenant_id', company.id);
+        } else {
+          localStorage.removeItem('alm_nexus_tenant_id');
+        }
+      }
+      if (company) {
+        const mapped = mapCompanyRoleToUserRole(company.myRole, userBaseRole);
+        setRoleState(mapped);
+      } else {
+        setRoleState(userBaseRole || 'team_member');
+      }
+    },
+    []
+  );
+
+  // Fetch invite preview if URL contains ?invite=<token>
+  useEffect(() => {
+    if (!inviteToken) {
+      setInvitePreview(null);
+      return;
+    }
+    let active = true;
+    fetch(`/api/invites/${encodeURIComponent(inviteToken)}`)
+      .then(async (res) => {
+        if (!res.ok) return null;
+        return res.json();
+      })
+      .then((data) => {
+        if (!active) return;
+        if (data?.success && data.invite && data.invite.status === 'pending') {
+          setInvitePreview({ ...data.invite, token: inviteToken });
+        } else {
+          setInvitePreview(null);
+        }
+      })
+      .catch(() => {
+        if (active) setInvitePreview(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [inviteToken]);
+
+  const refreshDepartments = useCallback(
+    async (companyIdOverride?: string, tokenOverride?: string | null): Promise<Department[]> => {
+      const targetCompanyId = companyIdOverride || currentTenant?.id;
+      const token = tokenOverride !== undefined ? tokenOverride : authToken;
+      if (!targetCompanyId || !token) {
+        setDepartments([]);
+        setSelectedDepartmentId(null);
+        return [];
+      }
+
+      try {
+        const res = await fetch(`/api/companies/${encodeURIComponent(targetCompanyId)}/departments`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'X-Tenant-Id': targetCompanyId
+          }
+        });
+        if (!res.ok) {
+          setDepartments([]);
+          return [];
+        }
+        const data = await res.json();
+        const deptList: Department[] = Array.isArray(data.departments) ? data.departments : [];
+        setDepartments(deptList);
+
+        const savedDeptId =
+          typeof window !== 'undefined' ? localStorage.getItem('alm_nexus_dept_id') : null;
+        const activeRole =
+          tenants.find((t) => t.id === targetCompanyId)?.myRole || currentTenant?.myRole;
+
+        if (deptList.length === 0) {
+          setSelectedDepartmentId(null);
+        } else if (activeRole === 'company_admin') {
+          const validSaved = deptList.find((d) => d.id === savedDeptId);
+          setSelectedDepartmentId(validSaved ? validSaved.id : deptList[0].id);
+        } else if (deptList.length === 1) {
+          setSelectedDepartmentId(deptList[0].id);
+        } else {
+          // Multi-department non-admin: restore only if saved & belonging to current company, else show selector
+          const validSaved = deptList.find((d) => d.id === savedDeptId);
+          setSelectedDepartmentId(validSaved ? validSaved.id : null);
+        }
+
+        return deptList;
+      } catch (err) {
+        console.warn('Could not load departments', err);
+        setDepartments([]);
+        return [];
+      }
+    },
+    [authToken, currentTenant?.id, currentTenant?.myRole, tenants, setSelectedDepartmentId]
+  );
+
+  // Load authenticated user's companies strictly from /api/companies
+  const refreshTenants = useCallback(async () => {
+    const token =
+      authToken || (typeof window !== 'undefined' ? localStorage.getItem('alm_nexus_token') : null);
+    if (!token) {
+      setTenants([]);
+      applyActiveCompany(null);
+      return;
+    }
+
     try {
-      const res = await fetch('/api/tenants');
+      const res = await fetch('/api/companies', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
       if (res.ok) {
         const data = await res.json();
-        if (data.success && Array.isArray(data.tenants)) {
-          setTenants(data.tenants);
-          const savedTenantId = typeof window !== 'undefined' ? localStorage.getItem('alm_nexus_tenant_id') : null;
-          const found = data.tenants.find((t: Tenant) => t.id === savedTenantId) || data.tenants[0];
-          if (found) {
-            setCurrentTenant(found);
-          }
+        const companyList: Tenant[] = Array.isArray(data.companies) ? data.companies : [];
+        const invitesList: PendingInvitePreview[] = Array.isArray(data.pendingInvites)
+          ? data.pendingInvites
+          : [];
+        setTenants(companyList);
+        setPendingInvites(invitesList);
+
+        const savedTenantId =
+          typeof window !== 'undefined' ? localStorage.getItem('alm_nexus_tenant_id') : null;
+        const found = companyList.find((t) => t.id === savedTenantId) || companyList[0] || null;
+        applyActiveCompany(found, currentUser?.role);
+        if (found) {
+          await refreshDepartments(found.id, token);
+        } else {
+          setDepartments([]);
+          setSelectedDepartmentId(null);
         }
       }
     } catch (e) {
-      console.warn('Could not fetch tenants list', e);
+      console.warn('Could not fetch companies list', e);
     }
-  };
+  }, [authToken, currentUser?.role, applyActiveCompany, refreshDepartments, setSelectedDepartmentId]);
 
-  const switchTenant = async (tenantId: string) => {
-    const target = tenants.find(t => t.id === tenantId);
-    if (target) {
-      setCurrentTenant(target);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('alm_nexus_tenant_id', target.id);
-      }
-      showToast(`Switched active workspace to "${target.name}"`, 'info');
-      refreshProjects();
-      refreshActivityFeed();
-      refreshWikiDocs();
-      refreshDepartmentalProgress();
+  const refreshActivityFeed = useCallback(async () => {
+    const tid = currentTenant?.id;
+    const token =
+      authToken || (typeof window !== 'undefined' ? localStorage.getItem('alm_nexus_token') : null);
+    if (!tid || !token) {
+      setActivityFeed([]);
+      setUnreadActivityCount(0);
+      return;
     }
-  };
-
-  const refreshActivityFeed = async () => {
-    const tid = currentTenant?.id || 'all';
     try {
-      const res = await fetch(`/api/tenants/${tid}/activity`);
+      const res = await fetch(`/api/tenants/${encodeURIComponent(tid)}/activity`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'X-Tenant-Id': tid
+        }
+      });
       if (res.ok) {
         const data = await res.json();
         if (data.success && Array.isArray(data.activity)) {
           setActivityFeed(data.activity);
-          const unread = data.activity.filter((a: ActivityFeedItem) => !a.isRead).length;
-          setUnreadActivityCount(unread);
+          setUnreadActivityCount(data.activity.filter((a: ActivityFeedItem) => !a.isRead).length);
         }
       }
     } catch (e) {
       console.warn('Could not fetch activity feed', e);
     }
-  };
+  }, [authToken, currentTenant?.id]);
 
-  const markActivityAsRead = (id?: string) => {
-    if (id) {
-      setActivityFeed(prev => prev.map(a => a.id === id ? { ...a, isRead: true } : a));
-    } else {
-      setActivityFeed(prev => prev.map(a => ({ ...a, isRead: true })));
-      setUnreadActivityCount(0);
+  const refreshWikiDocs = useCallback(async () => {
+    const tid = currentTenant?.id;
+    const token =
+      authToken || (typeof window !== 'undefined' ? localStorage.getItem('alm_nexus_token') : null);
+    if (!tid || !token) {
+      setWikiDocs([]);
+      return;
     }
-  };
-
-  const refreshWikiDocs = async () => {
-    const tid = currentTenant?.id || 'all';
     try {
-      const res = await fetch(`/api/tenants/${tid}/wiki`);
+      const res = await fetch(`/api/tenants/${encodeURIComponent(tid)}/wiki`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'X-Tenant-Id': tid
+        }
+      });
       if (res.ok) {
         const data = await res.json();
         if (data.success && Array.isArray(data.wikiDocs)) {
@@ -467,12 +709,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     } catch (e) {
       console.warn('Could not fetch wiki docs', e);
     }
-  };
+  }, [authToken, currentTenant?.id]);
 
-  const refreshDepartmentalProgress = async () => {
-    const tid = currentTenant?.id || 'all';
+  const refreshDepartmentalProgress = useCallback(async () => {
+    const tid = currentTenant?.id;
+    const token =
+      authToken || (typeof window !== 'undefined' ? localStorage.getItem('alm_nexus_token') : null);
+    if (!tid || !token) {
+      setDepartmentalProgress([]);
+      return;
+    }
     try {
-      const res = await fetch(`/api/tenants/${tid}/departmental`);
+      const res = await fetch(`/api/tenants/${encodeURIComponent(tid)}/departmental`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'X-Tenant-Id': tid
+        }
+      });
       if (res.ok) {
         const data = await res.json();
         if (data.success && Array.isArray(data.departments)) {
@@ -482,51 +735,395 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     } catch (e) {
       console.warn('Could not fetch departmental progress', e);
     }
+  }, [authToken, currentTenant?.id]);
+
+  const refreshDatabaseStatus = useCallback(async () => {
+    const token =
+      authToken || (typeof window !== 'undefined' ? localStorage.getItem('alm_nexus_token') : null);
+    const tid = currentTenant?.id;
+    if (!token || !tid || currentTenant?.myRole !== 'company_admin') {
+      return;
+    }
+    try {
+      const res = await fetch('/api/database/status', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'X-Tenant-Id': tid
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.status) {
+          setDatabaseStatus(data.status);
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load database status', e);
+    }
+  }, [authToken, currentTenant?.id, currentTenant?.myRole]);
+
+  const refreshProjects = useCallback(async () => {
+    const token =
+      authToken || (typeof window !== 'undefined' ? localStorage.getItem('alm_nexus_token') : null);
+    const tid = currentTenant?.id;
+    if (!token || !tid || currentTenant?.myRole === 'employee') {
+      setProjects([]);
+      return;
+    }
+
+    setLoadingProjects(true);
+    try {
+      if (auth.currentUser) {
+        try {
+          const firestoreProjects = await loadProjectsFromFirestore();
+          if (firestoreProjects && firestoreProjects.length > 0) {
+            setProjects(firestoreProjects);
+            localDatabase.saveProjects(firestoreProjects, `${currentUser?.id || 'u'}::${tid}`);
+            setLoadingProjects(false);
+            return;
+          }
+        } catch {
+          // fallback to API
+        }
+      }
+
+      const res = await fetch('/api/projects', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'X-Tenant-Id': tid
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const projs = Array.isArray(data.projects) ? data.projects : [];
+        setProjects(projs);
+        localDatabase.saveProjects(projs, `${currentUser?.id || 'u'}::${tid}`);
+        if (auth.currentUser && projs.length > 0) {
+          seedProjectsToFirestore(projs).catch(() => {});
+        }
+      } else {
+        setProjects([]);
+      }
+    } catch {
+      const local = localDatabase.getProjects(`${currentUser?.id || 'u'}::${tid}`);
+      setProjects(local);
+    } finally {
+      setLoadingProjects(false);
+    }
+  }, [authToken, currentTenant?.id, currentTenant?.myRole, currentUser?.id]);
+
+  const switchTenant = async (tenantId: string) => {
+    const target = tenants.find((t) => t.id === tenantId);
+    if (!target) return;
+
+    setSelectedDepartmentId(null);
+    applyActiveCompany(target, currentUser?.role);
+    setActiveTabState(getDefaultTabForCompanyRole(target.myRole));
+    showToast(`Switched active workspace to "${target.name}"`, 'info');
   };
 
-  const onboardNewTenant = async (onboardingData: any): Promise<{ success: boolean; message?: string; tenant?: Tenant }> => {
+  // Trigger scoped workspace loads whenever active company changes
+  useEffect(() => {
+    if (!authToken || !currentTenant?.id) {
+      setProjects([]);
+      setActivityFeed([]);
+      setUnreadActivityCount(0);
+      setWikiDocs([]);
+      setDepartmentalProgress([]);
+      setDepartments([]);
+      return;
+    }
+
+    refreshDepartments(currentTenant.id, authToken);
+    refreshActivityFeed();
+    refreshWikiDocs();
+    refreshDepartmentalProgress();
+    if (currentTenant.myRole !== 'employee') {
+      refreshProjects();
+    } else {
+      setProjects([]);
+    }
+    if (currentTenant.myRole === 'company_admin') {
+      refreshDatabaseStatus();
+    }
+  }, [
+    authToken,
+    currentTenant?.id,
+    currentTenant?.myRole,
+    refreshDepartments,
+    refreshActivityFeed,
+    refreshWikiDocs,
+    refreshDepartmentalProgress,
+    refreshProjects,
+    refreshDatabaseStatus
+  ]);
+
+  // Authenticated Company-Scoped Real-time SSE Subscription
+  useEffect(() => {
+    if (!authToken || !currentTenant?.id || typeof EventSource === 'undefined') {
+      return;
+    }
+
+    const url = `/api/events/stream?token=${encodeURIComponent(authToken)}&companyId=${encodeURIComponent(
+      currentTenant.id
+    )}`;
+    const es = new EventSource(url);
+
+    const dispatchSse = (eventName: string, rawData: string) => {
+      try {
+        const parsed = JSON.parse(rawData);
+        window.dispatchEvent(new CustomEvent(`clientops:sse:${eventName}`, { detail: parsed }));
+        return parsed;
+      } catch {
+        return null;
+      }
+    };
+
+    es.addEventListener('availability:updated', (ev: any) => {
+      const payload = dispatchSse('availability', ev.data);
+      if (payload && currentUser && payload.userId === currentUser.id && payload.availabilityStatus) {
+        setCurrentUser((prev) =>
+          prev
+            ? {
+                ...prev,
+                availabilityStatus: payload.availabilityStatus,
+                availabilityUpdatedAt: payload.availabilityUpdatedAt
+              }
+            : prev
+        );
+      }
+    });
+
+    es.addEventListener('chat:message', (ev: any) => {
+      dispatchSse('chat', ev.data);
+    });
+
+    es.addEventListener('task:updated', (ev: any) => {
+      dispatchSse('task', ev.data);
+    });
+
+    es.addEventListener('department:updated', (ev: any) => {
+      const payload = dispatchSse('department', ev.data);
+      if (payload?.companyId === currentTenant.id) {
+        refreshDepartments(currentTenant.id, authToken);
+      }
+    });
+
+    return () => {
+      es.close();
+    };
+  }, [authToken, currentTenant?.id, currentUser?.id, refreshDepartments]);
+
+  const createCompany = async (payload: {
+    name: string;
+    industry?: string;
+    size?: string;
+    description?: string;
+    initialDepartments?: string[];
+  }): Promise<{ success: boolean; message?: string; company?: Tenant }> => {
+    const token =
+      authToken || (typeof window !== 'undefined' ? localStorage.getItem('alm_nexus_token') : null);
+    if (!token) {
+      return { success: false, message: 'You must be signed in to create a company.' };
+    }
     try {
-      const res = await fetch('/api/tenants/onboard', {
+      const res = await fetch('/api/companies', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(onboardingData)
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(payload)
       });
       const data = await res.json();
-      if (res.ok && data.success && data.tenant) {
-        setTenants(prev => [data.tenant, ...prev]);
-        setCurrentTenant(data.tenant);
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('alm_nexus_tenant_id', data.tenant.id);
-        }
-        if (data.token && data.user) {
-          setAuthToken(data.token);
-          setCurrentUser(data.user);
-          setRoleState(data.user.role);
-          localStorage.setItem('alm_nexus_token', data.token);
-          localStorage.setItem('alm_nexus_user', JSON.stringify(data.user));
-        }
-        showToast(`Workspace "${data.tenant.name}" created! Welcome, ${data.user?.name || 'Administrator'}.`, 'success');
+      if (res.ok && data.success && data.company) {
+        const nextCompanies: Tenant[] = Array.isArray(data.companies)
+          ? data.companies
+          : [data.company, ...tenants];
+        setTenants(nextCompanies);
+        setSelectedDepartmentId(data.departments?.[0]?.id || null);
+        applyActiveCompany(data.company, currentUser?.role);
+        setActiveTabState('pipeline');
         if (typeof window !== 'undefined') {
           localStorage.setItem('clientops_setup_checklist', 'true');
         }
         setShowSetupChecklist(true);
-        refreshProjects();
-        refreshActivityFeed();
-        refreshWikiDocs();
-        refreshDepartmentalProgress();
-        setActiveTabState('pipeline');
-        return { success: true, tenant: data.tenant };
-      } else {
-        return { success: false, message: data.message || 'Onboarding failed.' };
+        showToast(`Company "${data.company.name}" registered!`, 'success');
+        return { success: true, company: data.company };
       }
+      return { success: false, message: data.message || 'Could not create company.' };
     } catch (err: any) {
-      return { success: false, message: err.message || 'Network error during onboarding.' };
+      return { success: false, message: err?.message || 'Network error while creating company.' };
     }
   };
 
+  const createDepartment = async (
+    name: string,
+    description?: string
+  ): Promise<{ success: boolean; message?: string; department?: Department }> => {
+    if (!authToken || !currentTenant?.id) {
+      return { success: false, message: 'Select a company first.' };
+    }
+    try {
+      const res = await fetch(`/api/companies/${encodeURIComponent(currentTenant.id)}/departments`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+          'X-Tenant-Id': currentTenant.id
+        },
+        body: JSON.stringify({ name, description })
+      });
+      const data = await res.json();
+      if (res.ok && data.success && data.department) {
+        setDepartments((prev) => [...prev, data.department]);
+        setSelectedDepartmentId(data.department.id);
+        showToast(`Department "${data.department.name}" created.`, 'success');
+        return { success: true, department: data.department };
+      }
+      return { success: false, message: data.message || data.error || 'Could not create department.' };
+    } catch (err: any) {
+      return { success: false, message: err?.message || 'Network error while creating department.' };
+    }
+  };
+
+  const deleteDepartment = async (
+    deptId: string
+  ): Promise<{ success: boolean; message?: string }> => {
+    if (!authToken || !currentTenant?.id) {
+      return { success: false, message: 'Select a company first.' };
+    }
+    try {
+      const res = await fetch(
+        `/api/companies/${encodeURIComponent(currentTenant.id)}/departments/${encodeURIComponent(deptId)}`,
+        {
+          method: 'DELETE',
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+            'X-Tenant-Id': currentTenant.id
+          }
+        }
+      );
+      const data = await res.json();
+      if (res.ok && data.success) {
+        const remaining = departments.filter((d) => d.id !== deptId);
+        setDepartments(remaining);
+        if (selectedDepartmentId === deptId) {
+          setSelectedDepartmentId(remaining[0]?.id || null);
+        }
+        showToast(data.message || 'Department deleted.', 'info');
+        return { success: true };
+      }
+      return { success: false, message: data.message || data.error || 'Could not delete department.' };
+    } catch (err: any) {
+      return { success: false, message: err?.message || 'Network error while deleting department.' };
+    }
+  };
+
+  const acceptInvite = async (
+    tokenValue: string
+  ): Promise<{ success: boolean; message?: string; companyId?: string; departmentId?: string }> => {
+    const token =
+      authToken || (typeof window !== 'undefined' ? localStorage.getItem('alm_nexus_token') : null);
+    if (!token) {
+      return { success: false, message: 'Please sign in first to accept this invitation.' };
+    }
+    try {
+      const res = await fetch(`/api/invites/${encodeURIComponent(tokenValue)}/accept`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        }
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        const nextCompanies: Tenant[] = Array.isArray(data.companies) ? data.companies : tenants;
+        const nextInvites: PendingInvitePreview[] = Array.isArray(data.pendingInvites)
+          ? data.pendingInvites
+          : pendingInvites.filter((i) => i.token !== tokenValue);
+        setTenants(nextCompanies);
+        setPendingInvites(nextInvites);
+        setInviteToken(null);
+        setInvitePreview(null);
+        if (typeof window !== 'undefined' && window.location.search.includes('invite=')) {
+          const url = new URL(window.location.href);
+          url.searchParams.delete('invite');
+          window.history.replaceState({}, '', url.pathname + url.search);
+        }
+
+        const joinedCompany = nextCompanies.find((c) => c.id === data.companyId) || nextCompanies[0] || null;
+        if (joinedCompany) {
+          applyActiveCompany(joinedCompany, currentUser?.role);
+          if (data.departmentId) {
+            setSelectedDepartmentId(data.departmentId);
+          }
+          setActiveTabState(getDefaultTabForCompanyRole(joinedCompany.myRole));
+        }
+        showToast(data.message || 'Invitation accepted!', 'success');
+        return { success: true, companyId: data.companyId, departmentId: data.departmentId };
+      }
+      return { success: false, message: data.message || 'Could not accept invitation.' };
+    } catch (err: any) {
+      return { success: false, message: err?.message || 'Network error accepting invitation.' };
+    }
+  };
+
+  const updateMyAvailability = async (status: AvailabilityStatus): Promise<boolean> => {
+    const token =
+      authToken || (typeof window !== 'undefined' ? localStorage.getItem('alm_nexus_token') : null);
+    if (!token) return false;
+    try {
+      const res = await fetch('/api/auth/me/availability', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ availabilityStatus: status })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setCurrentUser((prev) => {
+          if (!prev) return prev;
+          const updated = {
+            ...prev,
+            availabilityStatus: data.availabilityStatus,
+            availabilityUpdatedAt: data.availabilityUpdatedAt
+          };
+          localStorage.setItem('alm_nexus_user', JSON.stringify(updated));
+          return updated;
+        });
+        showToast(`Status updated to ${status}`, 'info');
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  };
+
+  // Legacy onboard wrapper delegates to createCompany when authenticated
+  const onboardNewTenant = async (
+    onboardingData: any
+  ): Promise<{ success: boolean; message?: string; tenant?: Tenant }> => {
+    const res = await createCompany({
+      name: onboardingData.companyName || onboardingData.name,
+      industry: onboardingData.businessInfo?.industry || onboardingData.industry,
+      size: onboardingData.size,
+      description: onboardingData.businessInfo?.description || onboardingData.description,
+      initialDepartments: onboardingData.initialDepartments
+    });
+    return {
+      success: res.success,
+      message: res.message,
+      tenant: res.company
+    };
+  };
+
+  // Individual-first signup OTP request (NO companyName)
   const requestSignupOtp = async (payload: {
     fullName: string;
-    companyName: string;
     email: string;
     password: string;
   }) => {
@@ -596,26 +1193,34 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         body: JSON.stringify({ email, code })
       });
       const data = await res.json();
-      if (res.ok && data.success && data.token && data.user && data.tenant) {
-        setTenants(prev => [data.tenant, ...prev]);
-        setCurrentTenant(data.tenant);
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('alm_nexus_tenant_id', data.tenant.id);
-          localStorage.setItem('clientops_setup_checklist', 'true');
-        }
+      if (res.ok && data.success && data.token && data.user) {
+        const nextCompanies: Tenant[] = Array.isArray(data.companies) ? data.companies : [];
+        const nextInvites: PendingInvitePreview[] = Array.isArray(data.pendingInvites)
+          ? data.pendingInvites
+          : [];
+
+        clearOutreachTelemetryCache();
         setAuthToken(data.token);
         setCurrentUser(data.user);
-        setRoleState(data.user.role);
+        setTenants(nextCompanies);
+        setPendingInvites(nextInvites);
         localStorage.setItem('alm_nexus_token', data.token);
         localStorage.setItem('alm_nexus_user', JSON.stringify(data.user));
-        setShowSetupChecklist(true);
-        showToast(`Email verified! Workspace "${data.tenant.name}" is ready.`, 'success');
-        refreshProjects();
-        refreshActivityFeed();
-        refreshWikiDocs();
-        refreshDepartmentalProgress();
-        setActiveTabState('pipeline');
-        return { success: true, tenant: data.tenant, message: data.message };
+        localStorage.removeItem('alm_nexus_tenant_id');
+        localStorage.removeItem('alm_nexus_dept_id');
+
+        const firstCompany = nextCompanies[0] || null;
+        applyActiveCompany(firstCompany, data.user.role);
+        if (firstCompany) {
+          setActiveTabState(getDefaultTabForCompanyRole(firstCompany.myRole));
+        }
+        showToast(data.message || `Email verified! Welcome, ${data.user.name}.`, 'success');
+        return {
+          success: true,
+          message: data.message,
+          companies: nextCompanies,
+          pendingInvites: nextInvites
+        };
       }
       return {
         success: false,
@@ -630,83 +1235,79 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  // Database status loader
-  const refreshDatabaseStatus = async () => {
-    try {
-      const res = await fetch('/api/database/status');
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success && data.status) {
-          setDatabaseStatus(data.status);
-        }
-      }
-    } catch (e) {
-      console.warn('Failed to load database status', e);
-    }
-  };
-
-  // Check auth user session
-  const verifySession = async (tokenToUse?: string | null) => {
-    const token = tokenToUse !== undefined ? tokenToUse : authToken;
-    if (!token) {
-      if (!auth.currentUser) {
+  // Verify existing JWT session strictly via /api/auth/me
+  const verifySession = useCallback(
+    async (tokenToUse?: string | null) => {
+      const token = tokenToUse !== undefined ? tokenToUse : authToken;
+      if (!token) {
         setCurrentUser(null);
+        setTenants([]);
+        applyActiveCompany(null);
+        return;
       }
-      return;
-    }
-    try {
-      const headers: Record<string, string> = {
-        'Authorization': `Bearer ${token}`
-      };
-      const res = await fetch('/api/auth/me', { headers });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success && data.user) {
-          setCurrentUser(data.user);
-          setRoleState(data.user.role);
-          localStorage.setItem('alm_nexus_user', JSON.stringify(data.user));
-          if (data.user.role === 'client_guest') {
-            setActiveTabState('portal');
+      try {
+        const res = await fetch('/api/auth/me', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && data.user) {
+            setCurrentUser(data.user);
+            localStorage.setItem('alm_nexus_user', JSON.stringify(data.user));
+
+            const companyList: Tenant[] = Array.isArray(data.companies) ? data.companies : [];
+            const invitesList: PendingInvitePreview[] = Array.isArray(data.pendingInvites)
+              ? data.pendingInvites
+              : [];
+            setTenants(companyList);
+            setPendingInvites(invitesList);
+
+            const savedTenantId =
+              typeof window !== 'undefined' ? localStorage.getItem('alm_nexus_tenant_id') : null;
+            const foundCompany =
+              companyList.find((c) => c.id === savedTenantId) || companyList[0] || null;
+            applyActiveCompany(foundCompany, data.user.role);
+
+            if (foundCompany) {
+              if (data.user.role === 'client_guest') {
+                setActiveTabState('portal');
+              } else if (foundCompany.myRole === 'employee') {
+                setActiveTabState((prev) =>
+                  ['departmental', 'chat', 'profile'].includes(prev) ? prev : 'departmental'
+                );
+              } else if (foundCompany.myRole === 'department_head') {
+                setActiveTabState((prev) =>
+                  ['commissions', 'analytics', 'integrations'].includes(prev) ? 'departmental' : prev
+                );
+              }
+            }
+            return;
           }
-        } else {
-          setCurrentUser(null);
-          setAuthToken(null);
-          localStorage.removeItem('alm_nexus_token');
-          localStorage.removeItem('alm_nexus_user');
         }
-      } else {
+        // Invalid or expired session -> purge cleanly
         setCurrentUser(null);
         setAuthToken(null);
+        setTenants([]);
+        applyActiveCompany(null);
         localStorage.removeItem('alm_nexus_token');
         localStorage.removeItem('alm_nexus_user');
+        localStorage.removeItem('alm_nexus_tenant_id');
+        localStorage.removeItem('alm_nexus_dept_id');
+      } catch (e) {
+        console.warn('Failed to verify session', e);
       }
-    } catch (e) {
-      console.warn('Failed to verify session', e);
-    }
-  };
+    },
+    [authToken, applyActiveCompany]
+  );
 
-  // Firebase Auth State Listener & Firestore profile sync
+  // Firebase Auth listener (strictly optional secondary sync)
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       setFirebaseUser(fbUser);
       if (fbUser) {
         setIsFirebaseConnected(true);
         try {
-          const profile = await syncUserProfile(fbUser, role || 'admin');
-          const userObj: AuthUser = {
-            id: fbUser.uid,
-            name: fbUser.displayName || fbUser.email?.split('@')[0] || 'Google User',
-            email: fbUser.email || '',
-            role: (profile?.role as UserRole) || 'admin',
-            title: 'Google & Firebase Authenticated Operator',
-            avatar: fbUser.photoURL || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(fbUser.uid)}`,
-            permissions: ['all', 'pipeline_read', 'pipeline_write', 'sop_execute']
-          };
-          setCurrentUser(userObj);
-          setRoleState(userObj.role);
-          localStorage.setItem('alm_nexus_user', JSON.stringify(userObj));
-
-          // Load user preferences from Firestore if available
+          await syncUserProfile(fbUser, role || 'team_member');
           const prefs = await getUserPreferences(fbUser.uid);
           if (prefs) {
             if (prefs.theme && ['light', 'dark', 'system'].includes(prefs.theme)) {
@@ -715,28 +1316,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             if (prefs.currency) setCurrency(prefs.currency as SupportedCurrency);
             if (prefs.language) setLanguage(prefs.language as SupportedLanguage);
           }
-
-          // Trigger projects refresh with authenticated Firebase session
-          refreshProjects();
         } catch (err) {
-          console.warn('Error syncing Firebase user profile:', err);
+          console.warn('Error syncing Firebase preferences:', err);
         }
       }
     });
-
     return () => unsubscribe();
   }, []);
 
   useEffect(() => {
     verifySession();
-    refreshDatabaseStatus();
-    refreshTenants();
-    refreshActivityFeed();
-    refreshWikiDocs();
-    refreshDepartmentalProgress();
   }, []);
 
-  // Sync user preferences to Firestore on change
   useEffect(() => {
     if (auth.currentUser) {
       saveUserPreferences(auth.currentUser.uid, {
@@ -744,7 +1335,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         language,
         currency,
         scaleMode
-      }).catch(err => console.warn('Could not persist preferences to Firestore:', err));
+      }).catch(() => {});
     }
   }, [themeMode, language, currency, scaleMode]);
 
@@ -753,152 +1344,131 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (newRole === 'client_guest') {
       setActiveTabState('portal');
     }
-    // Update role profile mapping
-    switchPersona(newRole);
   };
 
-  const loginWithGoogle = async (): Promise<{ success: boolean; message?: string; cancelled?: boolean }> => {
+  const loginWithGoogle = async (): Promise<{
+    success: boolean;
+    message?: string;
+    cancelled?: boolean;
+  }> => {
     try {
       const res = await signInWithGoogle();
       if (res.success && res.user) {
-        const fbUser = res.user;
-        const profile = await syncUserProfile(fbUser, 'admin');
-        const userObj: AuthUser = {
-          id: fbUser.uid,
-          name: fbUser.displayName || fbUser.email?.split('@')[0] || 'Google User',
-          email: fbUser.email || '',
-          role: (profile?.role as UserRole) || 'admin',
-          title: 'Google & Firebase Authenticated Operator',
-          avatar: fbUser.photoURL || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(fbUser.uid)}`,
-          permissions: ['all', 'pipeline_read', 'pipeline_write', 'sop_execute']
-        };
-        setCurrentUser(userObj);
-        setRoleState(userObj.role);
-        localStorage.setItem('alm_nexus_user', JSON.stringify(userObj));
-
-        // Save preferences to Firestore
-        await saveUserPreferences(fbUser.uid, {
-          theme: isDark ? 'dark' : 'light',
-          language,
-          currency,
-          scaleMode
-        });
-
-        // Refresh projects from Firestore
-        await refreshProjects();
-
-        setActiveTabState('pipeline');
-        showToast(`Signed in with Google as ${userObj.name}.`, 'success');
+        showToast('Google authentication verified.', 'success');
         return { success: true };
-      } else if (res.cancelled) {
-        // User closed or dismissed the popup; gently notify without error
+      }
+      if (res.cancelled) {
         showToast('Google sign-in was cancelled.', 'info');
         return { success: false, message: 'Google sign-in cancelled.', cancelled: true };
-      } else {
-        showToast(res.error || 'Google Sign-In failed', 'warning');
-        return { success: false, message: res.error || 'Google Sign-In failed.' };
       }
+      return { success: false, message: res.error || 'Google Sign-In failed.' };
     } catch (e: any) {
       return { success: false, message: e.message || 'Authentication error.' };
     }
   };
 
-  const loginWithOAuth = async (
-    provider: 'github' | 'google',
-    fallbackUser?: { name: string; email: string; avatar?: string }
-  ): Promise<{ success: boolean; message?: string }> => {
-    try {
-      const email = fallbackUser?.email || (provider === 'github' ? 'dev@agencyops.dev' : 'admin@agencyops.dev');
-      const name = fallbackUser?.name || (provider === 'github' ? 'GitHub Developer' : 'Google Operator');
-      const avatar = fallbackUser?.avatar || '';
-
-      const res = await fetch('/api/auth/oauth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider, email, name, avatar })
-      });
-      const data = await res.json();
-      if (res.ok && data.success && data.token) {
-        setAuthToken(data.token);
-        setCurrentUser(data.user);
-        setRoleState(data.user.role);
-        localStorage.setItem('alm_nexus_token', data.token);
-        localStorage.setItem('alm_nexus_user', JSON.stringify(data.user));
-        showToast(`Signed in via ${provider === 'github' ? 'GitHub' : 'Google'} as ${data.user.name}.`, 'success');
-        setActiveTabState('pipeline');
-        return { success: true };
-      } else {
-        return { success: false, message: data.message || 'OAuth authentication failed.' };
-      }
-    } catch (e: any) {
-      return { success: false, message: e.message || 'Network error during OAuth.' };
-    }
+  const loginWithOAuth = async (): Promise<{ success: boolean; message?: string }> => {
+    return {
+      success: false,
+      message: 'Please sign in with your verified email address and password.'
+    };
   };
 
-  const login = async (emailOrRole: string, passwordOrPin: string): Promise<{ success: boolean; message?: string }> => {
+  const login = async (
+    email: string,
+    password: string
+  ): Promise<{
+    success: boolean;
+    message?: string;
+    companies?: Tenant[];
+    pendingInvites?: PendingInvitePreview[];
+  }> => {
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          email: emailOrRole, 
-          role: emailOrRole, 
-          password: passwordOrPin, 
-          pin: passwordOrPin 
-        })
+        body: JSON.stringify({ email: email.trim(), password })
       });
       const data = await res.json();
-      if (res.ok && data.success && data.token) {
+      if (res.ok && data.success && data.token && data.user) {
+        clearOutreachTelemetryCache();
         setAuthToken(data.token);
         setCurrentUser(data.user);
-        setRoleState(data.user.role);
         localStorage.setItem('alm_nexus_token', data.token);
         localStorage.setItem('alm_nexus_user', JSON.stringify(data.user));
-        showToast(`Welcome back, ${data.user.name} (${data.user.title || data.user.role})!`);
-        if (data.user.role === 'client_guest') {
-          setActiveTabState('portal');
-        } else {
-          setActiveTabState('pipeline');
+        localStorage.removeItem('alm_nexus_dept_id');
+
+        const companyList: Tenant[] = Array.isArray(data.companies) ? data.companies : [];
+        const invitesList: PendingInvitePreview[] = Array.isArray(data.pendingInvites)
+          ? data.pendingInvites
+          : [];
+        setTenants(companyList);
+        setPendingInvites(invitesList);
+
+        const savedTenantId =
+          typeof window !== 'undefined' ? localStorage.getItem('alm_nexus_tenant_id') : null;
+        const activeComp =
+          companyList.find((c) => c.id === savedTenantId) || companyList[0] || null;
+        applyActiveCompany(activeComp, data.user.role);
+
+        if (activeComp) {
+          setActiveTabState(
+            data.user.role === 'client_guest'
+              ? 'portal'
+              : getDefaultTabForCompanyRole(activeComp.myRole)
+          );
         }
-        return { success: true };
-      } else {
-        return { success: false, message: data.message || 'Invalid credentials.' };
+
+        showToast(`Welcome back, ${data.user.name}!`);
+        return {
+          success: true,
+          companies: companyList,
+          pendingInvites: invitesList
+        };
       }
+      return { success: false, message: data.message || 'Invalid email or password.' };
     } catch (e: any) {
       return { success: false, message: e.message || 'Authentication error.' };
     }
   };
 
   const logout = () => {
-    signOutFirebase().catch(e => console.warn('Sign out error:', e));
+    fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+    signOutFirebase().catch(() => {});
+    clearOutreachTelemetryCache();
+    localDatabase.clearScopedCaches();
+    localDatabase.setActiveScope(null, null);
+
     setFirebaseUser(null);
     setAuthToken(null);
     setCurrentUser(null);
-    setRoleState('admin');
+    setTenants([]);
+    setCurrentTenant(null);
+    setDepartments([]);
+    setSelectedDepartmentId(null);
+    setPendingInvites([]);
+    setProjects([]);
+    setActivityFeed([]);
+    setUnreadActivityCount(0);
+    setWikiDocs([]);
+    setDepartmentalProgress([]);
+    setDatabaseStatus(null);
+    setRoleState('team_member');
     setActiveTabState('pipeline');
-    localStorage.removeItem('alm_nexus_token');
-    localStorage.removeItem('alm_nexus_user');
+
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('alm_nexus_token');
+      localStorage.removeItem('alm_nexus_user');
+      localStorage.removeItem('alm_nexus_tenant_id');
+      localStorage.removeItem('alm_nexus_dept_id');
+      localStorage.removeItem('clientops_setup_checklist');
+    }
+
     showToast('Logged out successfully.');
   };
 
-  const switchPersona = async (targetRole: UserRole) => {
-    const personaCredentials: Record<UserRole, { email: string; pass: string }> = {
-      admin: { email: 'admin@agencyops.dev', pass: 'Admin@12345' },
-      ceo: { email: 'admin@agencyops.dev', pass: 'Admin@12345' },
-      bd_head: { email: 'admin@agencyops.dev', pass: 'Admin@12345' },
-      coordinator: { email: 'coordinator@agencyops.dev', pass: 'Coord@12345' },
-      project_manager: { email: 'coordinator@agencyops.dev', pass: 'Coord@12345' },
-      sales: { email: 'sales@agencyops.dev', pass: 'Sales@12345' },
-      developer: { email: 'dev@agencyops.dev', pass: 'Dev@12345' },
-      designer: { email: 'design@agencyops.dev', pass: 'Design@12345' },
-      collaborator: { email: 'partner@vance-capital.com', pass: 'Partner@12345' },
-      client_guest: { email: 'client@lumina-health.co.uk', pass: 'Client@12345' },
-      team_member: { email: 'client@lumina-health.co.uk', pass: 'Client@12345' }
-    };
-    const cred = personaCredentials[targetRole];
-    if (cred) {
-      await login(cred.email, cred.pass);
-    }
+  const switchPersona = async () => {
+    showToast('Demo persona switching is disabled in strict multi-tenant mode.', 'info');
   };
 
   const setAISettings = (newSettings: AISettings) => {
@@ -907,35 +1477,27 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const updateAISettings = (updates: Partial<AISettings>) => {
-    setAISettingsState(prev => {
+    setAISettingsState((prev) => {
       const merged = { ...prev, ...updates };
       saveAISettings(merged);
       return merged;
     });
   };
 
-  // Translation helper
   const t = (key: string): string => {
     const langDict = TRANSLATIONS[language] || TRANSLATIONS.en;
     return langDict[key] || TRANSLATIONS.en[key] || key;
   };
 
-  // Toast feedback with support for types (success, error, warning, info)
-  const dismissToast = (id: string) => {
-    setToasts(prev => prev.filter(t => t.id !== id));
+  const markActivityAsRead = (id?: string) => {
+    if (id) {
+      setActivityFeed((prev) => prev.map((a) => (a.id === id ? { ...a, isRead: true } : a)));
+    } else {
+      setActivityFeed((prev) => prev.map((a) => ({ ...a, isRead: true })));
+      setUnreadActivityCount(0);
+    }
   };
 
-  const showToast = (msg: string, type: ToastType = 'success') => {
-    setToastMessage(msg);
-    const id = Math.random().toString(36).substring(2, 9);
-    const newToast: ToastItem = { id, message: msg, type, duration: 4200 };
-    setToasts(prev => [...prev.slice(-4), newToast]);
-    setTimeout(() => {
-      setToastMessage(prev => (prev === msg ? null : prev));
-    }, 4200);
-  };
-
-  // Online / offline listeners
   useEffect(() => {
     const handleOnline = () => {
       setIsOnline(true);
@@ -943,82 +1505,30 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
     const handleOffline = () => {
       setIsOnline(false);
-      showToast('Offline mode active. Using cached SOP and local data.', 'warning');
+      showToast('Offline mode active. Using scoped local cache.', 'warning');
     };
-
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, []);
+  }, [showToast]);
 
-  // Fetch projects from Firestore with server and offline fallbacks
-  const refreshProjects = async () => {
-    try {
-      // 1. Try reading from Firestore first if user is authenticated in Firebase
-      if (auth.currentUser) {
-        try {
-          const firestoreProjects = await loadProjectsFromFirestore();
-          if (firestoreProjects && firestoreProjects.length > 0) {
-            setProjects(firestoreProjects);
-            localDatabase.saveProjects(firestoreProjects);
-            return;
-          }
-        } catch (fsErr) {
-          // Silent fallback to server or local database
-        }
-      }
-
-      // 2. Query the server API
-      const headers: Record<string, string> = {
-        'X-Tenant-Id': currentTenant?.id || (typeof window !== 'undefined' ? localStorage.getItem('alm_nexus_tenant_id') : null) || 'tenant-alm-nexus'
-      };
-      const token = authToken || (typeof window !== 'undefined' ? localStorage.getItem('alm_nexus_token') : null);
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-      const res = await fetch('/api/projects', { headers });
-      if (res.ok) {
-        const data = await res.json();
-        const projs = Array.isArray(data.projects) ? data.projects : [];
-        setProjects(projs);
-        localDatabase.saveProjects(projs);
-
-        // Sync to Firestore in background only if authenticated and projects exist
-        if (auth.currentUser && projs.length > 0) {
-          seedProjectsToFirestore(projs).catch(() => {});
-        }
-        return;
-      }
-    } catch {
-      // Fallback to local storage only when network/server fails
-      const local = localDatabase.getProjects();
-      if (local.length > 0) {
-        setProjects(local);
-      }
-    }
-  };
-
-  // Real-time Firestore synchronization for collaborative project updates
-  // SKILL mandate: Only attach onSnapshot listeners if auth is ready and user is authenticated
   useEffect(() => {
-    if (!firebaseUser) return;
+    if (!firebaseUser || !currentTenant?.id) return;
     const unsubscribe = subscribeProjectsFromFirestore((liveProjects) => {
       if (liveProjects && liveProjects.length > 0) {
         setProjects(liveProjects);
-        localStorage.setItem('clientops_cached_projects', JSON.stringify(liveProjects));
+        localDatabase.saveProjects(
+          liveProjects,
+          `${currentUser?.id || 'u'}::${currentTenant.id}`
+        );
       }
     });
     return () => unsubscribe();
-  }, [firebaseUser]);
+  }, [firebaseUser, currentTenant?.id, currentUser?.id]);
 
-  useEffect(() => {
-    refreshProjects();
-  }, [authToken]);
-
-  // Trigger Google Sheets auto-sync when projects update (debounced)
   useEffect(() => {
     if (projects.length === 0) return;
     const timer = setTimeout(() => {
@@ -1027,53 +1537,46 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return () => clearTimeout(timer);
   }, [projects]);
 
-  // Update project in Firestore, local offline sync queue, and backend
   const updateProject = async (id: string, updates: Partial<ProjectLead>): Promise<boolean> => {
+    const tid = currentTenant?.id;
+    const token = authToken;
+    if (!tid || !token) return false;
     try {
-      // 1. Optimistic UI update & immediate local storage sync
-      setProjects(prev => {
-        const next = prev.map(p => (p.id === id ? { ...p, ...updates } : p));
-        localDatabase.saveProjects(next);
+      setProjects((prev) => {
+        const next = prev.map((p) => (p.id === id ? { ...p, ...updates } : p));
+        localDatabase.saveProjects(next, `${currentUser?.id || 'u'}::${tid}`);
         return next;
       });
-      
-      // 2. Save directly to Firestore with local storage fallback
       saveProjectToFirestore({ id, ...updates }).catch(() => {});
 
-      // 3. If offline, enqueue into the offline sync service for automatic reconciliation on reconnect
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
         offlineSyncService.enqueue('project', 'update', id, updates);
-        showToast('Offline Mode: Changes saved locally. Will auto-sync when online.', 'info');
+        showToast('Offline Mode: Changes saved locally.', 'info');
         return true;
       }
 
-      // 4. Send to backend REST API
-      const reqHeaders: Record<string, string> = {
-        'Content-Type': 'application/json',
-        'X-Tenant-Id': currentTenant?.id || 'tenant-alm-nexus'
-      };
-      if (authToken) {
-        reqHeaders['Authorization'] = `Bearer ${authToken}`;
-      }
       const res = await fetch(`/api/projects/${id}`, {
         method: 'PUT',
-        headers: reqHeaders,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          'X-Tenant-Id': tid
+        },
         body: JSON.stringify(updates)
       });
       if (res.ok) {
         const data = await res.json();
-        setProjects(prev => {
-          const next = prev.map(p => (p.id === id ? data.project : p));
-          localDatabase.saveProjects(next);
+        setProjects((prev) => {
+          const next = prev.map((p) => (p.id === id ? data.project : p));
+          localDatabase.saveProjects(next, `${currentUser?.id || 'u'}::${tid}`);
           return next;
         });
         showToast('Project updated & saved.');
         return true;
-      } else {
-        // Fallback: enqueue on non-200 server response
-        offlineSyncService.enqueue('project', 'update', id, updates);
-        return true;
       }
+      const errData = await res.json().catch(() => ({}));
+      showToast(errData.error || errData.message || 'Could not update project.', 'error');
+      return false;
     } catch {
       offlineSyncService.enqueue('project', 'update', id, updates);
       showToast('Saved locally.', 'info');
@@ -1081,43 +1584,46 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  // Transfer project strictly enforcing SOP Rule 8
   const transferProject = async (id: string): Promise<{ success: boolean; message: string }> => {
+    const tid = currentTenant?.id;
+    const token = authToken;
+    if (!tid || !token) {
+      return { success: false, message: 'No active company selected.' };
+    }
     try {
-      const transferHeaders: Record<string, string> = {
-        'X-Tenant-Id': currentTenant?.id || 'tenant-alm-nexus'
-      };
-      if (authToken) {
-        transferHeaders['Authorization'] = `Bearer ${authToken}`;
-      }
       const res = await fetch(`/api/projects/${id}/transfer`, {
         method: 'POST',
-        headers: transferHeaders
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'X-Tenant-Id': tid
+        }
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        setProjects(prev => prev.map(p => (p.id === id ? data.project : p)));
-        // Save to Firestore & local storage
-        saveProjectToFirestore({ 
-          id, 
-          status: 'transferred', 
-          domainTransferred: true, 
-          transferCompletedAt: new Date().toISOString() 
+        setProjects((prev) => prev.map((p) => (p.id === id ? data.project : p)));
+        saveProjectToFirestore({
+          id,
+          status: 'transferred',
+          domainTransferred: true,
+          transferCompletedAt: new Date().toISOString()
         }).catch(() => {});
-
-        showToast('🎉 SOP Rule 8 Passed: Website transferred to live client domain and logged!');
+        showToast('SOP Rule 8 Passed: Website transferred to live client domain and logged!');
         return { success: true, message: data.message };
-      } else {
-        showToast(`❌ Transfer Rejected: ${data.error}`);
-        return { success: false, message: data.error };
       }
+      showToast(`Transfer Rejected: ${data.error || data.message}`, 'error');
+      return { success: false, message: data.error || data.message };
     } catch (e: any) {
-      showToast('Network error verifying transfer.');
+      showToast('Network error verifying transfer.', 'error');
       return { success: false, message: e.message };
     }
   };
 
-  const openAIModal = (data?: { clientName?: string; websiteType?: string; channel?: string; mode?: string }) => {
+  const openAIModal = (data?: {
+    clientName?: string;
+    websiteType?: string;
+    channel?: string;
+    mode?: string;
+  }) => {
     setAiInitialData(data || null);
     setIsAIModalOpen(true);
   };
@@ -1139,7 +1645,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       GBP: { rate: 0.79, prefix: '£' },
       EUR: { rate: 0.92, prefix: '€' },
       AUD: { rate: 1.53, prefix: 'A$' },
-      AED: { rate: 3.67, prefix: 'AED ' },
+      AED: { rate: 3.67, prefix: 'AED ' }
     };
     const cfg = rates[selected] || rates.USD;
     const converted = (Number(amountUSD) || 0) * cfg.rate;
@@ -1148,14 +1654,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const setScaleMode = async (newMode: AgencyScaleMode) => {
     setScaleModeState(newMode);
+    if (!authToken || !currentTenant?.id) return;
     try {
       const res = await fetch('/api/agency/set-scale-mode', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+          'X-Tenant-Id': currentTenant.id
+        },
         body: JSON.stringify({ mode: newMode })
       });
       if (res.ok) {
-        showToast(`Agency dataset adjusted to ${newMode.toUpperCase()} scale.`);
+        showToast(`Workspace scale mode set to ${newMode.toUpperCase()}.`);
         await refreshProjects();
       }
     } catch (e) {
@@ -1168,6 +1679,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       value={{
         role,
         setRole,
+        companyRole,
         currentUser,
         authToken,
         isAuthenticated: !!currentUser,
@@ -1182,8 +1694,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setIsAuthModalOpen,
         currentTenant,
         tenants,
+        departments,
+        selectedDepartmentId,
+        setSelectedDepartmentId,
+        refreshDepartments,
         switchTenant,
         refreshTenants,
+        createCompany,
+        createDepartment,
+        deleteDepartment,
+        pendingInvites,
+        inviteToken,
+        setInviteToken,
+        invitePreview,
+        acceptInvite,
+        updateMyAvailability,
         isOnboardingModalOpen,
         setIsOnboardingModalOpen,
         onboardNewTenant,

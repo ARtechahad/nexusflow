@@ -1,17 +1,26 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import {
-  readDB,
   getDB,
   saveDB,
   hashPassword,
   logAuditAction,
-  DEFAULT_USERS,
-  DEFAULT_TENANTS,
-  DEFAULT_ACTIVITY_FEED
+  DEFAULT_USERS
 } from '../db';
-import { authenticateUser, registerNewUser, verifyToken, signToken } from '../middlewares/auth';
+import {
+  authenticateUser,
+  registerNewUser,
+  verifyToken,
+  signToken,
+  requireAuth,
+  requireCompanyAccess,
+  getUserCompaniesSummary,
+  getUserMemberships,
+  AuthenticatedRequest,
+  AvailabilityStatus
+} from '../middlewares/auth';
 import { resendService } from '../services/resendService';
+import { realtimeEngine } from '../services/realtimeEngine';
 import {
   OTP_EXPIRY_MS,
   OTP_RESEND_COOLDOWN_MS,
@@ -27,105 +36,37 @@ import {
 } from '../services/emailOtpService';
 
 const router = Router();
+const VALID_AVAILABILITY: AvailabilityStatus[] = ['Available', 'In a Meeting', 'Busy', 'Offline'];
 
-// Login
+// Login strictly by verified email + password
 router.post('/login', (req: Request, res: Response) => {
-  const { email, role, password, pin } = req.body || {};
-  const identifier = email || role;
-  const credential = password || pin;
-  if (!identifier || !credential) {
-    return res.status(400).json({ success: false, message: 'Role or Email, and Password or PIN are required.' });
+  const { email, password } = req.body || {};
+  if (!email || !password) {
+    return res.status(400).json({ success: false, message: 'Email address and password are required.' });
   }
 
-  const result = authenticateUser(identifier, credential, req.ip);
+  const result = authenticateUser(email, password, req.ip);
   if (!result.success) {
     return res.status(401).json(result);
   }
 
-  // Set enterprise HttpOnly session cookie
   if (result.token) {
     res.cookie('alm_nexus_token', result.token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+      maxAge: 7 * 24 * 60 * 60 * 1000
     });
   }
 
-  const userRole = result.user?.role;
-  const dashboardRedirect = userRole === 'client_guest' ? '/portal' : '/';
-
   return res.json({
     ...result,
-    dashboardRedirect
-  });
-});
-
-// OAuth / Social Gateway Login (Google, GitHub, Clerk)
-router.post('/oauth', (req: Request, res: Response) => {
-  const { provider, email, name, avatar } = req.body || {};
-  const resolvedEmail = (email || `${provider || 'user'}@agencyops.dev`).trim().toLowerCase();
-  const resolvedName = name || (provider === 'github' ? 'GitHub Developer' : 'Google Operator');
-
-  const db = readDB();
-  const users = db.users || DEFAULT_USERS;
-  let user = users.find((u: any) => u.email.toLowerCase() === resolvedEmail);
-
-  if (!user) {
-    // Automatically provision user account
-    const regResult = registerNewUser({
-      name: resolvedName,
-      email: resolvedEmail,
-      password: crypto.randomBytes(16).toString('hex'),
-      role: 'admin',
-      title: `${provider === 'github' ? 'GitHub' : 'Google'} Enterprise Member`
-    }, req.ip);
-
-    if (regResult.success && regResult.user) {
-      user = regResult.user;
-    } else {
-      user = users[0]; // fallback to master admin
-    }
-  }
-
-  const tenantId = user.tenantId || user.tenant_id || 'tenant-alm-nexus';
-  const token = signToken({
-    id: user.id,
-    email: user.email,
-    role: user.role,
-    name: user.name,
-    title: user.title || 'Enterprise Member',
-    permissions: user.permissions || [],
-    tenant_id: tenantId,
-    tenantId: tenantId
-  });
-
-  res.cookie('alm_nexus_token', token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: 7 * 24 * 60 * 60 * 1000
-  });
-
-  return res.json({
-    success: true,
-    user: {
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      title: user.title,
-      avatar: avatar || user.avatar,
-      permissions: user.permissions || [],
-      tenantId: tenantId
-    },
-    token,
-    dashboardRedirect: user.role === 'client_guest' ? '/portal' : '/'
+    dashboardRedirect: '/'
   });
 });
 
 // Logout (Clear Session Cookie)
-router.post('/logout', (req: Request, res: Response) => {
+router.post('/logout', (_req: Request, res: Response) => {
   res.clearCookie('alm_nexus_token', {
     httpOnly: true,
     sameSite: 'lax'
@@ -133,14 +74,15 @@ router.post('/logout', (req: Request, res: Response) => {
   return res.json({ success: true, message: 'Logged out successfully.' });
 });
 
-// Register (legacy direct endpoint kept for internal compatibility)
+// Direct registration endpoint (creates individual user only, zero companies auto-created)
 router.post('/register', (req: Request, res: Response) => {
-  const { name, email, password, role, title } = req.body || {};
-  if (!name || !email || !password) {
-    return res.status(400).json({ success: false, message: 'Name, email, and password are required.' });
+  const { name, fullName, email, password, title } = req.body || {};
+  const resolvedName = (fullName || name || '').trim();
+  if (!resolvedName || !email || !password) {
+    return res.status(400).json({ success: false, message: 'Full name, email, and password are required.' });
   }
 
-  const result = registerNewUser({ name, email, password, role, title });
+  const result = registerNewUser({ name: resolvedName, email, password, title }, req.ip);
   if (!result.success) {
     return res.status(400).json(result);
   }
@@ -149,28 +91,27 @@ router.post('/register', (req: Request, res: Response) => {
 });
 
 // ==========================================
-// CREATE ACCOUNT EMAIL OTP VERIFICATION FLOW
+// INDIVIDUAL ACCOUNT EMAIL OTP VERIFICATION FLOW
 // ==========================================
 
-// 1. Request 6-digit OTP & store pending registration (10-minute expiry)
+// 1. Request 6-digit OTP for individual registration (Full Name, Email, Password ONLY)
 router.post('/signup/request-otp', async (req: Request, res: Response) => {
   try {
     const fullName = typeof req.body?.fullName === 'string' ? req.body.fullName.trim() : '';
-    const companyName = typeof req.body?.companyName === 'string' ? req.body.companyName.trim() : '';
     const email = normalizeEmail(req.body?.email || '');
     const password = typeof req.body?.password === 'string' ? req.body.password : '';
 
-    if (!fullName || !companyName || !email || !password) {
+    if (!fullName || !email || !password) {
       return res.status(400).json({
         success: false,
-        message: 'Full Name, Company / Workspace Name, Work Email, and Password are required.'
+        message: 'Full Name, Email Address, and Password are required.'
       });
     }
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return res.status(400).json({
         success: false,
-        message: 'Please enter a valid work email address.'
+        message: 'Please enter a valid email address.'
       });
     }
 
@@ -187,11 +128,10 @@ router.post('/signup/request-otp', async (req: Request, res: Response) => {
     if (alreadyExists) {
       return res.status(409).json({
         success: false,
-        message: 'An account with this work email already exists. Please sign in instead.'
+        message: 'An account with this email already exists. Please sign in instead.'
       });
     }
 
-    // Enforce 30-second cooldown if an OTP was just requested for this email
     const existingOtp = await getOtpRecord(email);
     if (existingOtp) {
       const elapsedMs = Date.now() - new Date(existingOtp.lastSentAt).getTime();
@@ -215,7 +155,6 @@ router.post('/signup/request-otp', async (req: Request, res: Response) => {
       otpHash: hashOtp(email, otpCode),
       pendingData: {
         fullName,
-        companyName,
         email,
         passwordHash
       },
@@ -228,7 +167,6 @@ router.post('/signup/request-otp', async (req: Request, res: Response) => {
     const emailResult = await dispatchOtpEmail({
       email,
       fullName,
-      companyName,
       otpCode
     });
 
@@ -243,11 +181,11 @@ router.post('/signup/request-otp', async (req: Request, res: Response) => {
     logAuditAction({
       userId: 'pending-signup',
       userName: fullName,
-      userRole: 'admin',
+      userRole: 'team_member',
       action: 'EMAIL_OTP_REQUESTED',
       entityType: 'auth',
       entityId: email,
-      details: { email, companyName, deliveryProvider: emailResult.provider },
+      details: { email, deliveryProvider: emailResult.provider },
       ipAddress: req.ip || '127.0.0.1'
     });
 
@@ -261,7 +199,7 @@ router.post('/signup/request-otp', async (req: Request, res: Response) => {
       message:
         emailResult.provider === 'resend'
           ? `We sent a 6-digit verification code to ${email}.`
-          : `Verification code created for ${email}. Configure RESEND_API_KEY to enable live email delivery.`
+          : `Verification code created for ${email}.`
     });
   } catch (err: any) {
     return res.status(500).json({
@@ -315,7 +253,6 @@ router.post('/signup/resend-otp', async (req: Request, res: Response) => {
     const emailResult = await dispatchOtpEmail({
       email,
       fullName: existingOtp.pendingData.fullName,
-      companyName: existingOtp.pendingData.companyName,
       otpCode: freshOtp
     });
 
@@ -329,7 +266,7 @@ router.post('/signup/resend-otp', async (req: Request, res: Response) => {
     logAuditAction({
       userId: 'pending-signup',
       userName: existingOtp.pendingData.fullName,
-      userRole: 'admin',
+      userRole: 'team_member',
       action: 'EMAIL_OTP_RESENT',
       entityType: 'auth',
       entityId: email,
@@ -356,7 +293,7 @@ router.post('/signup/resend-otp', async (req: Request, res: Response) => {
   }
 });
 
-// 3. Verify 6-digit OTP -> Provision Workspace & Admin User -> Create Active JWT Session
+// 3. Verify 6-digit OTP -> Activate Individual Personal Account (0 auto-created companies) -> Issue JWT
 router.post('/signup/verify-otp', async (req: Request, res: Response) => {
   try {
     const email = normalizeEmail(req.body?.email || '');
@@ -410,138 +347,50 @@ router.post('/signup/verify-otp', async (req: Request, res: Response) => {
       });
     }
 
-    // Consume OTP immediately so it cannot be replayed
     await deleteOtpRecord(email);
 
     const db = getDB();
-    const tenants = db.tenants || DEFAULT_TENANTS;
-    const users = db.users || DEFAULT_USERS;
-
-    // Ensure no race-condition duplicate account exists
+    const users = Array.isArray(db.users) ? db.users : DEFAULT_USERS;
     const duplicate = users.find((u: any) => normalizeEmail(u.email) === email);
     if (duplicate) {
       return res.status(409).json({
         success: false,
-        message: 'An account with this work email already exists. Please sign in.'
+        message: 'An account with this email already exists. Please sign in.'
       });
     }
 
-    const { fullName, companyName, passwordHash } = record.pendingData;
-    const cleanSlug =
-      companyName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'workspace';
-    const tenantId = `tenant-${cleanSlug}-${Date.now().toString().slice(-4)}`;
+    const { fullName, passwordHash } = record.pendingData;
+    const now = new Date().toISOString();
+    const newUserId = `user-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
 
-    const newTenant = {
-      id: tenantId,
-      name: companyName,
-      slug: cleanSlug,
-      logoUrl: '/icon.svg',
-      branding: {
-        primaryColor: '#6366f1',
-        accentColor: '#06b6d4',
-        theme: 'light',
-        geometricStyle: 'cyber_glass',
-        logoPreset: 'hexagon_nexus'
-      },
-      businessInfo: {
-        industry: 'Operations & Client Services',
-        description: `${companyName} company operations workspace`,
-        website: '',
-        targetRevenueUSD: 100000,
-        coreObjectives: [
-          'Connected email & unified client inbox',
-          'Client deals & SOP operations pipeline',
-          'Team tasks & commission split ledger'
-        ]
-      },
-      integrations: {
-        linkedIn: {
-          connected: false,
-          accountHandle: '',
-          organizationName: companyName,
-          syncIntervalMinutes: 15,
-          autoOutreachEnabled: false,
-          messagesSyncedCount: 0
-        },
-        gmail: {
-          connected: false,
-          accountEmail: email,
-          threadTracking: true,
-          autoDraftReplies: true,
-          emailsSyncedCount: 0
-        },
-        stripe: {
-          connected: false,
-          liveMode: true,
-          currency: 'USD',
-          mrrUSD: 0
-        }
-      },
-      rolesConfig: {
-        admin: {
-          role: 'admin',
-          title: 'Workspace Owner & Admin',
-          department: 'executive',
-          dashboardLayout: 'executive_macro',
-          permissions: ['all']
-        }
-      },
-      activeMembersCount: 1,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-
-    const newUserId = `user-${cleanSlug}-owner-${Date.now().toString().slice(-4)}`;
-    const registeredAdmin = {
+    const registeredUser = {
       id: newUserId,
       name: fullName,
       email,
       passwordHash,
       emailVerified: true,
-      emailVerifiedAt: new Date().toISOString(),
-      role: 'admin',
-      title: 'Workspace Owner',
+      emailVerifiedAt: now,
+      role: 'team_member',
+      title: 'Personal Account',
       avatar: '',
-      tenantId,
-      permissions: [
-        'admin:all',
-        'tenant:manage',
-        'projects:read',
-        'projects:write',
-        'commissions:approve',
-        'database:manage',
-        'integrations:manage'
-      ],
-      createdAt: new Date().toISOString()
+      availabilityStatus: 'Available' as AvailabilityStatus,
+      availabilityUpdatedAt: now,
+      permissions: ['workspace:member'],
+      createdAt: now
     };
 
-    const onboardingActivity = {
-      id: `act-${Date.now()}`,
-      tenantId,
-      type: 'system_alert',
-      title: `Workspace "${companyName}" Created`,
-      description: `Email verified for ${fullName}. Isolated multi-tenant workspace ready.`,
-      actorName: fullName,
-      actorRole: 'Workspace Owner',
-      sourceChannel: 'system',
-      timestamp: new Date().toISOString(),
-      isRead: false
-    };
-
-    db.tenants = [newTenant, ...tenants];
-    db.users = [registeredAdmin, ...users];
-    db.activityFeed = [onboardingActivity, ...(db.activityFeed || DEFAULT_ACTIVITY_FEED)];
+    db.users = [registeredUser, ...users];
     saveDB(db);
 
+    const { companies, pendingInvites } = getUserCompaniesSummary(registeredUser.id, registeredUser.email);
+
     const token = signToken({
-      id: registeredAdmin.id,
-      email: registeredAdmin.email,
-      role: registeredAdmin.role,
-      name: registeredAdmin.name,
-      title: registeredAdmin.title,
-      permissions: registeredAdmin.permissions,
-      tenant_id: tenantId,
-      tenantId
+      id: registeredUser.id,
+      email: registeredUser.email,
+      role: registeredUser.role,
+      name: registeredUser.name,
+      title: registeredUser.title,
+      permissions: registeredUser.permissions
     });
 
     res.cookie('alm_nexus_token', token, {
@@ -552,30 +401,32 @@ router.post('/signup/verify-otp', async (req: Request, res: Response) => {
     });
 
     logAuditAction({
-      userId: registeredAdmin.id,
-      userName: registeredAdmin.name,
-      userRole: registeredAdmin.role,
+      userId: registeredUser.id,
+      userName: registeredUser.name,
+      userRole: registeredUser.role,
       action: 'EMAIL_OTP_VERIFIED',
-      entityType: 'tenant',
-      entityId: tenantId,
-      details: { companyName, email, slug: cleanSlug },
+      entityType: 'user',
+      entityId: registeredUser.id,
+      details: { email },
       ipAddress: req.ip || '127.0.0.1'
     });
 
     return res.json({
       success: true,
-      message: `Email verified! Welcome to ${companyName}.`,
-      tenant: newTenant,
+      message: `Email verified! Welcome to ClientOps, ${fullName}.`,
       user: {
-        id: registeredAdmin.id,
-        name: registeredAdmin.name,
-        email: registeredAdmin.email,
-        role: registeredAdmin.role,
-        title: registeredAdmin.title,
-        avatar: registeredAdmin.avatar,
-        permissions: registeredAdmin.permissions,
-        tenantId
+        id: registeredUser.id,
+        name: registeredUser.name,
+        email: registeredUser.email,
+        role: registeredUser.role,
+        title: registeredUser.title,
+        avatar: registeredUser.avatar,
+        availabilityStatus: registeredUser.availabilityStatus,
+        availabilityUpdatedAt: registeredUser.availabilityUpdatedAt,
+        permissions: registeredUser.permissions
       },
+      companies,
+      pendingInvites,
       token
     });
   } catch (err: any) {
@@ -592,7 +443,7 @@ router.post('/forgot-password', (req: Request, res: Response) => {
   if (!email || !email.includes('@')) {
     return res.status(400).json({
       success: false,
-      message: 'Please enter a valid work email address.'
+      message: 'Please enter a valid email address.'
     });
   }
 
@@ -602,46 +453,150 @@ router.post('/forgot-password', (req: Request, res: Response) => {
   });
 });
 
-// Current User Me
+// Current Authenticated User Profile + Strict Company Memberships + Pending Invites
 router.get('/me', (req: Request, res: Response) => {
   const authHeader = req.headers['authorization'];
   let token: string | null = null;
   if (typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
     token = authHeader.substring(7);
+  } else if (req.cookies?.alm_nexus_token) {
+    token = req.cookies.alm_nexus_token;
   } else if (req.query?.token && typeof req.query.token === 'string') {
     token = req.query.token;
   }
 
-  if (token) {
-    const verified = verifyToken(token);
-    if (verified) {
-      return res.json({
-        success: true,
-        user: verified
+  if (!token) {
+    return res.status(401).json({
+      success: false,
+      message: 'No active authenticated session found.'
+    });
+  }
+
+  const verified = verifyToken(token);
+  if (!verified) {
+    return res.status(401).json({
+      success: false,
+      message: 'Session expired or invalid.'
+    });
+  }
+
+  const db = getDB();
+  const dbUser = (db.users || []).find((u: any) => u.id === verified.id);
+  if (!dbUser) {
+    return res.status(401).json({
+      success: false,
+      message: 'User account no longer exists.'
+    });
+  }
+
+  const { companies, memberships, pendingInvites } = getUserCompaniesSummary(dbUser.id, dbUser.email);
+
+  return res.json({
+    success: true,
+    user: {
+      id: dbUser.id,
+      name: dbUser.name,
+      email: dbUser.email,
+      role: dbUser.role,
+      title: dbUser.title || 'Workspace Member',
+      avatar: dbUser.avatar || '',
+      availabilityStatus: dbUser.availabilityStatus || 'Available',
+      availabilityUpdatedAt: dbUser.availabilityUpdatedAt || dbUser.createdAt,
+      permissions: dbUser.permissions || []
+    },
+    companies,
+    memberships,
+    pendingInvites
+  });
+});
+
+// Update own availability status (Available, In a Meeting, Busy, Offline)
+router.patch('/me/availability', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+  const status = req.body?.availabilityStatus as AvailabilityStatus;
+  if (!VALID_AVAILABILITY.includes(status)) {
+    return res.status(400).json({
+      success: false,
+      message: `Invalid availability status. Allowed: ${VALID_AVAILABILITY.join(', ')}`
+    });
+  }
+
+  const db = getDB();
+  const dbUser = (db.users || []).find((u: any) => u.id === req.user!.id);
+  if (!dbUser) {
+    return res.status(404).json({ success: false, message: 'User not found.' });
+  }
+
+  const now = new Date().toISOString();
+  dbUser.availabilityStatus = status;
+  dbUser.availabilityUpdatedAt = now;
+  saveDB(db);
+
+  // Broadcast live availability update strictly to companies/departments this user belongs to
+  const memberships = getUserMemberships(dbUser.id);
+  for (const m of memberships) {
+    if (Array.isArray(m.departmentIds) && m.departmentIds.length > 0) {
+      for (const deptId of m.departmentIds) {
+        realtimeEngine.broadcastToDepartment(m.companyId, deptId, 'availability:updated', {
+          companyId: m.companyId,
+          departmentId: deptId,
+          userId: dbUser.id,
+          name: dbUser.name,
+          availabilityStatus: status,
+          availabilityUpdatedAt: now
+        });
+      }
+    } else {
+      realtimeEngine.broadcastToCompany(m.companyId, 'availability:updated', {
+        companyId: m.companyId,
+        userId: dbUser.id,
+        name: dbUser.name,
+        availabilityStatus: status,
+        availabilityUpdatedAt: now
       });
     }
   }
 
-  // If no valid bearer token is provided, return 401 unauthenticated
-  return res.status(401).json({
-    success: false,
-    message: 'No active authenticated session found.'
+  return res.json({
+    success: true,
+    availabilityStatus: status,
+    availabilityUpdatedAt: now
   });
 });
 
-// Staff & Client Users list
-router.get('/users', (req: Request, res: Response) => {
-  const db = readDB();
-  const users = (db.users || DEFAULT_USERS).map((u: any) => ({
-    id: u.id,
-    name: u.name,
-    email: u.email,
-    role: u.role,
-    title: u.title,
-    avatar: u.avatar,
-    permissions: u.permissions
-  }));
-  res.json({ success: true, users });
+// Company-scoped Users Directory (strictly returns only members of req.companyId)
+router.get('/users', requireCompanyAccess, (req: AuthenticatedRequest, res: Response) => {
+  const db = getDB();
+  const companyId = req.companyId!;
+  const memberships = (db.companyMemberships || []).filter((m: any) => m.companyId === companyId);
+
+  // If department_head or employee, filter users to only those sharing at least one department
+  const scopedMemberships =
+    req.companyRole === 'company_admin'
+      ? memberships
+      : memberships.filter((m: any) =>
+          (m.departmentIds || []).some((dId: string) => (req.membership?.departmentIds || []).includes(dId))
+        );
+
+  const memberIds = new Set(scopedMemberships.map((m: any) => m.userId));
+  const users = (db.users || [])
+    .filter((u: any) => memberIds.has(u.id))
+    .map((u: any) => {
+      const m = scopedMemberships.find((mem: any) => mem.userId === u.id);
+      return {
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        role: m?.role || 'employee',
+        designation: m?.designation || '',
+        departmentIds: m?.departmentIds || [],
+        title: m?.designation || u.title,
+        avatar: u.avatar || '',
+        availabilityStatus: u.availabilityStatus || 'Available',
+        availabilityUpdatedAt: u.availabilityUpdatedAt || u.createdAt
+      };
+    });
+
+  return res.json({ success: true, users });
 });
 
 export default router;

@@ -1,36 +1,52 @@
 import React from 'react';
 import { ShieldAlert, ArrowLeft, Lock } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { UserRole } from '../types';
+import { CompanyRole, UserRole } from '../types';
 
 interface RoleRouteGuardProps {
-  allowedRoles: UserRole[];
+  allowedRoles?: UserRole[];
+  allowedCompanyRoles?: CompanyRole[];
   moduleName: string;
   children: React.ReactNode;
 }
 
 export const RoleRouteGuard: React.FC<RoleRouteGuardProps> = ({
-  allowedRoles,
+  allowedRoles = [],
+  allowedCompanyRoles,
   moduleName,
   children
 }) => {
-  const { role, setActiveTab } = useApp();
+  const { role, companyRole, setActiveTab } = useApp();
 
-  const isAllowed = role === 'admin' || role === 'ceo' || role === 'bd_head' || allowedRoles.includes(role);
+  let isAllowed = false;
+  if (allowedCompanyRoles && allowedCompanyRoles.length > 0) {
+    isAllowed = companyRole !== null && allowedCompanyRoles.includes(companyRole);
+  } else {
+    isAllowed = role === 'admin' || role === 'ceo' || role === 'bd_head' || allowedRoles.includes(role);
+  }
 
   if (!isAllowed) {
-    const fallbackTab = role === 'client_guest' ? 'portal' : 'pipeline';
+    const fallbackTab =
+      role === 'client_guest'
+        ? 'portal'
+        : companyRole === 'company_admin'
+        ? 'pipeline'
+        : 'departmental';
+
+    const displayRole = companyRole
+      ? companyRole.replace('_', ' ').toUpperCase()
+      : role.replace('_', ' ').toUpperCase();
 
     return (
       <div className="p-6 sm:p-10 max-w-2xl mx-auto my-12 animate-fadeIn">
-        <div className="p-6 sm:p-8 rounded-2xl border border-rose-500/20 bg-rose-50/50 dark:bg-rose-950/20 text-center shadow-lg shadow-rose-950/5">
+        <div className="p-6 sm:p-8 rounded-2xl border border-rose-500/20 bg-rose-50/50 dark:bg-rose-950/20 text-center">
           <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 mx-auto mb-4 flex items-center justify-center">
             <ShieldAlert className="w-6 h-6" />
           </div>
 
-          <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-rose-500/10 text-rose-700 dark:text-rose-300 text-xs font-mono font-bold mb-2">
-            <Lock className="w-3 h-3" />
-            <span>RBAC ACCESS DENIED (403)</span>
+          <div className="inline-flex items-center gap-1.5 text-rose-700 dark:text-rose-300 text-xs font-mono font-bold mb-2">
+            <Lock className="w-3.5 h-3.5" />
+            <span>ACCESS RESTRICTED (403)</span>
           </div>
 
           <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">
@@ -38,15 +54,16 @@ export const RoleRouteGuard: React.FC<RoleRouteGuardProps> = ({
           </h3>
 
           <p className="text-xs text-slate-600 dark:text-slate-400 mb-6 max-w-md mx-auto leading-relaxed">
-            Your current role (<strong className="font-mono uppercase text-slate-800 dark:text-slate-200">{role}</strong>) does not have authorization to inspect or execute actions within the <em>{moduleName}</em> workspace.
+            Your active company role (<strong className="font-mono text-slate-800 dark:text-slate-200">{displayRole}</strong>) does not authorize access to <em>{moduleName}</em>.
           </p>
 
           <button
+            type="button"
             onClick={() => setActiveTab(fallbackTab)}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-xs font-bold shadow-md hover:bg-slate-800 dark:hover:bg-slate-100 transition cursor-pointer"
+            className="btn-tactile-primary inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
-            <span>Return to Authorized Workspace ({fallbackTab.toUpperCase()})</span>
+            <span>Return to Authorized Workspace</span>
           </button>
         </div>
       </div>

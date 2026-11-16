@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Bot, Send, X, Sparkles, User, RefreshCw, Zap, ShieldAlert, ChevronDown, Minimize2, Maximize2 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { buildAuthHeaders } from '../lib/api';
 
 export const EmbeddedGeminiChatbot: React.FC = () => {
-  const { role, currentTenant, authToken, showToast, refreshProjects } = useApp();
+  const { role, currentTenant, showToast, refreshProjects } = useApp();
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [messageInput, setMessageInput] = useState('');
@@ -12,7 +13,7 @@ export const EmbeddedGeminiChatbot: React.FC = () => {
   const [messages, setMessages] = useState<Array<{ sender: 'user' | 'bot'; text: string; timestamp: string; actionExecuted?: any }>>([
     {
       sender: 'bot',
-      text: `Hello! I am your ALM Nexus AI Copilot. I am reading active tenant workspace "${currentTenant?.name || 'ALM Nexus'}" under your ${role.toUpperCase()} role context. Ask me about pipeline stats, SOP Rule 8 gates, invoice balances, or ask me to create a lead for you!`,
+      text: `Hello! I am your Workspace Copilot. I am reading "${currentTenant?.name || 'your company'}" under your ${role.toUpperCase()} role context. Ask me about pipeline stats, SOP Rule 8 gates, invoice balances, or ask me to create a lead for you!`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     }
   ]);
@@ -39,11 +40,7 @@ export const EmbeddedGeminiChatbot: React.FC = () => {
     try {
       const res = await fetch('/api/ai/copilot-chat', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Tenant-Id': currentTenant?.id || 'tenant-alm-nexus',
-          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
-        },
+        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           message: userText,
           role,

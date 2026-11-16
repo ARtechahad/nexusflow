@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
+import { buildAuthHeaders } from '../lib/api';
 import {
   DollarSign,
   TrendingUp,
@@ -24,7 +25,7 @@ import {
 import { AnalyticsFilterState, HeatmapCell } from '../types';
 
 export const DashboardAnalytics: React.FC = () => {
-  const { projects, t, formatMoney, scaleMode, setScaleMode, currency, setActiveTab } = useApp();
+  const { projects, t, formatMoney, scaleMode, setScaleMode, currency, setActiveTab, currentTenant } = useApp();
 
   const [filters, setFilters] = useState<AnalyticsFilterState>({
     dateRange: 'all',
@@ -38,6 +39,7 @@ export const DashboardAnalytics: React.FC = () => {
   const [hoveredCell, setHoveredCell] = useState<HeatmapCell | null>(null);
 
   const fetchAdvancedAnalytics = async () => {
+    if (!currentTenant?.id) return;
     try {
       setLoading(true);
       const query = new URLSearchParams({
@@ -45,7 +47,13 @@ export const DashboardAnalytics: React.FC = () => {
         salesperson: filters.salesperson,
         tier: filters.dealTier
       }).toString();
-      const res = await fetch(`/api/analytics/advanced?${query}`);
+      const res = await fetch(`/api/analytics/advanced?${query}`, {
+        headers: buildAuthHeaders()
+      });
+      if (!res.ok) {
+        setAnalyticsData(null);
+        return;
+      }
       const data = await res.json();
       if (data.success) {
         setAnalyticsData(data);
@@ -59,7 +67,7 @@ export const DashboardAnalytics: React.FC = () => {
 
   useEffect(() => {
     fetchAdvancedAnalytics();
-  }, [filters]);
+  }, [filters, currentTenant?.id]);
 
   // Client-side computations from live projects state
   const safeProjects = Array.isArray(projects) ? projects : [];

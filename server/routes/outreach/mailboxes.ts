@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import { z } from 'zod';
-import { authenticateToken, requireRole, AuthenticatedRequest } from '../../middlewares/auth';
+import { requireCompanyRole, AuthenticatedRequest } from '../../middlewares/auth';
 import { getOutreachPool } from '../../services/outreach/schema';
 import {
   testMailboxConnection,
@@ -81,8 +81,7 @@ mailboxesRouter.get(['/mailboxes/presets', '/presets'], (req, res: Response) => 
  */
 mailboxesRouter.post(
   ['/mailboxes/test', '/test'],
-  authenticateToken,
-  requireRole(['admin', 'ceo', 'bd_head', 'sales']),
+  requireCompanyRole(['company_admin', 'department_head']),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const parsed = testConnectionSchema.safeParse(req.body);
@@ -112,8 +111,7 @@ mailboxesRouter.post(
  */
 mailboxesRouter.post(
   ['/mailboxes', '/'],
-  authenticateToken,
-  requireRole(['admin', 'ceo', 'bd_head', 'sales']),
+  requireCompanyRole(['company_admin', 'department_head']),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const pool = getOutreachPool();
@@ -130,7 +128,7 @@ mailboxesRouter.post(
         return res.status(400).json({ success: false, error: errorMsg });
       }
 
-      const tenantId = req.user?.tenant_id || (req as any).tenant_id || 'tenant-alm-nexus';
+      const tenantId = req.companyId!;
       const skipCheck = parsed.data.skip_live_check ?? false;
       const mailbox = await createMailbox(pool, tenantId, parsed.data, skipCheck);
 
@@ -154,8 +152,7 @@ mailboxesRouter.post(
  */
 mailboxesRouter.get(
   ['/mailboxes', '/'],
-  authenticateToken,
-  requireRole(['admin', 'ceo', 'bd_head', 'sales', 'coordinator', 'developer']),
+  requireCompanyRole(['company_admin', 'department_head']),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const pool = getOutreachPool();
@@ -166,7 +163,7 @@ mailboxesRouter.get(
         });
       }
 
-      const tenantId = req.user?.tenant_id || (req as any).tenant_id || 'tenant-alm-nexus';
+      const tenantId = req.companyId!;
       const mailboxes = await listMailboxes(pool, tenantId);
 
       return res.json({
@@ -189,8 +186,7 @@ mailboxesRouter.get(
  */
 mailboxesRouter.patch(
   ['/mailboxes/:id', '/:id'],
-  authenticateToken,
-  requireRole(['admin', 'ceo', 'bd_head', 'sales']),
+  requireCompanyRole(['company_admin', 'department_head']),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const pool = getOutreachPool();
@@ -207,7 +203,7 @@ mailboxesRouter.patch(
         return res.status(400).json({ success: false, error: errorMsg });
       }
 
-      const tenantId = req.user?.tenant_id || (req as any).tenant_id || 'tenant-alm-nexus';
+      const tenantId = req.companyId!;
       const updated = await updateMailbox(pool, tenantId, req.params.id, parsed.data);
 
       return res.json({
@@ -230,8 +226,7 @@ mailboxesRouter.patch(
  */
 mailboxesRouter.delete(
   ['/mailboxes/:id', '/:id'],
-  authenticateToken,
-  requireRole(['admin', 'ceo', 'bd_head', 'sales']),
+  requireCompanyRole(['company_admin', 'department_head']),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const pool = getOutreachPool();
@@ -239,7 +234,7 @@ mailboxesRouter.delete(
         return res.status(503).json({ success: false, error: 'PostgreSQL required' });
       }
 
-      const tenantId = req.user?.tenant_id || (req as any).tenant_id || 'tenant-alm-nexus';
+      const tenantId = req.companyId!;
       const result = await deleteMailboxSafely(pool, tenantId, req.params.id);
 
       if (!result.success) {
@@ -270,8 +265,7 @@ mailboxesRouter.delete(
  */
 mailboxesRouter.post(
   ['/mailboxes/bulk-import', '/bulk-import'],
-  authenticateToken,
-  requireRole(['admin', 'ceo', 'bd_head']),
+  requireCompanyRole(['company_admin', 'department_head']),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const pool = getOutreachPool();
@@ -284,7 +278,7 @@ mailboxesRouter.post(
         return res.status(400).json({ success: false, error: 'Valid CSV text is required' });
       }
 
-      const tenantId = req.user?.tenant_id || (req as any).tenant_id || 'tenant-alm-nexus';
+      const tenantId = req.companyId!;
       const report = await bulkImportMailboxes(pool, tenantId, parsed.data.csvText);
 
       return res.json({
@@ -307,8 +301,7 @@ mailboxesRouter.post(
  */
 mailboxesRouter.get(
   '/domains',
-  authenticateToken,
-  requireRole(['admin', 'ceo', 'bd_head', 'sales', 'coordinator', 'developer']),
+  requireCompanyRole(['company_admin', 'department_head']),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const pool = getOutreachPool();
@@ -316,7 +309,7 @@ mailboxesRouter.get(
         return res.status(503).json({ success: false, error: 'PostgreSQL required' });
       }
 
-      const tenantId = req.user?.tenant_id || (req as any).tenant_id || 'tenant-alm-nexus';
+      const tenantId = req.companyId!;
       const query = `
         SELECT 
           d.id,
@@ -357,8 +350,7 @@ mailboxesRouter.get(
  */
 mailboxesRouter.post(
   '/domains/:id/check-dns',
-  authenticateToken,
-  requireRole(['admin', 'ceo', 'bd_head', 'sales']),
+  requireCompanyRole(['company_admin', 'department_head']),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const pool = getOutreachPool();
@@ -366,7 +358,7 @@ mailboxesRouter.post(
         return res.status(503).json({ success: false, error: 'PostgreSQL required' });
       }
 
-      const tenantId = req.user?.tenant_id || (req as any).tenant_id || 'tenant-alm-nexus';
+      const tenantId = req.companyId!;
       const domainRes = await pool.query(
         `SELECT id, domain FROM ox_domains WHERE id = $1 AND tenant_id = $2 LIMIT 1`,
         [req.params.id, tenantId]

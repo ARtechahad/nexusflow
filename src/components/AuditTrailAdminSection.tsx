@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
+import { buildAuthHeaders } from '../lib/api';
 import { AuditLog } from '../types';
 import {
   ShieldCheck,
@@ -22,7 +23,7 @@ import {
 import { SkeletonTable } from './SkeletonLoader';
 
 export const AuditTrailAdminSection: React.FC = () => {
-  const { showToast, currentUser } = useApp();
+  const { showToast, currentUser, currentTenant } = useApp();
 
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [totalCount, setTotalCount] = useState<number>(0);
@@ -32,6 +33,12 @@ export const AuditTrailAdminSection: React.FC = () => {
   const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
 
   const fetchLogs = async () => {
+    if (!currentTenant?.id) {
+      setLogs([]);
+      setTotalCount(0);
+      setLoading(false);
+      return;
+    }
     try {
       setLoading(true);
       const params = new URLSearchParams();
@@ -39,7 +46,7 @@ export const AuditTrailAdminSection: React.FC = () => {
       if (searchQuery.trim()) params.append('search', searchQuery.trim());
       params.append('limit', '100');
 
-      const res = await fetch(`/api/audit-logs?${params.toString()}`);
+      const res = await fetch(`/api/audit-logs?${params.toString()}`, { headers: buildAuthHeaders() });
       if (res.ok) {
         const data = await res.json();
         setLogs(data.logs || []);
@@ -54,7 +61,7 @@ export const AuditTrailAdminSection: React.FC = () => {
 
   useEffect(() => {
     fetchLogs();
-  }, [actionFilter]);
+  }, [actionFilter, currentTenant?.id]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();

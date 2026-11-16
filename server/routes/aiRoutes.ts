@@ -2,6 +2,12 @@ import { Router, Request, Response } from 'express';
 import { GoogleGenAI } from '@google/genai';
 import { readDB, writeDB } from '../db';
 import {
+  AuthenticatedRequest,
+  requireAuth,
+  requireCompanyAccess,
+  requireCompanyRole
+} from '../middlewares/auth';
+import {
   enrichLeadWithGoogleSearch,
   verifyLocationWithGoogleMaps,
   generateCreativeImage,
@@ -18,13 +24,13 @@ export const inboxRouter = Router();
 // ==========================================
 
 // 1. Google Search Grounding: Lead Enrichment
-aiRouter.post('/enrich-lead', async (req: Request, res: Response) => {
+aiRouter.post('/enrich-lead', requireCompanyAccess, async (req: AuthenticatedRequest, res: Response) => {
   const { companyName, leadName, industry, websiteUrl } = req.body || {};
   if (!companyName) {
     return res.status(400).json({ success: false, error: 'companyName is required.' });
   }
 
-  const tenantId = (req as any).tenant_id || 'tenant-alm-nexus';
+  const tenantId = req.companyId!;
   const result = await enrichLeadWithGoogleSearch({
     companyName,
     leadName,
@@ -37,13 +43,13 @@ aiRouter.post('/enrich-lead', async (req: Request, res: Response) => {
 });
 
 // 2. Google Maps Grounding: Location Geocoding & Verification
-aiRouter.post('/maps-verify', async (req: Request, res: Response) => {
+aiRouter.post('/maps-verify', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   const { locationName, address } = req.body || {};
   if (!locationName) {
     return res.status(400).json({ success: false, error: 'locationName is required.' });
   }
 
-  const tenantId = (req as any).tenant_id || 'tenant-alm-nexus';
+  const tenantId = req.companyId || req.user!.id;
   const result = await verifyLocationWithGoogleMaps({
     locationName,
     address,
@@ -54,13 +60,13 @@ aiRouter.post('/maps-verify', async (req: Request, res: Response) => {
 });
 
 // 3. AI Image Generation & Creative Studio Engine
-aiRouter.post('/generate-creative', async (req: Request, res: Response) => {
+aiRouter.post('/generate-creative', requireCompanyAccess, async (req: AuthenticatedRequest, res: Response) => {
   const { prompt, aspectRatio, base64SourceImage } = req.body || {};
   if (!prompt) {
     return res.status(400).json({ success: false, error: 'Prompt is required.' });
   }
 
-  const tenantId = (req as any).tenant_id || 'tenant-alm-nexus';
+  const tenantId = req.companyId!;
   const result = await generateCreativeImage({
     prompt,
     aspectRatio,
@@ -72,24 +78,24 @@ aiRouter.post('/generate-creative', async (req: Request, res: Response) => {
 });
 
 // GET /api/ai/media-vault - Retrieve multi-tenant Media Vault creative assets
-aiRouter.get('/media-vault', (req: Request, res: Response) => {
+aiRouter.get('/media-vault', requireCompanyAccess, (req: AuthenticatedRequest, res: Response) => {
   const db = readDB();
-  const tenantId = (req as any).tenant_id || 'tenant-alm-nexus';
+  const tenantId = req.companyId!;
   const vault = ((db as any).mediaVault || []).filter(
-    (m: any) => !m.tenantId || m.tenantId === tenantId || m.tenantId === 'tenant-global'
+    (m: any) => m.companyId === tenantId || m.tenantId === tenantId
   );
 
   res.json({ success: true, data: vault });
 });
 
 // 4. Gemini Voice Transcriber & Audio Task Processor
-aiRouter.post('/transcribe-voice', async (req: Request, res: Response) => {
+aiRouter.post('/transcribe-voice', requireCompanyAccess, async (req: AuthenticatedRequest, res: Response) => {
   const { base64Audio, mimeType, createTasksInKanban } = req.body || {};
   if (!base64Audio) {
     return res.status(400).json({ success: false, error: 'base64Audio payload is required.' });
   }
 
-  const tenantId = (req as any).tenant_id || 'tenant-alm-nexus';
+  const tenantId = req.companyId!;
   const result = await transcribeAndProcessVoiceNote({
     base64Audio,
     mimeType,
@@ -101,17 +107,17 @@ aiRouter.post('/transcribe-voice', async (req: Request, res: Response) => {
 });
 
 // 5. Gemini Context-Aware Embedded Chatbot with Function Calling
-aiRouter.post('/copilot-chat', async (req: Request, res: Response) => {
-  const { message, conversationHistory, role } = req.body || {};
+aiRouter.post('/copilot-chat', requireCompanyAccess, async (req: AuthenticatedRequest, res: Response) => {
+  const { message, conversationHistory } = req.body || {};
   if (!message) {
     return res.status(400).json({ success: false, error: 'Message content is required.' });
   }
 
-  const tenantId = (req as any).tenant_id || 'tenant-alm-nexus';
+  const tenantId = req.companyId!;
   const result = await processContextAwareChatbotMessage({
     message,
     conversationHistory,
-    role: role || (req as any).user?.role || 'admin',
+    role: req.companyRole || req.user?.role || 'employee',
     tenantId
   });
 
@@ -546,18 +552,18 @@ aiRouter.post('/outreach', async (req: Request, res: Response) => {
 // 5. Unified Communications Inbox (/api/inbox)
 // ==========================================
 
-inboxRouter.get('/messages', (req: Request, res: Response) => {
+inboxRouter.get('/messages', requireCompanyRole(['company_admin', 'department_head']), (req: AuthenticatedRequest, res: Response) => {
   const db = readDB();
   const channel = typeof req.query.channel === 'string' ? req.query.channel : '';
   const status = typeof req.query.status === 'string' ? req.query.status : '';
   const search = typeof req.query.search === 'string' ? req.query.search.toLowerCase() : '';
-  const tenantId = (req as any).tenant_id || (req.query.tenant_id as string) || (req.query.tenantId as string);
+  const companyId = req.companyId!;
 
-  let messages = (db as any).clientInquiries || [];
+  const companyMessages = ((db as any).clientInquiries || []).filter(
+    (m: any) => m.companyId === companyId || m.tenantId === companyId || m.tenant_id === companyId
+  );
 
-  if (tenantId && tenantId !== 'all') {
-    messages = messages.filter((m: any) => !m.tenantId || m.tenantId === tenantId || m.tenant_id === tenantId);
-  }
+  let messages = [...companyMessages];
   if (channel && channel !== 'all') {
     messages = messages.filter((m: any) => m.channel === channel);
   }
@@ -566,19 +572,19 @@ inboxRouter.get('/messages', (req: Request, res: Response) => {
   }
   if (search) {
     messages = messages.filter((m: any) =>
-      m.clientName.toLowerCase().includes(search) ||
-      m.subject.toLowerCase().includes(search) ||
-      m.content.toLowerCase().includes(search) ||
+      (m.clientName || '').toLowerCase().includes(search) ||
+      (m.subject || '').toLowerCase().includes(search) ||
+      (m.content || '').toLowerCase().includes(search) ||
       (m.clientCompany && m.clientCompany.toLowerCase().includes(search))
     );
   }
 
-  const unreadCount = ((db as any).clientInquiries || []).filter((m: any) => m.status === 'unread').length;
+  const unreadCount = companyMessages.filter((m: any) => m.status === 'unread').length;
   const channelCounts = {
-    linkedin: ((db as any).clientInquiries || []).filter((m: any) => m.channel === 'linkedin').length,
-    upwork: ((db as any).clientInquiries || []).filter((m: any) => m.channel === 'upwork').length,
-    email: ((db as any).clientInquiries || []).filter((m: any) => m.channel === 'email').length,
-    discord: ((db as any).clientInquiries || []).filter((m: any) => m.channel === 'discord').length,
+    linkedin: companyMessages.filter((m: any) => m.channel === 'linkedin').length,
+    upwork: companyMessages.filter((m: any) => m.channel === 'upwork').length,
+    email: companyMessages.filter((m: any) => m.channel === 'email').length,
+    discord: companyMessages.filter((m: any) => m.channel === 'discord').length,
   };
 
   res.json({
@@ -590,26 +596,27 @@ inboxRouter.get('/messages', (req: Request, res: Response) => {
   });
 });
 
-inboxRouter.post('/messages', (req: Request, res: Response) => {
+inboxRouter.post('/messages', requireCompanyRole(['company_admin', 'department_head']), (req: AuthenticatedRequest, res: Response) => {
   const db = readDB();
-  const body = req.body;
+  const body = req.body || {};
   
   if (!body.clientName || !body.content) {
     return res.status(400).json({ success: false, message: 'Client name and message content are required.' });
   }
 
   const newId = `inbox-${Date.now()}`;
-  const targetTenantId = body.tenantId || body.tenant_id || (req as any).tenant_id || 'tenant-alm-nexus';
+  const companyId = req.companyId!;
   const newMessage = {
     id: newId,
-    tenantId: targetTenantId,
-    tenant_id: targetTenantId,
+    companyId,
+    tenantId: companyId,
+    tenant_id: companyId,
     clientName: body.clientName,
     clientEmail: body.clientEmail || `${body.clientName.toLowerCase().replace(/[^a-z0-9]/g, '.')}@example.com`,
     clientCompany: body.clientCompany || 'Prospective Client',
     channel: body.channel || 'email',
     projectId: body.projectId || undefined,
-    subject: body.subject || 'New Website Inquiry',
+    subject: body.subject || 'New Inquiry',
     content: body.content,
     timestamp: new Date().toISOString(),
     status: 'unread',
@@ -626,12 +633,14 @@ inboxRouter.post('/messages', (req: Request, res: Response) => {
   res.json({ success: true, message: 'Message logged to Unified Inbox', data: newMessage });
 });
 
-inboxRouter.put('/status/:id', (req: Request, res: Response) => {
+inboxRouter.put('/status/:id', requireCompanyRole(['company_admin', 'department_head']), (req: AuthenticatedRequest, res: Response) => {
   const db = readDB();
   const id = req.params.id;
-  const { status } = req.body;
+  const { status } = req.body || {};
 
-  const msg = ((db as any).clientInquiries || []).find((m: any) => m.id === id);
+  const msg = ((db as any).clientInquiries || []).find(
+    (m: any) => m.id === id && (m.companyId === req.companyId || m.tenantId === req.companyId)
+  );
   if (!msg) {
     return res.status(404).json({ success: false, message: 'Message not found' });
   }
@@ -642,12 +651,14 @@ inboxRouter.put('/status/:id', (req: Request, res: Response) => {
   res.json({ success: true, message: `Status updated to ${msg.status}`, data: msg });
 });
 
-inboxRouter.post('/reply/:id', (req: Request, res: Response) => {
+inboxRouter.post('/reply/:id', requireCompanyRole(['company_admin', 'department_head']), (req: AuthenticatedRequest, res: Response) => {
   const db = readDB();
   const id = req.params.id;
-  const { replyText, senderName, channel } = req.body;
+  const { replyText, senderName, channel } = req.body || {};
 
-  const msg = ((db as any).clientInquiries || []).find((m: any) => m.id === id);
+  const msg = ((db as any).clientInquiries || []).find(
+    (m: any) => m.id === id && (m.companyId === req.companyId || m.tenantId === req.companyId)
+  );
   if (!msg) {
     return res.status(404).json({ success: false, message: 'Message not found' });
   }
@@ -655,7 +666,7 @@ inboxRouter.post('/reply/:id', (req: Request, res: Response) => {
   if (!msg.replies) msg.replies = [];
   const replyItem = {
     id: `rep-${Date.now()}`,
-    sender: senderName || 'Sales & Coordination Team',
+    sender: senderName || req.user!.name,
     body: replyText,
     sentAt: new Date().toISOString(),
     channel: channel || msg.channel
@@ -663,28 +674,17 @@ inboxRouter.post('/reply/:id', (req: Request, res: Response) => {
   msg.replies.push(replyItem);
   msg.status = 'replied';
 
-  // Also notify in team chat
-  if (!Array.isArray(db.chatMessages)) db.chatMessages = [];
-  db.chatMessages.push({
-    id: `msg-inbox-rep-${Date.now()}`,
-    senderId: 'user-sales-1',
-    senderName: senderName || 'Tariq Mehmood',
-    senderRole: 'sales',
-    channel: 'sales-leads',
-    content: `💬 **Unified Inbox Reply Sent** to ${msg.clientName} via ${msg.channel.toUpperCase()}.\nSubject: "${msg.subject}"\nReply Preview: ${replyText.slice(0, 160)}...`,
-    timestamp: new Date().toISOString(),
-    reactions: { '🔥': 0, '👏': 0 }
-  });
-
   writeDB(db);
 
   res.json({ success: true, message: 'Reply sent successfully and recorded in thread', replyItem });
 });
 
-inboxRouter.post('/ai-reply/:id', async (req: Request, res: Response) => {
+inboxRouter.post('/ai-reply/:id', requireCompanyRole(['company_admin', 'department_head']), async (req: AuthenticatedRequest, res: Response) => {
   const db = readDB();
   const id = req.params.id;
-  const msg = ((db as any).clientInquiries || []).find((m: any) => m.id === id);
+  const msg = ((db as any).clientInquiries || []).find(
+    (m: any) => m.id === id && (m.companyId === req.companyId || m.tenantId === req.companyId)
+  );
   if (!msg) {
     return res.status(404).json({ success: false, message: 'Message not found' });
   }

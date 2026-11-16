@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { buildAuthHeaders } from '../lib/api';
 import { calculateCommission } from '../data/sopContent';
 import { WebsiteType, LeadChannel } from '../types';
 import { X, Plus, DollarSign, UserCheck, ShieldCheck, RefreshCw, Sparkles } from 'lucide-react';
@@ -31,11 +32,7 @@ export const NewClientLeadModal: React.FC = () => {
     try {
       const res = await fetch('/api/ai/enrich-lead', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Tenant-Id': currentTenant?.id || 'tenant-alm-nexus',
-          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
-        },
+        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           companyName: targetCompany,
           industry: websiteType,
@@ -63,9 +60,13 @@ export const NewClientLeadModal: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!clientName.trim()) return;
+    if (!currentTenant?.id) {
+      showToast('Please select or register a company before creating a deal.', 'error');
+      return;
+    }
 
     setSubmitting(true);
-    const tenantId = currentTenant?.id || 'tenant-alm-nexus';
+    const tenantId = currentTenant.id;
     const newProject = {
       tenantId,
       tenant_id: tenantId,
@@ -89,13 +90,7 @@ export const NewClientLeadModal: React.FC = () => {
     };
 
     try {
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        'X-Tenant-Id': tenantId
-      };
-      if (authToken) {
-        headers['Authorization'] = `Bearer ${authToken}`;
-      }
+      const headers = buildAuthHeaders({ 'Content-Type': 'application/json' });
       const res = await fetch('/api/projects', {
         method: 'POST',
         headers,

@@ -6,7 +6,7 @@ import { logger } from '../../logger';
 import { getOutreachPool } from '../../services/outreach/schema';
 import { verifyToken, signToken } from '../../services/outreach/crypto';
 import { realtimeEngine } from '../../services/realtimeEngine';
-import { authenticateToken } from '../../middlewares/auth';
+import { AuthenticatedRequest, requireCompanyRole } from '../../middlewares/auth';
 
 export const trackingRouter = express.Router();
 
@@ -388,9 +388,9 @@ trackingRouter.post('/u/:token', trackingRateLimiter, async (req: Request, res: 
 // ----------------------------------------------------
 // 5. Custom Tracking Domain Configuration: POST /domains/:id/tracking
 // ----------------------------------------------------
-trackingRouter.post(['/domains/:id/tracking', '/:id/tracking'], authenticateToken, async (req: Request, res: Response) => {
+trackingRouter.post(['/domains/:id/tracking', '/:id/tracking'], requireCompanyRole(['company_admin', 'department_head']), async (req: AuthenticatedRequest, res: Response) => {
   const domainId = req.params.id;
-  const tenantId = (req as any).user?.tenant_id || (req as any).user?.tenantId || 'tenant-alm-nexus';
+  const tenantId = req.companyId!;
   const { domain } = req.body;
 
   if (!domain || typeof domain !== 'string' || !/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(domain.trim())) {
@@ -439,9 +439,9 @@ trackingRouter.post(['/domains/:id/tracking', '/:id/tracking'], authenticateToke
 // ----------------------------------------------------
 // 6. Verify Custom Tracking Domain DNS & HTTPS: POST /domains/:id/tracking/verify
 // ----------------------------------------------------
-trackingRouter.post(['/domains/:id/tracking/verify', '/:id/tracking/verify'], authenticateToken, async (req: Request, res: Response) => {
+trackingRouter.post(['/domains/:id/tracking/verify', '/:id/tracking/verify'], requireCompanyRole(['company_admin', 'department_head']), async (req: AuthenticatedRequest, res: Response) => {
   const domainId = req.params.id;
-  const tenantId = (req as any).user?.tenant_id || (req as any).user?.tenantId || 'tenant-alm-nexus';
+  const tenantId = req.companyId!;
 
   const pool = getOutreachPool();
   if (!pool) {

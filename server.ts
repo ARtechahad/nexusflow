@@ -37,6 +37,7 @@ import { clerkWebhookRouter } from './server/routes/clerkWebhookRoutes';
 // Modular Route Handlers
 import authRoutes from './server/routes/authRoutes';
 import tenantRouter from './server/routes/tenantRoutes';
+import { companyRouter, invitePublicRouter } from './server/routes/companyRoutes';
 import { projectRouter, portalRouter, leadScoreRouter } from './server/routes/projectRoutes';
 import chatRouter from './server/routes/chatRoutes';
 import { fileRouter, gdprRouter } from './server/routes/fileRoutes';
@@ -149,8 +150,10 @@ app.use('/api/', globalRateLimiter);
 // MOUNT MODULAR API ROUTERS
 // ==========================================
 
-// Authentication & Tenants
+// Authentication, Companies, Invites & Tenants
 app.use('/api/auth', authRoutes);
+app.use('/api/companies', companyRouter);
+app.use('/api/invites', invitePublicRouter);
 app.use('/api/tenants', tenantRouter);
 
 // Real-Time Event Streaming & Server-Sent Events (SSE)

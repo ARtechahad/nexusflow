@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Database, Server, CheckCircle2, AlertTriangle, RefreshCw, Download, ShieldCheck, HardDrive, Terminal, ArrowRight, Layers, Zap } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { buildAuthHeaders } from '../lib/api';
 
 export const DatabasePersistenceModal: React.FC = () => {
   const { isDatabaseModalOpen, setIsDatabaseModalOpen, databaseStatus, refreshDatabaseStatus, showToast } = useApp();
@@ -23,7 +24,7 @@ export const DatabasePersistenceModal: React.FC = () => {
     try {
       const res = await fetch('/api/database/test-connection', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ url: testUrl })
       });
       const data = await res.json();
@@ -49,7 +50,7 @@ export const DatabasePersistenceModal: React.FC = () => {
     try {
       const res = await fetch('/api/database/migrate-to-postgres', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ url: testUrl })
       });
       const data = await res.json();
@@ -69,7 +70,7 @@ export const DatabasePersistenceModal: React.FC = () => {
   const handleCreateBackup = async () => {
     setBackupLoading(true);
     try {
-      const res = await fetch('/api/database/backup', { method: 'POST' });
+      const res = await fetch('/api/database/backup', { method: 'POST', headers: buildAuthHeaders() });
       const data = await res.json();
       if (data.success) {
         showToast(`Backup snapshot created: ${data.backupFile}`);

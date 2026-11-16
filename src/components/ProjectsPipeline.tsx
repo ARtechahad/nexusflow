@@ -64,6 +64,7 @@ export const ProjectsPipeline: React.FC = () => {
   const {
     projects,
     loadingProjects,
+    refreshProjects,
     updateProject,
     transferProject,
     openAIModal,
@@ -154,11 +155,19 @@ export const ProjectsPipeline: React.FC = () => {
   const handleScoreAllLeads = async () => {
     try {
       setIsScoringLeads(true);
-      const res = await fetch('/api/leads/score-all', { method: 'POST' });
+      const token = localStorage.getItem('alm_nexus_token');
+      const tenantId = localStorage.getItem('alm_nexus_tenant_id');
+      const res = await fetch('/api/leads/score-all', {
+        method: 'POST',
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(tenantId ? { 'X-Tenant-Id': tenantId } : {})
+        }
+      });
       const data = await res.json();
       if (data.success) {
-        showToast('All pipeline leads re-evaluated with Gemini Smart Scoring.');
-        window.location.reload();
+        showToast('All pipeline leads re-evaluated with Smart Scoring.');
+        await refreshProjects();
       }
     } catch (e) {
       console.error('Failed to score leads', e);

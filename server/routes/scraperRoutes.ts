@@ -1,60 +1,92 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { readDB, writeDB, logAuditAction } from '../db';
-import { authenticateApiKey } from '../middlewares/auth';
+import { authenticateApiKey, AuthenticatedRequest, requireCompanyRole } from '../middlewares/auth';
 
 export const scraperRouter = Router();
 export const ingestRouter = Router();
 
+// Enforce strict company admin or department head isolation on all scraper management routes
+scraperRouter.use(requireCompanyRole(['company_admin', 'department_head']));
+
+function getCompanyScraperConfig(db: any, companyId: string) {
+  if (!db.scraperConfigs || typeof db.scraperConfigs !== 'object') {
+    db.scraperConfigs = {};
+  }
+  if (!db.scraperConfigs[companyId]) {
+    db.scraperConfigs[companyId] = {
+      companyId,
+      keywords: ['web developer needed', 'e-commerce store setup', 'landing page'],
+      platforms: ['linkedin', 'upwork', 'twitter', 'freelancer'],
+      autoInject: false,
+      minBudget: 300,
+      isScanningActive: false,
+      scanIntervalMinutes: 60,
+      lastScanTime: null
+    };
+  }
+  return db.scraperConfigs[companyId];
+}
+
 // ========================================================
-// PHASE 1: AUTOMATED LEAD GENERATION & OUTREACH (AGENT-REACH)
+// PHASE 1: AUTOMATED LEAD GENERATION & OUTREACH
 // ========================================================
 
 // 1. Scraper Configuration
-scraperRouter.get('/config', (req: Request, res: Response) => {
+scraperRouter.get('/config', (req: AuthenticatedRequest, res: Response) => {
+  const companyId = req.companyId!;
   const db = readDB();
-  res.json({ success: true, config: db.scraperConfig });
+  const config = getCompanyScraperConfig(db, companyId);
+  res.json({ success: true, config });
 });
 
-scraperRouter.put('/config', (req: Request, res: Response) => {
+scraperRouter.put('/config', (req: AuthenticatedRequest, res: Response) => {
+  const companyId = req.companyId!;
   const db = readDB();
-  const { keywords, platforms, autoInject, minBudget, isScanningActive, scanIntervalMinutes } = req.body;
-  if (!db.scraperConfig) db.scraperConfig = {};
-  if (Array.isArray(keywords)) db.scraperConfig.keywords = keywords;
-  if (Array.isArray(platforms)) db.scraperConfig.platforms = platforms;
-  if (typeof autoInject === 'boolean') db.scraperConfig.autoInject = autoInject;
-  if (typeof minBudget === 'number') db.scraperConfig.minBudget = minBudget;
-  if (typeof isScanningActive === 'boolean') db.scraperConfig.isScanningActive = isScanningActive;
-  if (typeof scanIntervalMinutes === 'number') db.scraperConfig.scanIntervalMinutes = scanIntervalMinutes;
-  
+  const config = getCompanyScraperConfig(db, companyId);
+  const { keywords, platforms, autoInject, minBudget, isScanningActive, scanIntervalMinutes } = req.body || {};
+
+  if (Array.isArray(keywords)) config.keywords = keywords;
+  if (Array.isArray(platforms)) config.platforms = platforms;
+  if (typeof autoInject === 'boolean') config.autoInject = autoInject;
+  if (typeof minBudget === 'number') config.minBudget = minBudget;
+  if (typeof isScanningActive === 'boolean') config.isScanningActive = isScanningActive;
+  if (typeof scanIntervalMinutes === 'number') config.scanIntervalMinutes = scanIntervalMinutes;
+
   writeDB(db);
-  res.json({ success: true, config: db.scraperConfig, message: 'Scraper settings saved successfully.' });
+  res.json({ success: true, config, message: 'Scraper settings saved successfully.' });
 });
 
-// 2. Scraped Leads Feed & Live Scanner Job
-scraperRouter.get('/leads', (req: Request, res: Response) => {
+// 2. Scraped Leads Feed & Live Scanner Job (Strictly company-scoped)
+scraperRouter.get('/leads', (req: AuthenticatedRequest, res: Response) => {
+  const companyId = req.companyId!;
   const db = readDB();
+  const config = getCompanyScraperConfig(db, companyId);
+  const leads = (db.scrapedLeads || []).filter(
+    (l: any) => (l.companyId || l.tenantId) === companyId
+  );
+
   res.json({
     success: true,
-    leads: db.scrapedLeads || [],
-    config: db.scraperConfig,
+    leads,
+    config,
     stats: {
-      totalFound: db.scrapedLeads?.length || 0,
-      injectedCount: (db.scrapedLeads || []).filter((l: any) => l.injectedToPipeline).length,
-      pendingReview: (db.scrapedLeads || []).filter((l: any) => !l.injectedToPipeline).length
+      totalFound: leads.length,
+      injectedCount: leads.filter((l: any) => l.injectedToPipeline).length,
+      pendingReview: leads.filter((l: any) => !l.injectedToPipeline).length
     }
   });
 });
 
-scraperRouter.post('/scan', (req: Request, res: Response) => {
+scraperRouter.post('/scan', (req: AuthenticatedRequest, res: Response) => {
+  const companyId = req.companyId!;
   const db = readDB();
-  const config = db.scraperConfig || { keywords: [], platforms: [] };
-  const { customKeyword, targetPlatform } = req.body;
+  const config = getCompanyScraperConfig(db, companyId);
+  const { customKeyword, targetPlatform } = req.body || {};
 
-  const activeKeywords = customKeyword ? [customKeyword, ...config.keywords] : config.keywords;
-  const activePlatforms = targetPlatform ? [targetPlatform] : config.platforms;
+  const activeKeywords = customKeyword ? [customKeyword, ...(config.keywords || [])] : (config.keywords || []);
+  const activePlatforms = targetPlatform ? [targetPlatform] : (config.platforms || []);
 
-  // Curated live opportunity generation simulation matching exact active keywords
   const possibleScrapedTemplates = [
     {
       keyword: 'web developer needed',
@@ -118,10 +150,9 @@ scraperRouter.post('/scan', (req: Request, res: Response) => {
     }
   ];
 
-  // Select matching items based on user keywords & platforms
   const matched = possibleScrapedTemplates.filter(item => {
-    const keywordMatches = activeKeywords.some((kw: string) => 
-      item.keyword.toLowerCase().includes(kw.toLowerCase()) || 
+    const keywordMatches = activeKeywords.some((kw: string) =>
+      item.keyword.toLowerCase().includes(kw.toLowerCase()) ||
       kw.toLowerCase().includes(item.keyword.toLowerCase()) ||
       item.snippet.toLowerCase().includes(kw.toLowerCase()) ||
       item.title.toLowerCase().includes(kw.toLowerCase())
@@ -138,12 +169,18 @@ scraperRouter.post('/scan', (req: Request, res: Response) => {
   if (!Array.isArray(db.projects)) db.projects = [];
   if (!Array.isArray(db.chatMessages)) db.chatMessages = [];
 
+  const companyLeads = db.scrapedLeads.filter(
+    (l: any) => (l.companyId || l.tenantId) === companyId
+  );
+
   leadsToAdd.forEach((item, index) => {
-    const exists = db.scrapedLeads.some((l: any) => l.title === item.title || l.url === item.url);
+    const exists = companyLeads.some((l: any) => l.title === item.title || l.url === item.url);
     if (!exists) {
       const newScrapedId = `scrape-${Date.now()}-${index}`;
       const newLeadObj: any = {
         id: newScrapedId,
+        companyId,
+        tenantId: companyId,
         platform: item.platform,
         title: item.title,
         authorName: item.author,
@@ -153,20 +190,21 @@ scraperRouter.post('/scan', (req: Request, res: Response) => {
         matchedKeyword: item.keyword,
         estimatedBudget: item.budget,
         detectedWebsiteType: item.websiteType,
-        matchScore: Math.floor(Math.random() * 6) + 93, // 93 - 98%
+        matchScore: Math.floor(Math.random() * 6) + 93,
         url: item.url,
         scrapedAt: new Date().toISOString(),
         injectedToPipeline: false
       };
 
-      // Check autoInject setting
       if (config.autoInject) {
         const commissionRate = item.budget <= 300 ? 25 : item.budget <= 700 ? 30 : 35;
         const commissionAmount = Number(((item.budget * commissionRate) / 100).toFixed(2));
         const newProjId = `proj-${Date.now()}-${index}`;
-        
+
         const newProject: any = {
           id: newProjId,
+          companyId,
+          tenantId: companyId,
           clientName: item.author,
           clientEmail: `${item.author.toLowerCase().replace(/[^a-z0-9]/g, '.')}@${item.company.toLowerCase().replace(/[^a-z0-9]/g, '') || 'client'}.com`,
           clientCompany: item.company,
@@ -190,8 +228,8 @@ scraperRouter.post('/scan', (req: Request, res: Response) => {
           balanceAmount: Number((item.budget * 0.5).toFixed(2)),
           paymentMethod: 'paypal',
           currency: 'USD',
-          assignedSalesperson: (req as any).user?.name || 'Sales Desk',
-          salespersonEmail: (req as any).user?.email || '',
+          assignedSalesperson: req.user?.name || 'Sales Desk',
+          salespersonEmail: req.user?.email || '',
           commissionRate,
           commissionAmount,
           commissionStatus: 'pending',
@@ -223,16 +261,17 @@ scraperRouter.post('/scan', (req: Request, res: Response) => {
         newLeadObj.injectedProjectId = newProjId;
         autoInjectedCount++;
 
-        // Add alert to team chat
         db.chatMessages.push({
           id: `msg-auto-inject-${Date.now()}-${index}`,
+          companyId,
+          tenantId: companyId,
           senderId: 'bot-agent-reach',
-          senderName: 'Agent-Reach Scraper Bot',
+          senderName: 'Lead Ingestion Bot',
           senderRole: 'sales',
-          channel: 'sales-leads',
-          content: `⚡ **Live Lead Scraped & Auto-Injected into Discovery!**\n• Source: ${item.platform.toUpperCase()}\n• Lead: ${item.author} (${item.company})\n• Match Keyword: "${item.keyword}"\n• Scope: $${item.budget} (${item.websiteType.toUpperCase()})\n• Status: Placed into Kanban Discovery & Scoping column.`,
+          channel: 'general',
+          content: `Live Lead Discovered & Placed in Pipeline: ${item.author} (${item.company}) — $${item.budget} (${item.websiteType.toUpperCase()})`,
           timestamp: new Date().toISOString(),
-          reactions: { '🔥': 0, '👏': 0 }
+          reactions: {}
         });
       }
 
@@ -244,26 +283,31 @@ scraperRouter.post('/scan', (req: Request, res: Response) => {
   config.lastScanTime = new Date().toISOString();
   writeDB(db);
 
+  const updatedLeads = db.scrapedLeads.filter((l: any) => (l.companyId || l.tenantId) === companyId);
+
   res.json({
     success: true,
     newlyFoundCount,
     autoInjectedCount,
-    totalLeads: db.scrapedLeads.length,
-    leads: db.scrapedLeads,
+    totalLeads: updatedLeads.length,
+    leads: updatedLeads,
     message: newlyFoundCount > 0
       ? `Successfully discovered ${newlyFoundCount} live leads matching active keywords.${autoInjectedCount > 0 ? ` (${autoInjectedCount} auto-injected to Discovery column)` : ''}`
       : 'Live scan complete. No new unlisted leads found for current keywords.'
   });
 });
 
-// 3. Inject Lead directly into Pipeline Discovery Column
-scraperRouter.post('/inject/:id', (req: Request, res: Response) => {
+// 3. Inject Lead directly into Pipeline Discovery Column (Strictly company-scoped)
+scraperRouter.post('/inject/:id', (req: AuthenticatedRequest, res: Response) => {
+  const companyId = req.companyId!;
   const db = readDB();
   const leadId = req.params.id;
-  const lead: any = (db.scrapedLeads || []).find((l: any) => l.id === leadId);
+  const lead: any = (db.scrapedLeads || []).find(
+    (l: any) => l.id === leadId && (l.companyId || l.tenantId) === companyId
+  );
 
   if (!lead) {
-    return res.status(404).json({ success: false, message: 'Scraped lead record not found.' });
+    return res.status(404).json({ success: false, message: 'Scraped lead record not found in your company workspace.' });
   }
 
   if (lead.injectedToPipeline) {
@@ -276,6 +320,8 @@ scraperRouter.post('/inject/:id', (req: Request, res: Response) => {
 
   const newProject: any = {
     id: newProjId,
+    companyId,
+    tenantId: companyId,
     clientName: lead.authorName,
     clientEmail: `${lead.authorName.toLowerCase().replace(/[^a-z0-9]/g, '.')}@${(lead.companyName || 'client').toLowerCase().replace(/[^a-z0-9]/g, '')}.com`,
     clientCompany: lead.companyName || `${lead.authorName} Enterprise`,
@@ -299,8 +345,8 @@ scraperRouter.post('/inject/:id', (req: Request, res: Response) => {
     balanceAmount: Number((lead.estimatedBudget * 0.5).toFixed(2)),
     paymentMethod: 'paypal',
     currency: 'USD',
-    assignedSalesperson: (req as any).user?.name || 'Sales Desk',
-    salespersonEmail: (req as any).user?.email || '',
+    assignedSalesperson: req.user?.name || 'Sales Desk',
+    salespersonEmail: req.user?.email || '',
     commissionRate,
     commissionAmount,
     commissionStatus: 'pending',
@@ -334,16 +380,17 @@ scraperRouter.post('/inject/:id', (req: Request, res: Response) => {
   lead.injectedToPipeline = true;
   lead.injectedProjectId = newProjId;
 
-  // Post to Sales chat channel
   db.chatMessages.push({
     id: `msg-inject-${Date.now()}`,
-    senderId: (req as any).user?.id || 'bot-scraper',
-    senderName: (req as any).user?.name || 'Lead Ingestion Desk',
+    companyId,
+    tenantId: companyId,
+    senderId: req.user?.id || 'bot-scraper',
+    senderName: req.user?.name || 'Lead Ingestion Desk',
     senderRole: 'sales',
-    channel: 'sales-leads',
-    content: `📥 **Injected Scraped Lead into Discovery Pipeline**\nClient: ${lead.authorName} (${lead.companyName || 'Prospect'})\nSource: ${lead.platform.toUpperCase()}\nEstimated Value: $${lead.estimatedBudget} USD (${lead.detectedWebsiteType})\nDirect Link: ${lead.url}`,
+    channel: 'general',
+    content: `Injected Scraped Lead into Discovery Pipeline: ${lead.authorName} (${lead.companyName || 'Prospect'}) — $${lead.estimatedBudget} USD`,
     timestamp: new Date().toISOString(),
-    reactions: { '🔥': 0, '👏': 0 }
+    reactions: {}
   });
 
   writeDB(db);
@@ -359,7 +406,7 @@ scraperRouter.post('/inject/:id', (req: Request, res: Response) => {
 // Inbound Automation Webhook Endpoint (/api/v1/leads/ingest)
 // ==========================================
 
-ingestRouter.get('/ingest', (req: Request, res: Response) => {
+ingestRouter.get('/ingest', (_req: Request, res: Response) => {
   res.json({
     status: 'online',
     endpoint: '/api/v1/leads/ingest',
@@ -380,13 +427,19 @@ ingestRouter.get('/ingest', (req: Request, res: Response) => {
 
 ingestRouter.post('/ingest', authenticateApiKey, (req: Request, res: Response) => {
   const token = (req as any).apiToken;
-  const rawBody = req.body;
+  const companyId = token?.companyId || token?.tenantId || (req as any).companyId;
+  if (!companyId) {
+    return res.status(403).json({
+      success: false,
+      error: 'Forbidden: API token is not bound to a company workspace.'
+    });
+  }
 
+  const rawBody = req.body;
   if (!rawBody) {
     return res.status(400).json({ success: false, error: 'Request body cannot be empty.' });
   }
 
-  // Normalize incoming payload to an array of lead items
   let rawItems: any[] = [];
   if (Array.isArray(rawBody)) {
     rawItems = rawBody;
@@ -418,7 +471,6 @@ ingestRouter.post('/ingest', authenticateApiKey, (req: Request, res: Response) =
     const source = item.source || item.channel || 'n8n_automation';
     const assignedCollabs = Array.isArray(item.assignedCollaborators) ? item.assignedCollaborators : (item.collaborator ? [item.collaborator] : []);
 
-    // Calculate commission tier
     let commissionRate = 30;
     if (budget <= 300) commissionRate = 25;
     else if (budget > 700) commissionRate = 35;
@@ -427,7 +479,6 @@ ingestRouter.post('/ingest', authenticateApiKey, (req: Request, res: Response) =
     const projId = `proj-inbound-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
     leadIds.push(projId);
 
-    // Compute smart SOP lead score (0 - 100)
     let leadScore = 65;
     if (budget >= 1000) leadScore += 15;
     if (clientEmail.includes('@') && !clientEmail.includes('gmail') && !clientEmail.includes('yahoo')) leadScore += 10;
@@ -436,6 +487,8 @@ ingestRouter.post('/ingest', authenticateApiKey, (req: Request, res: Response) =
 
     const newProject: any = {
       id: projId,
+      companyId,
+      tenantId: companyId,
       clientName,
       clientEmail,
       clientCompany,
@@ -497,6 +550,8 @@ ingestRouter.post('/ingest', authenticateApiKey, (req: Request, res: Response) =
 
     db.scrapedLeads.unshift({
       id: `lead-inbound-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`,
+      companyId,
+      tenantId: companyId,
       keyword: item.propertyDetails ? 'Real Estate Property Deal' : 'Inbound Webhook Lead',
       platform: (source.toLowerCase().includes('idx') ? 'freelancer' : 'upwork') as any,
       title: `${clientCompany} — ${purpose.slice(0, 75)}`,
@@ -516,6 +571,7 @@ ingestRouter.post('/ingest', authenticateApiKey, (req: Request, res: Response) =
   writeDB(db);
 
   logAuditAction({
+    companyId,
     userId: token?.userId || 'api-system',
     userName: token?.name || 'Automation Ingestion Token',
     userRole: 'api_token',

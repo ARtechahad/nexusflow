@@ -4,8 +4,7 @@ import {
   Send,
   Coins,
   CheckCircle2,
-  ArrowUpRight,
-  Lock
+  ArrowUpRight
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { calculateCommission } from '../data/sopContent';
@@ -19,31 +18,37 @@ export const ExecutiveOperationsRibbon: React.FC = () => {
     databaseStatus,
     activeTab,
     setActiveTab,
-    role
+    companyRole,
+    currentUser,
+    currentTenant
   } = useApp();
 
-  const outreach = useOutreachTelemetry();
+  const isCompanyAdmin = companyRole === 'company_admin';
+  const scopeKey = `${currentUser?.id || ''}::${currentTenant?.id || ''}`;
+  const outreach = useOutreachTelemetry(isCompanyAdmin, scopeKey);
 
-  if (role === 'client_guest') {
+  // Only Company Owners/Admins see company-wide financial, commission, and pipeline telemetry
+  if (!isCompanyAdmin) {
     return null;
   }
 
-  const isCollaborator = role === 'collaborator';
-  const canOpenCommissions = ['admin', 'bd_head', 'sales'].includes(role);
-  const canOpenOutreach = ['admin', 'ceo', 'bd_head', 'sales', 'coordinator', 'project_manager', 'developer'].includes(role);
-  const canOpenSop = ['admin', 'bd_head', 'coordinator', 'developer'].includes(role);
-
-  const totalPipelineValue = projects.reduce((acc, p) => acc + (p.finalPrice || p.estimatedPrice || 0), 0);
-  const advancesCleared = projects.filter(p => p.advancePaid).length;
+  const totalPipelineValue = projects.reduce(
+    (acc, p) => acc + (p.finalPrice || p.estimatedPrice || 0),
+    0
+  );
+  const advancesCleared = projects.filter((p) => p.advancePaid).length;
   const inStaging = projects.filter(
-    p => !p.domainTransferred && (p.internalQAPassed || p.status === 'staging_dev' || p.status === 'client_review')
+    (p) =>
+      !p.domainTransferred &&
+      (p.internalQAPassed || p.status === 'staging_dev' || p.status === 'client_review')
   ).length;
 
   const commissionTotals = projects.reduce(
     (acc, p) => {
       const value = p.finalPrice || p.estimatedPrice || 0;
       const calc = calculateCommission(value);
-      const comm = p.commissionAmount && p.commissionAmount > 0 ? p.commissionAmount : calc.amount;
+      const comm =
+        p.commissionAmount && p.commissionAmount > 0 ? p.commissionAmount : calc.amount;
       acc.total += comm;
       if (p.balancePaid || p.status === 'completed' || p.status === 'transferred') {
         acc.cleared += comm;
@@ -100,11 +105,8 @@ export const ExecutiveOperationsRibbon: React.FC = () => {
           {/* TELEMETRY CELL 2: CONNECTED EMAIL HUB */}
           <button
             type="button"
-            onClick={() => canOpenOutreach && setActiveTab('outreach_suite')}
-            disabled={!canOpenOutreach}
-            className={`xl:col-span-3 text-left px-4 py-2.5 transition flex items-center justify-between gap-3 ${
-              canOpenOutreach ? 'cursor-pointer' : 'cursor-default opacity-80'
-            } ${
+            onClick={() => setActiveTab('outreach_suite')}
+            className={`xl:col-span-3 text-left px-4 py-2.5 transition flex items-center justify-between gap-3 cursor-pointer ${
               activeTab === 'outreach_suite'
                 ? 'bg-emerald-50/60 dark:bg-emerald-950/30'
                 : 'bg-[#FFFFFF] dark:bg-[#111827] hover:bg-slate-50 dark:hover:bg-slate-800/60'
@@ -150,11 +152,8 @@ export const ExecutiveOperationsRibbon: React.FC = () => {
           {/* TELEMETRY CELL 3: COMMISSION LEDGER */}
           <button
             type="button"
-            onClick={() => canOpenCommissions && setActiveTab('commissions')}
-            disabled={!canOpenCommissions || isCollaborator}
-            className={`xl:col-span-3 text-left px-4 py-2.5 transition flex items-center justify-between gap-3 ${
-              canOpenCommissions && !isCollaborator ? 'cursor-pointer' : 'cursor-default'
-            } ${
+            onClick={() => setActiveTab('commissions')}
+            className={`xl:col-span-3 text-left px-4 py-2.5 transition flex items-center justify-between gap-3 cursor-pointer ${
               activeTab === 'commissions'
                 ? 'bg-amber-50/60 dark:bg-amber-950/30'
                 : 'bg-[#FFFFFF] dark:bg-[#111827] hover:bg-slate-50 dark:hover:bg-slate-800/60'
@@ -166,33 +165,24 @@ export const ExecutiveOperationsRibbon: React.FC = () => {
                 <span className="truncate">Commission Ledger</span>
               </div>
 
-              {isCollaborator ? (
-                <div className="mt-1 flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  <Lock className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                  <span>Masked (Partner NDA)</span>
-                </div>
-              ) : (
-                <div className="mt-1 flex items-baseline gap-2">
-                  <span className="text-sm font-bold text-slate-950 dark:text-white font-mono tabular-nums tracking-tight">
-                    {formatMoney(commissionTotals.total)}
-                  </span>
-                  <span className="text-[11px] font-medium text-slate-600 dark:text-slate-300">
-                    split pool
-                  </span>
-                </div>
-              )}
+              <div className="mt-1 flex items-baseline gap-2">
+                <span className="text-sm font-bold text-slate-950 dark:text-white font-mono tabular-nums tracking-tight">
+                  {formatMoney(commissionTotals.total)}
+                </span>
+                <span className="text-[11px] font-medium text-slate-600 dark:text-slate-300">
+                  split pool
+                </span>
+              </div>
             </div>
 
-            {!isCollaborator && (
-              <div className="text-right shrink-0 space-y-0.5">
-                <div className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 font-mono tabular-nums">
-                  {formatMoney(commissionTotals.cleared)} Cleared
-                </div>
-                <div className="text-[11px] font-medium text-slate-600 dark:text-slate-400 font-mono tabular-nums">
-                  {formatMoney(commissionTotals.pending)} Escrow
-                </div>
+            <div className="text-right shrink-0 space-y-0.5">
+              <div className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 font-mono tabular-nums">
+                {formatMoney(commissionTotals.cleared)} Cleared
               </div>
-            )}
+              <div className="text-[11px] font-medium text-slate-600 dark:text-slate-400 font-mono tabular-nums">
+                {formatMoney(commissionTotals.pending)} Escrow
+              </div>
+            </div>
           </button>
 
           {/* TELEMETRY CELL 4: SOP GATE & PERSISTENCE */}
@@ -213,7 +203,7 @@ export const ExecutiveOperationsRibbon: React.FC = () => {
               </div>
             </div>
 
-            {canOpenSop && activeTab !== 'sop' && (
+            {activeTab !== 'sop' && (
               <button
                 type="button"
                 onClick={() => setActiveTab('sop')}

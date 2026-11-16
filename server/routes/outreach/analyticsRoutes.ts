@@ -1,6 +1,6 @@
-import { Router, Request, Response } from 'express';
+import { Router, Response } from 'express';
 import { z } from 'zod';
-import { authenticateToken } from '../../middlewares/auth';
+import { AuthenticatedRequest, requireCompanyRole } from '../../middlewares/auth';
 import { getOutreachPool } from '../../services/outreach/schema';
 import {
   getOutreachAnalytics,
@@ -23,10 +23,13 @@ function getPoolOrThrow() {
   return pool;
 }
 
+// Protect all analytics routes with Company Admin / Department Head authorization
+analyticsRouter.use(requireCompanyRole(['company_admin', 'department_head']));
+
 // 1. GET /api/outreach/analytics/overview
-analyticsRouter.get('/analytics/overview', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+analyticsRouter.get('/analytics/overview', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const tenantId = (req as any).user?.tenant_id || (req as any).tenant_id || 'tenant-alm-nexus';
+    const tenantId = req.companyId!;
     const pool = getPoolOrThrow();
 
     const { campaignId, mailboxId, variantId, dateRange, startDate, endDate } = req.query as Record<string, string>;
@@ -55,9 +58,9 @@ analyticsRouter.get('/analytics/overview', authenticateToken, async (req: Reques
 });
 
 // 2. GET /api/outreach/analytics/export-csv
-analyticsRouter.get('/analytics/export-csv', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+analyticsRouter.get('/analytics/export-csv', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const tenantId = (req as any).user?.tenant_id || (req as any).tenant_id || 'tenant-alm-nexus';
+    const tenantId = req.companyId!;
     const pool = getPoolOrThrow();
 
     const { campaignId, mailboxId, variantId, dateRange, startDate, endDate } = req.query as Record<string, string>;
@@ -86,9 +89,9 @@ analyticsRouter.get('/analytics/export-csv', authenticateToken, async (req: Requ
 });
 
 // 3. POST /api/outreach/analytics/rollup - Trigger daily analytics rollup
-analyticsRouter.post('/analytics/rollup', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+analyticsRouter.post('/analytics/rollup', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const tenantId = (req as any).user?.tenant_id || (req as any).tenant_id || 'tenant-alm-nexus';
+    const tenantId = req.companyId!;
     const pool = getPoolOrThrow();
     const { date } = req.body || {};
 
@@ -108,12 +111,21 @@ analyticsRouter.post('/analytics/rollup', authenticateToken, async (req: Request
 // 4. POST /api/outreach/campaigns/:id/steps/:stepId/auto-optimise
 analyticsRouter.post(
   '/campaigns/:id/steps/:stepId/auto-optimise',
-  authenticateToken,
-  async (req: Request, res: Response): Promise<void> => {
+  async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
+      const tenantId = req.companyId!;
       const pool = getPoolOrThrow();
       const { stepId } = req.params;
       const { minSendsThreshold } = req.body || {};
+
+      const ownership = await pool.query(
+        `SELECT id FROM ox_steps WHERE id = $1 AND tenant_id = $2`,
+        [stepId, tenantId]
+      );
+      if (ownership.rowCount === 0) {
+        res.status(404).json({ success: false, error: 'Step not found in your company workspace.' });
+        return;
+      }
 
       const result = await autoOptimiseStepVariants(stepId, {
         pool,
@@ -134,19 +146,19 @@ analyticsRouter.post(
 // 5. GET /api/outreach/campaigns/:id/steps/:stepId/optimisation-log
 analyticsRouter.get(
   '/campaigns/:id/steps/:stepId/optimisation-log',
-  authenticateToken,
-  async (req: Request, res: Response): Promise<void> => {
+  async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
+      const tenantId = req.companyId!;
       const pool = getPoolOrThrow();
       const { stepId } = req.params;
 
       const stepRes = await pool.query(
-        `SELECT id, step_number, auto_optimise, optimization_log FROM ox_steps WHERE id = $1`,
-        [stepId]
+        `SELECT id, step_number, auto_optimise, optimization_log FROM ox_steps WHERE id = $1 AND tenant_id = $2`,
+        [stepId, tenantId]
       );
 
       if (stepRes.rowCount === 0) {
-        res.status(404).json({ success: false, error: 'Step not found' });
+        res.status(404).json({ success: false, error: 'Step not found in your company workspace.' });
         return;
       }
 
@@ -167,7 +179,7 @@ analyticsRouter.get(
 );
 
 // 6. POST /api/outreach/sequences/validate - Check for circular loops
-analyticsRouter.post('/sequences/validate', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+analyticsRouter.post('/sequences/validate', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const { steps } = req.body || {};
     if (!Array.isArray(steps)) {

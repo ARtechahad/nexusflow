@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { buildAuthHeaders } from '../lib/api';
 import {
   ShieldCheck,
   X,
@@ -22,7 +23,7 @@ export const GDPRComplianceModal: React.FC = () => {
   const handleExportDSAR = async () => {
     setDownloading(true);
     try {
-      const res = await fetch('/api/gdpr/export');
+      const res = await fetch('/api/gdpr/export', { headers: buildAuthHeaders() });
       const data = await res.json();
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
@@ -50,7 +51,7 @@ export const GDPRComplianceModal: React.FC = () => {
     try {
       const res = await fetch('/api/gdpr/purge', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ reason: 'Client requested right to be forgotten' })
       });
       if (res.ok) {

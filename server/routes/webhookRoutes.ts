@@ -1,22 +1,36 @@
 import { Router, Request, Response } from 'express';
 import { readDB, writeDB, DEFAULT_CONNECTORS } from '../db';
-import { requireRole } from '../middlewares/auth';
+import { AuthenticatedRequest, requireCompanyRole } from '../middlewares/auth';
 import {
   processStripeWebhook,
   processUpworkWebhook,
   processPayPalWebhook,
-  verifyStripeSignature,
-  getConnectors
+  verifyStripeSignature
 } from '../webhooks';
 
 export const webhookRouter = Router();
 export const integrationRouter = Router();
 
+function getCompanyConnectors(db: any, companyId: string): any[] {
+  if (!db.companyConnectors || typeof db.companyConnectors !== 'object') {
+    db.companyConnectors = {};
+  }
+  if (!Array.isArray(db.companyConnectors[companyId])) {
+    db.companyConnectors[companyId] = DEFAULT_CONNECTORS.map((c: any) => ({
+      ...c,
+      companyId,
+      status: 'standby',
+      lastSyncTime: null,
+      eventsHandledCount: 0
+    }));
+  }
+  return db.companyConnectors[companyId];
+}
+
 // ==========================================
 // 1. Live Webhooks Ingestion (/api/webhooks)
 // ==========================================
 
-// Real Stripe Webhook Ingestion
 webhookRouter.post('/stripe', (req: Request, res: Response) => {
   const sig = req.headers['stripe-signature'] as string;
   const rawPayload = JSON.stringify(req.body);
@@ -30,32 +44,36 @@ webhookRouter.post('/stripe', (req: Request, res: Response) => {
   res.json({ received: true, ...result });
 });
 
-// Real Upwork Webhook Ingestion
 webhookRouter.post('/upwork', (req: Request, res: Response) => {
   const result = processUpworkWebhook(req.body);
   res.json({ received: true, ...result });
 });
 
-// Real PayPal Webhook Ingestion
 webhookRouter.post('/paypal', (req: Request, res: Response) => {
   const result = processPayPalWebhook(req.body);
   res.json({ received: true, ...result });
 });
 
 // ==========================================
-// 2. Real Integrations & Connectors Management (/api/integrations)
+// 2. Company Integrations & Connectors (/api/integrations) - Company Admin Only
 // ==========================================
 
-integrationRouter.get('/connectors', requireRole(['admin', 'bd_head']), (req: Request, res: Response) => {
-  const connectors = getConnectors();
+integrationRouter.use(requireCompanyRole(['company_admin']));
+
+integrationRouter.get('/connectors', (req: AuthenticatedRequest, res: Response) => {
+  const companyId = req.companyId!;
+  const db = readDB();
+  const connectors = getCompanyConnectors(db, companyId);
   res.json({ success: true, connectors });
 });
 
-integrationRouter.post('/credentials', requireRole(['admin', 'bd_head']), (req: Request, res: Response) => {
-  const { channel, apiKey, webhookSecret, customWebhookUrl } = req.body;
+integrationRouter.post('/credentials', (req: AuthenticatedRequest, res: Response) => {
+  const companyId = req.companyId!;
+  const { channel, apiKey, webhookSecret, customWebhookUrl } = req.body || {};
   const db = readDB();
+  const connectors = getCompanyConnectors(db, companyId);
 
-  const conn = (db.connectors || DEFAULT_CONNECTORS).find((c: any) => c.channel === channel);
+  const conn = connectors.find((c: any) => c.channel === channel);
   if (!conn) {
     return res.status(404).json({ success: false, message: 'Connector not found.' });
   }
@@ -75,9 +93,11 @@ integrationRouter.post('/credentials', requireRole(['admin', 'bd_head']), (req: 
   });
 });
 
-integrationRouter.post('/toggle/:channel', requireRole(['admin', 'bd_head']), (req: Request, res: Response) => {
+integrationRouter.post('/toggle/:channel', (req: AuthenticatedRequest, res: Response) => {
+  const companyId = req.companyId!;
   const db = readDB();
-  const conn = (db.connectors || DEFAULT_CONNECTORS).find((c: any) => c.channel === req.params.channel);
+  const connectors = getCompanyConnectors(db, companyId);
+  const conn = connectors.find((c: any) => c.channel === req.params.channel);
 
   if (!conn) {
     return res.status(404).json({ success: false, message: 'Connector not found.' });
@@ -90,39 +110,47 @@ integrationRouter.post('/toggle/:channel', requireRole(['admin', 'bd_head']), (r
   res.json({ success: true, status: conn.status, connector: conn });
 });
 
-integrationRouter.post('/sync-all', (req: Request, res: Response) => {
+integrationRouter.post('/sync-all', (req: AuthenticatedRequest, res: Response) => {
+  const companyId = req.companyId!;
   const db = readDB();
   const now = new Date().toISOString();
+  const connectors = getCompanyConnectors(db, companyId);
 
-  (db.connectors || DEFAULT_CONNECTORS).forEach((c: any) => {
+  connectors.forEach((c: any) => {
     c.lastSyncTime = now;
   });
 
   writeDB(db);
-  res.json({ success: true, message: 'All 6 gateway connectors synchronized.', syncedAt: now });
+  res.json({ success: true, message: 'All company gateway connectors synchronized.', syncedAt: now });
 });
 
-integrationRouter.get('/logs', (req: Request, res: Response) => {
+integrationRouter.get('/logs', (req: AuthenticatedRequest, res: Response) => {
+  const companyId = req.companyId!;
   const db = readDB();
-  res.json({ success: true, logs: db.webhookLogs || [] });
+  const logs = (db.webhookLogs || []).filter(
+    (log: any) => (log.companyId || log.tenantId) === companyId
+  );
+  res.json({ success: true, logs });
 });
 
-integrationRouter.post('/simulate-webhook', (req: Request, res: Response) => {
-  const { channel, eventType, payload } = req.body;
+integrationRouter.post('/simulate-webhook', (req: AuthenticatedRequest, res: Response) => {
+  const companyId = req.companyId!;
+  const { channel, eventType, payload } = req.body || {};
   let result;
 
   if (channel === 'stripe') {
-    result = processStripeWebhook({ type: eventType, data: { object: payload } });
+    result = processStripeWebhook({ type: eventType, data: { object: { ...payload, metadata: { ...(payload?.metadata || {}), companyId } } } });
   } else if (channel === 'upwork') {
-    result = processUpworkWebhook({ event: eventType, ...payload });
+    result = processUpworkWebhook({ event: eventType, companyId, ...payload });
   } else if (channel === 'paypal') {
-    result = processPayPalWebhook({ event_type: eventType, resource: payload });
+    result = processPayPalWebhook({ event_type: eventType, companyId, resource: payload });
   } else {
-    // Generic simulated webhook
     const db = readDB();
     if (!db.webhookLogs) db.webhookLogs = [];
     const logItem = {
       id: `log-sim-${Date.now()}`,
+      companyId,
+      tenantId: companyId,
       timestamp: new Date().toISOString(),
       source: channel || 'custom',
       event: eventType || 'test_ping',

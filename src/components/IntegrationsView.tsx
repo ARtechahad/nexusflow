@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
+import { buildAuthHeaders } from '../lib/api';
 import {
   Zap,
   RefreshCw,
@@ -38,7 +39,7 @@ import { GoogleSheetsSyncModal } from './GoogleSheetsSyncModal';
 import { GoogleWorkspaceModal } from './GoogleWorkspaceModal';
 
 export const IntegrationsView: React.FC = () => {
-  const { showToast, formatMoney, refreshProjects, setActiveTab } = useApp();
+  const { showToast, formatMoney, refreshProjects, setActiveTab, currentTenant } = useApp();
 
   const [connectors, setConnectors] = useState<IntegrationConnector[]>([]);
   const [logs, setLogs] = useState<WebhookEventLog[]>([]);
@@ -67,11 +68,13 @@ export const IntegrationsView: React.FC = () => {
 
   // Fetch initial connectors & logs
   const fetchIntegrationData = async () => {
+    if (!currentTenant?.id) return;
     try {
       setLoading(true);
+      const headers = buildAuthHeaders();
       const [resConn, resLogs] = await Promise.all([
-        fetch('/api/integrations/connectors'),
-        fetch('/api/integrations/logs')
+        fetch('/api/integrations/connectors', { headers }),
+        fetch('/api/integrations/logs', { headers })
       ]);
 
       if (resConn.ok) {
@@ -91,13 +94,13 @@ export const IntegrationsView: React.FC = () => {
 
   useEffect(() => {
     fetchIntegrationData();
-  }, []);
+  }, [currentTenant?.id]);
 
   // Global Sync All action
   const handleSyncAll = async () => {
     setSyncingAll(true);
     try {
-      const res = await fetch('/api/integrations/sync-all', { method: 'POST' });
+      const res = await fetch('/api/integrations/sync-all', { method: 'POST', headers: buildAuthHeaders() });
       const data = await res.json();
       if (data.success) {
         showToast('All 6 Enterprise API connectors synchronized with zero packet loss.');
@@ -116,7 +119,7 @@ export const IntegrationsView: React.FC = () => {
   // Toggle single connector
   const handleToggleConnector = async (channel: IntegrationChannel) => {
     try {
-      const res = await fetch(`/api/integrations/toggle/${channel}`, { method: 'POST' });
+      const res = await fetch(`/api/integrations/toggle/${channel}`, { method: 'POST', headers: buildAuthHeaders() });
       const data = await res.json();
       if (data.success) {
         setConnectors(prev =>
@@ -143,7 +146,7 @@ export const IntegrationsView: React.FC = () => {
 
       const res = await fetch('/api/integrations/simulate-webhook', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(payload)
       });
 
@@ -949,7 +952,7 @@ export const IntegrationsView: React.FC = () => {
                   try {
                     const res = await fetch('/api/integrations/credentials', {
                       method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
+                      headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
                       body: JSON.stringify({
                         stripeSecretKey,
                         stripeWebhookSecret,

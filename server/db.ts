@@ -227,7 +227,13 @@ export const INITIAL_DB = {
 
   // PHASE 3: DISPATCH LOGS
   nudgeLogs: [] as any[],
-  emailVerificationOtps: [] as any[]
+  emailVerificationOtps: [] as any[],
+
+  // PHASE 7: MULTI-COMPANY, DEPARTMENTS, MEMBERSHIPS, INVITES & DEPARTMENT TASKS
+  departments: [] as any[],
+  companyMemberships: [] as any[],
+  companyInvites: [] as any[],
+  departmentTasks: [] as any[]
 };
 
 // Database read/write helpers with PostgreSQL & atomic fallback
@@ -250,6 +256,11 @@ export function readDB(): any {
   if (!Array.isArray(parsed.users)) parsed.users = DEFAULT_USERS;
   if (!Array.isArray(parsed.connectors)) parsed.connectors = DEFAULT_CONNECTORS;
   if (!Array.isArray(parsed.webhookLogs)) parsed.webhookLogs = [];
+  if (!Array.isArray(parsed.tenants)) parsed.tenants = DEFAULT_TENANTS;
+  if (!Array.isArray(parsed.departments)) parsed.departments = DEFAULT_DEPARTMENTS;
+  if (!Array.isArray(parsed.companyMemberships)) parsed.companyMemberships = DEFAULT_COMPANY_MEMBERSHIPS;
+  if (!Array.isArray(parsed.companyInvites)) parsed.companyInvites = [];
+  if (!Array.isArray(parsed.departmentTasks)) parsed.departmentTasks = [];
   return parsed;
 }
 
@@ -619,6 +630,91 @@ Stage 4 (+168h): Graceful File Archival (Break-Up Email)`,
 // Departmental Tracking Metrics (populated from real tenant activity)
 export const DEFAULT_DEPARTMENTAL_PROGRESS: any[] = [];
 
+// Default Departments for the seeded demo company only (isolated from newly registered companies)
+export const DEFAULT_DEPARTMENTS = [
+  {
+    id: 'dept-engineering-alm',
+    companyId: 'tenant-alm-nexus',
+    name: 'Engineering',
+    slug: 'engineering',
+    description: 'Core software engineering, architecture, QA, and staging delivery.',
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'dept-sales-alm',
+    companyId: 'tenant-alm-nexus',
+    name: 'Sales & Growth',
+    slug: 'sales-growth',
+    description: 'Outbound lead generation, client qualification, and pipeline expansion.',
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'dept-design-alm',
+    companyId: 'tenant-alm-nexus',
+    name: 'Design',
+    slug: 'design',
+    description: 'UI/UX design systems, brand identity, and interactive prototyping.',
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'dept-operations-alm',
+    companyId: 'tenant-alm-nexus',
+    name: 'Operations',
+    slug: 'operations',
+    description: 'SOP delivery governance, sprint coordination, and client onboarding.',
+    createdAt: new Date().toISOString()
+  }
+];
+
+// Default Memberships apply strictly to the seeded demo accounts (newly registered accounts start with 0 companies)
+export const DEFAULT_COMPANY_MEMBERSHIPS = [
+  {
+    id: 'mem-admin-alm',
+    companyId: 'tenant-alm-nexus',
+    userId: 'user-admin-1',
+    role: 'company_admin',
+    departmentIds: ['dept-engineering-alm', 'dept-sales-alm', 'dept-design-alm', 'dept-operations-alm'],
+    designation: 'Company Owner & Managing Director',
+    joinedAt: new Date().toISOString()
+  },
+  {
+    id: 'mem-sales-alm',
+    companyId: 'tenant-alm-nexus',
+    userId: 'user-sales-1',
+    role: 'department_head',
+    departmentIds: ['dept-sales-alm'],
+    designation: 'Head of Sales & BD',
+    joinedAt: new Date().toISOString()
+  },
+  {
+    id: 'mem-coord-alm',
+    companyId: 'tenant-alm-nexus',
+    userId: 'user-coord-1',
+    role: 'department_head',
+    departmentIds: ['dept-operations-alm'],
+    designation: 'Head of Operations & QA',
+    joinedAt: new Date().toISOString()
+  },
+  {
+    id: 'mem-dev-alm',
+    companyId: 'tenant-alm-nexus',
+    userId: 'user-dev-1',
+    role: 'employee',
+    departmentIds: ['dept-engineering-alm'],
+    designation: 'Lead Full-Stack Developer',
+    joinedAt: new Date().toISOString()
+  },
+  {
+    id: 'mem-design-alm',
+    companyId: 'tenant-alm-nexus',
+    userId: 'user-design-1',
+    role: 'employee',
+    departmentIds: ['dept-design-alm'],
+    designation: 'UI/UX Designer',
+    joinedAt: new Date().toISOString()
+  }
+];
+
 // API Tokens for External Automation (created by admins)
 export const DEFAULT_API_TOKENS: any[] = [];
 
@@ -901,6 +997,11 @@ export function loadLocalDB(initialFallbackData: any): any {
       const seeded = {
         ...initialFallbackData,
         users: DEFAULT_USERS,
+        tenants: DEFAULT_TENANTS,
+        departments: DEFAULT_DEPARTMENTS,
+        companyMemberships: DEFAULT_COMPANY_MEMBERSHIPS,
+        companyInvites: [],
+        departmentTasks: [],
         connectors: DEFAULT_CONNECTORS,
         apiTokens: DEFAULT_API_TOKENS,
         auditLogs: DEFAULT_AUDIT_LOGS,
@@ -936,6 +1037,10 @@ export function loadLocalDB(initialFallbackData: any): any {
       apiTokens: Array.isArray(parsed.apiTokens) ? parsed.apiTokens : (initialFallbackData?.apiTokens || DEFAULT_API_TOKENS),
       auditLogs: Array.isArray(parsed.auditLogs) ? parsed.auditLogs : (initialFallbackData?.auditLogs || DEFAULT_AUDIT_LOGS),
       tenants: Array.isArray(parsed.tenants) && parsed.tenants.length > 0 ? parsed.tenants : DEFAULT_TENANTS,
+      departments: Array.isArray(parsed.departments) ? parsed.departments : DEFAULT_DEPARTMENTS,
+      companyMemberships: Array.isArray(parsed.companyMemberships) ? parsed.companyMemberships : DEFAULT_COMPANY_MEMBERSHIPS,
+      companyInvites: Array.isArray(parsed.companyInvites) ? parsed.companyInvites : [],
+      departmentTasks: Array.isArray(parsed.departmentTasks) ? parsed.departmentTasks : [],
       activityFeed: Array.isArray(parsed.activityFeed) ? parsed.activityFeed : DEFAULT_ACTIVITY_FEED,
       wikiDocs: Array.isArray(parsed.wikiDocs) && parsed.wikiDocs.length > 0 ? parsed.wikiDocs : DEFAULT_WIKI_DOCS,
       departmentalProgress: Array.isArray(parsed.departmentalProgress) ? parsed.departmentalProgress : DEFAULT_DEPARTMENTAL_PROGRESS,
@@ -1393,6 +1498,7 @@ export function createApiToken(params: {
   name: string;
   createdBy: string;
   userId?: string;
+  companyId?: string;
   permissions?: string[];
   expiresInDays?: number;
 }): { tokenRecord: any; rawToken: string } {
@@ -1414,8 +1520,11 @@ export function createApiToken(params: {
     expiresAt = exp.toISOString();
   }
 
+  const companyId = params.companyId || undefined;
   const tokenRecord = {
     id: `tok-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`,
+    companyId,
+    tenantId: companyId,
     name: params.name || 'External Automation Key',
     tokenHash,
     tokenPrefix,
@@ -1433,6 +1542,7 @@ export function createApiToken(params: {
 
   // Automatically log audit trail
   logAuditAction({
+    companyId,
     userId: params.userId || 'user-admin-1',
     userName: params.createdBy,
     userRole: 'admin',
@@ -1466,7 +1576,7 @@ export function verifyApiToken(rawKey: string): { valid: boolean; token?: any; e
   }
 
   if (token.revokedAt) {
-    return { valid: false, error: 'API token has been revoked by the BD Head.' };
+    return { valid: false, error: 'API token has been revoked.' };
   }
 
   if (token.expiresAt && new Date(token.expiresAt).getTime() < Date.now()) {
@@ -1481,19 +1591,26 @@ export function verifyApiToken(rawKey: string): { valid: boolean; token?: any; e
 }
 
 /**
- * Revoke an API token
+ * Revoke an API token (strictly scoped by companyId when supplied)
  */
-export function revokeApiToken(tokenId: string, revokerEmail?: string): boolean {
+export function revokeApiToken(tokenId: string, revokerEmail?: string, companyId?: string): boolean {
   const db = getDB();
   if (!Array.isArray(db.apiTokens)) return false;
 
-  const token = db.apiTokens.find((t: any) => t.id === tokenId);
+  const token = db.apiTokens.find((t: any) => {
+    if (t.id !== tokenId) return false;
+    if (companyId) {
+      return (t.companyId || t.tenantId) === companyId;
+    }
+    return true;
+  });
   if (!token) return false;
 
   token.revokedAt = new Date().toISOString();
   saveDB(db);
 
   logAuditAction({
+    companyId: companyId || token.companyId || token.tenantId,
     userId: token.userId || 'user-admin-1',
     userName: revokerEmail || token.createdBy,
     userRole: 'admin',
@@ -1508,13 +1625,17 @@ export function revokeApiToken(tokenId: string, revokerEmail?: string): boolean 
 }
 
 /**
- * List all API tokens (sanitized, no token secret)
+ * List API tokens (sanitized, no token secret, strictly scoped by companyId when provided)
  */
-export function getApiTokens(): any[] {
+export function getApiTokens(companyId?: string): any[] {
   const db = getDB();
   const tokens = Array.isArray(db.apiTokens) ? db.apiTokens : [];
-  return tokens.map((t: any) => ({
+  const filtered = companyId
+    ? tokens.filter((t: any) => (t.companyId || t.tenantId) === companyId)
+    : tokens;
+  return filtered.map((t: any) => ({
     id: t.id,
+    companyId: t.companyId || t.tenantId,
     name: t.name,
     tokenPrefix: t.tokenPrefix,
     createdBy: t.createdBy,
@@ -1532,6 +1653,7 @@ export function getApiTokens(): any[] {
  * Append an immutable audit trail entry
  */
 export function logAuditAction(params: {
+  companyId?: string;
   userId?: string;
   userName?: string;
   userRole?: string;
@@ -1548,6 +1670,8 @@ export function logAuditAction(params: {
 
   const logEntry = {
     id: `audit-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`,
+    companyId: params.companyId || undefined,
+    tenantId: params.companyId || undefined,
     userId: params.userId || 'system',
     userName: params.userName || 'System Engine',
     userRole: params.userRole || 'system',
@@ -1570,10 +1694,10 @@ export function logAuditAction(params: {
   // If PostgreSQL is connected, write immediately to audit_logs table
   if (isPgConnected && pgPool) {
     pgPool.query(
-      `INSERT INTO audit_logs (id, user_id, user_name, user_role, action, entity_type, entity_id, details, ip_address, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      `INSERT INTO audit_logs (id, tenant_id, user_id, user_name, user_role, action, entity_type, entity_id, details, ip_address, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        ON CONFLICT (id) DO NOTHING`,
-      [logEntry.id, logEntry.userId, logEntry.userName, logEntry.userRole, logEntry.action, logEntry.entityType, logEntry.entityId, JSON.stringify(logEntry.details), logEntry.ipAddress, logEntry.createdAt]
+      [logEntry.id, logEntry.companyId || null, logEntry.userId, logEntry.userName, logEntry.userRole, logEntry.action, logEntry.entityType, logEntry.entityId, JSON.stringify(logEntry.details), logEntry.ipAddress, logEntry.createdAt]
     ).catch(e => {
       console.warn('Could not persist audit log directly to PostgreSQL:', e.message);
     });
@@ -1583,9 +1707,10 @@ export function logAuditAction(params: {
 }
 
 /**
- * Retrieve filtered audit logs
+ * Retrieve filtered audit logs (strictly scoped by companyId when specified)
  */
 export function getAuditLogs(options?: {
+  companyId?: string;
   action?: string;
   userId?: string;
   entityType?: string;
@@ -1595,6 +1720,10 @@ export function getAuditLogs(options?: {
 }): { logs: any[]; total: number } {
   const db = getDB();
   let logs: any[] = Array.isArray(db.auditLogs) ? [...db.auditLogs] : [];
+
+  if (options?.companyId) {
+    logs = logs.filter(l => (l.companyId || l.tenantId) === options.companyId);
+  }
 
   if (options?.action && options.action !== 'all') {
     logs = logs.filter(l => l.action.toLowerCase() === options.action?.toLowerCase());

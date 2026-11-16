@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { buildAuthHeaders } from '../lib/api';
 import { ProjectLead } from '../types';
 import {
   Building2,
@@ -49,10 +50,7 @@ export const PartnerEvaluationModal: React.FC<PartnerEvaluationModalProps> = ({
       setSubmitting(true);
       const res = await fetch(`/api/projects/${project.id}/evaluate`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(localStorage.getItem('alm_nexus_token') ? { Authorization: `Bearer ${localStorage.getItem('alm_nexus_token')}` } : {})
-        },
+        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           partnerEvaluationScore: score,
           partnerEvaluationNotes: notes,

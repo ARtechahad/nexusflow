@@ -1,15 +1,13 @@
 /**
  * Client-Side Local Storage & Offline Database Fallback Service
- * 
- * Provides transparent, resilient local caching and mock storage operations
- * for Leads, Projects, Tasks, Chat Messages, and User Preferences.
- * Ensures the application is 100% operational even when Cloud Firestore
- * is not provisioned or encounters database-not-found / network errors.
+ *
+ * Strictly scoped per (userId, companyId) so cached data never leaks across users
+ * or across separate companies owned by the same user.
  */
 
 import { ProjectLead, ChatMessage } from '../types';
 
-const STORAGE_KEYS = {
+const BASE_KEYS = {
   PROJECTS: 'clientops_local_projects',
   TASKS: 'clientops_local_tasks',
   CHAT: 'clientops_local_chat_messages',
@@ -31,9 +29,28 @@ export interface LocalTaskItem {
 
 class LocalDatabaseFallback {
   private isStorageAvailable: boolean = true;
+  private activeScopeKey: string = '';
 
   constructor() {
     this.checkStorage();
+  }
+
+  public setActiveScope(userId?: string | null, companyId?: string | null): void {
+    if (userId && companyId) {
+      this.activeScopeKey = `${userId}::${companyId}`;
+    } else if (userId) {
+      this.activeScopeKey = userId;
+    } else {
+      this.activeScopeKey = '';
+    }
+  }
+
+  private getScopedKey(baseKey: string, scopeOverride?: string): string {
+    const scope = scopeOverride || this.activeScopeKey;
+    if (!scope) {
+      return `${baseKey}::unscoped`;
+    }
+    return `${baseKey}::${scope}`;
   }
 
   private checkStorage(): boolean {
@@ -53,21 +70,40 @@ class LocalDatabaseFallback {
     }
   }
 
+  public clearScopedCaches(): void {
+    if (!this.checkStorage()) return;
+    try {
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (!k) continue;
+        if (
+          k.startsWith(BASE_KEYS.PROJECTS) ||
+          k.startsWith(BASE_KEYS.TASKS) ||
+          k.startsWith(BASE_KEYS.CHAT) ||
+          k === 'clientops_cached_projects'
+        ) {
+          keysToRemove.push(k);
+        }
+      }
+      keysToRemove.forEach((k) => localStorage.removeItem(k));
+    } catch (e) {
+      console.warn('[LocalStorageDB] Failed to clear scoped caches:', e);
+    }
+  }
+
   // ==========================================
   // PROJECTS & LEADS
   // ==========================================
 
-  public getProjects(): ProjectLead[] {
+  public getProjects(scopeOverride?: string): ProjectLead[] {
     if (!this.checkStorage()) return [];
+    const scope = scopeOverride || this.activeScopeKey;
+    if (!scope) return [];
     try {
-      const raw = localStorage.getItem(STORAGE_KEYS.PROJECTS);
+      const raw = localStorage.getItem(this.getScopedKey(BASE_KEYS.PROJECTS, scope));
       if (raw) {
         return JSON.parse(raw);
-      }
-      // Check legacy key if present
-      const legacyRaw = localStorage.getItem('clientops_cached_projects');
-      if (legacyRaw) {
-        return JSON.parse(legacyRaw);
       }
     } catch (e) {
       console.warn('[LocalStorageDB] Failed to parse projects:', e);
@@ -75,11 +111,12 @@ class LocalDatabaseFallback {
     return [];
   }
 
-  public saveProjects(projects: ProjectLead[]): boolean {
+  public saveProjects(projects: ProjectLead[], scopeOverride?: string): boolean {
     if (!this.checkStorage()) return false;
+    const scope = scopeOverride || this.activeScopeKey;
+    if (!scope) return false;
     try {
-      localStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(projects));
-      localStorage.setItem('clientops_cached_projects', JSON.stringify(projects));
+      localStorage.setItem(this.getScopedKey(BASE_KEYS.PROJECTS, scope), JSON.stringify(projects));
       return true;
     } catch (e) {
       console.warn('[LocalStorageDB] Failed to save projects:', e);
@@ -87,10 +124,12 @@ class LocalDatabaseFallback {
     }
   }
 
-  public saveProject(project: Partial<ProjectLead> & { id: string }): boolean {
+  public saveProject(project: Partial<ProjectLead> & { id: string }, scopeOverride?: string): boolean {
     if (!this.checkStorage()) return false;
+    const scope = scopeOverride || this.activeScopeKey;
+    if (!scope) return false;
     try {
-      const current = this.getProjects();
+      const current = this.getProjects(scope);
       const idx = current.findIndex(p => p.id === project.id);
       let updated: ProjectLead[];
       const now = new Date().toISOString();
@@ -111,7 +150,7 @@ class LocalDatabaseFallback {
         updated = [newProj, ...current];
       }
 
-      this.saveProjects(updated);
+      this.saveProjects(updated, scope);
       return true;
     } catch (e) {
       console.warn('[LocalStorageDB] Failed to update project:', e);
@@ -119,12 +158,14 @@ class LocalDatabaseFallback {
     }
   }
 
-  public deleteProject(projectId: string): boolean {
+  public deleteProject(projectId: string, scopeOverride?: string): boolean {
     if (!this.checkStorage()) return false;
+    const scope = scopeOverride || this.activeScopeKey;
+    if (!scope) return false;
     try {
-      const current = this.getProjects();
+      const current = this.getProjects(scope);
       const filtered = current.filter(p => p.id !== projectId);
-      this.saveProjects(filtered);
+      this.saveProjects(filtered, scope);
       return true;
     } catch (e) {
       console.warn('[LocalStorageDB] Failed to delete project:', e);
@@ -136,10 +177,12 @@ class LocalDatabaseFallback {
   // TASKS
   // ==========================================
 
-  public getTasks(projectId?: string): LocalTaskItem[] {
+  public getTasks(projectId?: string, scopeOverride?: string): LocalTaskItem[] {
     if (!this.checkStorage()) return [];
+    const scope = scopeOverride || this.activeScopeKey;
+    if (!scope) return [];
     try {
-      const raw = localStorage.getItem(STORAGE_KEYS.TASKS);
+      const raw = localStorage.getItem(this.getScopedKey(BASE_KEYS.TASKS, scope));
       if (raw) {
         const tasks: LocalTaskItem[] = JSON.parse(raw);
         if (projectId) {
@@ -153,10 +196,12 @@ class LocalDatabaseFallback {
     return [];
   }
 
-  public saveTask(task: LocalTaskItem): boolean {
+  public saveTask(task: LocalTaskItem, scopeOverride?: string): boolean {
     if (!this.checkStorage()) return false;
+    const scope = scopeOverride || this.activeScopeKey;
+    if (!scope) return false;
     try {
-      const current = this.getTasks();
+      const current = this.getTasks(undefined, scope);
       const idx = current.findIndex(t => t.id === task.id);
       let updated: LocalTaskItem[];
       if (idx >= 0) {
@@ -165,7 +210,7 @@ class LocalDatabaseFallback {
       } else {
         updated = [task, ...current];
       }
-      localStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(updated));
+      localStorage.setItem(this.getScopedKey(BASE_KEYS.TASKS, scope), JSON.stringify(updated));
       return true;
     } catch (e) {
       console.warn('[LocalStorageDB] Failed to save task:', e);
@@ -177,10 +222,12 @@ class LocalDatabaseFallback {
   // CHAT MESSAGES
   // ==========================================
 
-  public getChatMessages(channel?: string): ChatMessage[] {
+  public getChatMessages(channel?: string, scopeOverride?: string): ChatMessage[] {
     if (!this.checkStorage()) return [];
+    const scope = scopeOverride || this.activeScopeKey;
+    if (!scope) return [];
     try {
-      const raw = localStorage.getItem(STORAGE_KEYS.CHAT);
+      const raw = localStorage.getItem(this.getScopedKey(BASE_KEYS.CHAT, scope));
       if (raw) {
         const messages: ChatMessage[] = JSON.parse(raw);
         if (channel) {
@@ -194,27 +241,33 @@ class LocalDatabaseFallback {
     return [];
   }
 
-  public saveChatMessage(msg: {
-    channel: string;
-    sender: string;
-    role: string;
-    text: string;
-    timestamp?: string;
-  }): boolean {
+  public saveChatMessage(
+    msg: {
+      channel: string;
+      sender: string;
+      role: string;
+      text: string;
+      timestamp?: string;
+    },
+    scopeOverride?: string
+  ): boolean {
     if (!this.checkStorage()) return false;
+    const scope = scopeOverride || this.activeScopeKey;
+    if (!scope) return false;
     try {
-      const current = this.getChatMessages();
+      const current = this.getChatMessages(undefined, scope);
       const newMsg: ChatMessage = {
         id: `local_chat_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
         sender: msg.sender,
         role: msg.role as any,
-        message: msg.text,
+        text: msg.text,
+        content: msg.text,
         timestamp: msg.timestamp || new Date().toISOString(),
         channel: msg.channel
-      } as any;
+      };
 
       const updated = [...current.slice(-100), newMsg];
-      localStorage.setItem(STORAGE_KEYS.CHAT, JSON.stringify(updated));
+      localStorage.setItem(this.getScopedKey(BASE_KEYS.CHAT, scope), JSON.stringify(updated));
       return true;
     } catch (e) {
       console.warn('[LocalStorageDB] Failed to save chat message:', e);
@@ -229,14 +282,14 @@ class LocalDatabaseFallback {
   public savePreferences(userId: string, prefs: Record<string, any>): boolean {
     if (!this.checkStorage()) return false;
     try {
-      const allPrefsRaw = localStorage.getItem(STORAGE_KEYS.PREFERENCES);
+      const allPrefsRaw = localStorage.getItem(BASE_KEYS.PREFERENCES);
       const allPrefs = allPrefsRaw ? JSON.parse(allPrefsRaw) : {};
       allPrefs[userId] = {
         ...allPrefs[userId],
         ...prefs,
         updatedAt: new Date().toISOString()
       };
-      localStorage.setItem(STORAGE_KEYS.PREFERENCES, JSON.stringify(allPrefs));
+      localStorage.setItem(BASE_KEYS.PREFERENCES, JSON.stringify(allPrefs));
       return true;
     } catch (e) {
       console.warn('[LocalStorageDB] Failed to save preferences:', e);
@@ -247,7 +300,7 @@ class LocalDatabaseFallback {
   public getPreferences(userId: string): Record<string, any> | null {
     if (!this.checkStorage()) return null;
     try {
-      const allPrefsRaw = localStorage.getItem(STORAGE_KEYS.PREFERENCES);
+      const allPrefsRaw = localStorage.getItem(BASE_KEYS.PREFERENCES);
       if (allPrefsRaw) {
         const allPrefs = JSON.parse(allPrefsRaw);
         return allPrefs[userId] || null;

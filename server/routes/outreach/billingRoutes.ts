@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'node:crypto';
 import { z } from 'zod';
-import { authenticateToken } from '../../middlewares/auth';
+import { AuthenticatedRequest, requireCompanyRole } from '../../middlewares/auth';
 import { getOutreachPool } from '../../services/outreach/schema';
 import {
   OUTREACH_PLANS,
@@ -33,9 +33,9 @@ billingRouter.get('/billing/plans', (req: Request, res: Response) => {
 });
 
 // 2. GET /api/outreach/billing/current-plan - Current tenant plan details and usage metrics
-billingRouter.get('/billing/current-plan', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+billingRouter.get('/billing/current-plan', requireCompanyRole(['company_admin']), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const tenantId = (req as any).user?.tenant_id || (req as any).tenant_id || 'tenant-alm-nexus';
+    const tenantId = req.companyId!;
     const pool = getPoolOrThrow();
 
     const planDetails = await getTenantPlan(tenantId, pool);
@@ -55,9 +55,9 @@ billingRouter.get('/billing/current-plan', authenticateToken, async (req: Reques
 });
 
 // 3. POST /api/outreach/billing/checkout - Create Stripe subscription session (or test mode session)
-billingRouter.post('/billing/checkout', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+billingRouter.post('/billing/checkout', requireCompanyRole(['company_admin']), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const tenantId = (req as any).user?.tenant_id || (req as any).tenant_id || 'tenant-alm-nexus';
+    const tenantId = req.companyId!;
     const pool = getPoolOrThrow();
 
     const {
@@ -142,9 +142,9 @@ billingRouter.post('/billing/checkout', authenticateToken, async (req: Request, 
 });
 
 // 4. POST /api/outreach/billing/test-upgrade - Admin manual test upgrade
-billingRouter.post('/billing/test-upgrade', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+billingRouter.post('/billing/test-upgrade', requireCompanyRole(['company_admin']), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const tenantId = (req as any).user?.tenant_id || (req as any).tenant_id || 'tenant-alm-nexus';
+    const tenantId = req.companyId!;
     const pool = getPoolOrThrow();
 
     const { planId = 'growth', billingInterval = 'monthly' } = req.body || {};
@@ -170,9 +170,9 @@ billingRouter.post('/billing/test-upgrade', authenticateToken, async (req: Reque
 });
 
 // 5. POST /api/outreach/billing/portal - Stripe Customer Portal Session
-billingRouter.post('/billing/portal', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+billingRouter.post('/billing/portal', requireCompanyRole(['company_admin']), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const tenantId = (req as any).user?.tenant_id || (req as any).tenant_id || 'tenant-alm-nexus';
+    const tenantId = req.companyId!;
     const pool = getPoolOrThrow();
     const currentPlan = await getTenantPlan(tenantId, pool);
 
@@ -340,9 +340,9 @@ billingRouter.post('/billing/webhook', async (req: Request, res: Response): Prom
 // ============================================================================
 
 // GET /api/outreach/team/members
-billingRouter.get('/team/members', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+billingRouter.get('/team/members', requireCompanyRole(['company_admin']), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const tenantId = (req as any).user?.tenant_id || (req as any).tenant_id || 'tenant-alm-nexus';
+    const tenantId = req.companyId!;
     const pool = getPoolOrThrow();
 
     const membersRes = await pool.query(
@@ -353,10 +353,9 @@ billingRouter.get('/team/members', authenticateToken, async (req: Request, res: 
       [tenantId]
     );
 
-    // If no members seeded yet, return current user as owner
     let members = membersRes.rows;
     if (members.length === 0) {
-      const currentUserId = (req as any).user?.id || 'admin-user';
+      const currentUserId = req.user?.id || 'admin-user';
       const initialId = `wmemb_${crypto.randomUUID()}`;
       await pool.query(
         `INSERT INTO ox_workspace_members (id, tenant_id, user_id, role)
@@ -386,9 +385,9 @@ billingRouter.get('/team/members', authenticateToken, async (req: Request, res: 
 });
 
 // POST /api/outreach/team/members - Add or invite member with role (owner, manager, viewer)
-billingRouter.post('/team/members', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+billingRouter.post('/team/members', requireCompanyRole(['company_admin']), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const tenantId = (req as any).user?.tenant_id || (req as any).tenant_id || 'tenant-alm-nexus';
+    const tenantId = req.companyId!;
     const pool = getPoolOrThrow();
 
     const { userId, role = 'viewer' } = req.body || {};
@@ -421,9 +420,9 @@ billingRouter.post('/team/members', authenticateToken, async (req: Request, res:
 });
 
 // PUT /api/outreach/team/members/:id - Update member role
-billingRouter.put('/team/members/:id', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+billingRouter.put('/team/members/:id', requireCompanyRole(['company_admin']), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const tenantId = (req as any).user?.tenant_id || (req as any).tenant_id || 'tenant-alm-nexus';
+    const tenantId = req.companyId!;
     const pool = getPoolOrThrow();
     const { id } = req.params;
     const { role } = req.body || {};
@@ -446,9 +445,9 @@ billingRouter.put('/team/members/:id', authenticateToken, async (req: Request, r
 });
 
 // DELETE /api/outreach/team/members/:id - Remove member
-billingRouter.delete('/team/members/:id', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+billingRouter.delete('/team/members/:id', requireCompanyRole(['company_admin']), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const tenantId = (req as any).user?.tenant_id || (req as any).tenant_id || 'tenant-alm-nexus';
+    const tenantId = req.companyId!;
     const pool = getPoolOrThrow();
     const { id } = req.params;
 

@@ -1,100 +1,88 @@
 import { Router, Request, Response } from 'express';
 import { readDB, writeDB, logAuditAction, calculateLeadScore } from '../db';
-import { AuthenticatedRequest } from '../middlewares/auth';
+import {
+  AuthenticatedRequest,
+  requireCompanyAccess,
+  requireCompanyRole
+} from '../middlewares/auth';
 
 export const projectRouter = Router();
 export const portalRouter = Router();
 export const leadScoreRouter = Router();
 
+function isSameCompany(record: any, companyId: string): boolean {
+  return (
+    record?.companyId === companyId ||
+    record?.tenantId === companyId ||
+    record?.tenant_id === companyId
+  );
+}
+
 // ==========================================
-// 1. Projects Endpoints (SOP Steps 1 - 11) with Strict RBAC Data Partitioning
+// 1. Projects / Deals Pipeline (/api/projects) - Strictly Company & Role Isolated
 // ==========================================
 
-projectRouter.get('/', (req: Request, res: Response) => {
+projectRouter.get('/', requireCompanyAccess, (req: AuthenticatedRequest, res: Response) => {
+  if (req.companyRole === 'employee') {
+    return res.status(403).json({
+      success: false,
+      error: 'Forbidden: Company-wide deals pipeline is restricted to Company Owners and authorized Leads.'
+    });
+  }
+
   const db = readDB();
+  const companyId = req.companyId!;
   const search = typeof req.query.search === 'string' ? req.query.search.toLowerCase() : '';
   const status = typeof req.query.status === 'string' ? req.query.status : '';
 
-  let projects = Array.isArray(db.projects) ? [...db.projects] : [];
+  let projects = (Array.isArray(db.projects) ? [...db.projects] : []).filter((p: any) =>
+    isSameCompany(p, companyId)
+  );
 
-  const authUser = (req as AuthenticatedRequest).user;
-
-  // Strict RBAC Data Isolation & Partitioning
-  if (authUser) {
-    if (authUser.role === 'sales') {
-      // Sales user ONLY fetches leads/deals explicitly assigned to them or created by them
-      projects = projects.filter(p => {
-        const isEmailMatch = p.salespersonEmail && authUser.email && p.salespersonEmail.toLowerCase() === authUser.email.toLowerCase();
-        const isNameMatch = p.assignedSalesperson && authUser.name && (
-          p.assignedSalesperson.toLowerCase().includes(authUser.name.toLowerCase()) ||
-          authUser.name.toLowerCase().includes(p.assignedSalesperson.toLowerCase())
-        );
-        const isOwnerMatch = p.ownerId === authUser.id;
-        return isEmailMatch || isNameMatch || isOwnerMatch;
-      });
-    } else if (authUser.role === 'client_guest') {
-      // Client guest user ONLY fetches their specific project and receives sanitized data
-      projects = projects.filter(p => {
-        const isEmailMatch = p.clientEmail && authUser.email && p.clientEmail.toLowerCase() === authUser.email.toLowerCase();
-        const isNameMatch = p.clientName && authUser.name && p.clientName.toLowerCase().includes(authUser.name.toLowerCase());
-        const isProjectMatch = req.query.projectId && p.id === req.query.projectId;
-        return isEmailMatch || isNameMatch || isProjectMatch;
-      });
-      // Sanitize internal company commissions, internal notes, and team data from client view
-      projects = projects.map(p => ({
-        ...p,
-        commissionAmount: undefined,
-        commissionRate: undefined,
-        commissionStatus: undefined,
-        credentialsNotes: undefined,
-        assignedSalesperson: undefined,
-        salespersonEmail: undefined
-      }));
-    } else if (authUser.role === 'collaborator') {
-      // External valuation collaborator ONLY fetches assigned deals with masked commission rates
-      projects = projects.filter(p => {
-        const assigned = Array.isArray(p.assignedCollaborators) ? p.assignedCollaborators : [];
-        return assigned.includes(authUser.id) || assigned.includes(authUser.email) || assigned.includes('partner@vance-capital.com');
-      });
-      projects = projects.map(p => ({
+  // Department heads only see deals scoped to their assigned departments or owned by them, without company-wide commission data
+  if (req.companyRole === 'department_head') {
+    const allowedDepts = req.membership?.departmentIds || [];
+    projects = projects
+      .filter((p: any) => (p.departmentId && allowedDepts.includes(p.departmentId)) || p.ownerId === req.user!.id)
+      .map((p: any) => ({
         ...p,
         commissionAmount: undefined,
         commissionRate: undefined,
         commissionStatus: undefined
       }));
-    }
-  }
-
-  // Strict Multi-Tenant Isolation
-  const reqTenantId = (req as any).tenant_id || (req.query.tenant_id as string) || (req.query.tenantId as string);
-  if (reqTenantId && reqTenantId !== 'all') {
-    projects = projects.filter((p: any) => !p.tenantId || p.tenantId === reqTenantId || p.tenant_id === reqTenantId);
   }
 
   if (status && status !== 'all') {
-    projects = projects.filter(p => p.status === status);
+    projects = projects.filter((p) => p.status === status);
   }
   if (search) {
-    projects = projects.filter(p =>
-      (p.clientName || '').toLowerCase().includes(search) ||
-      (p.clientCompany || '').toLowerCase().includes(search) ||
-      (p.purpose || '').toLowerCase().includes(search) ||
-      (p.websiteType || '').toLowerCase().includes(search)
+    projects = projects.filter(
+      (p) =>
+        (p.clientName || '').toLowerCase().includes(search) ||
+        (p.clientCompany || '').toLowerCase().includes(search) ||
+        (p.purpose || '').toLowerCase().includes(search) ||
+        (p.websiteType || '').toLowerCase().includes(search)
     );
   }
 
-  res.json({ success: true, count: projects.length, projects });
+  return res.json({ success: true, count: projects.length, projects });
 });
 
-projectRouter.post('/', (req: Request, res: Response) => {
+projectRouter.post('/', requireCompanyRole(['company_admin', 'department_head']), (req: AuthenticatedRequest, res: Response) => {
   const db = readDB();
-  const body = req.body;
+  const companyId = req.companyId!;
+  const body = req.body || {};
 
   if (!body.clientName || !body.websiteType) {
     return res.status(400).json({ error: 'Client name and website type are required.' });
   }
 
-  // Calculate pricing defaults if not specified
+  if (req.companyRole === 'department_head' && body.departmentId) {
+    if (!(req.membership?.departmentIds || []).includes(body.departmentId)) {
+      return res.status(403).json({ success: false, error: 'Forbidden: Cannot create deals for another department.' });
+    }
+  }
+
   let estPrice = Number(body.estimatedPrice) || 0;
   if (!estPrice) {
     if (body.websiteType === 'landing') estPrice = 250;
@@ -103,7 +91,6 @@ projectRouter.post('/', (req: Request, res: Response) => {
     else estPrice = 500;
   }
 
-  // Commission calculation according to SOP Section 6
   let rate = 25;
   if (estPrice <= 300) rate = 25;
   else if (estPrice <= 700) rate = 30;
@@ -113,11 +100,13 @@ projectRouter.post('/', (req: Request, res: Response) => {
   const finalPrice = Number(body.finalPrice) || estPrice;
   const commissionAmount = Number(((finalPrice * rate) / 100).toFixed(2));
 
-  const targetTenantId = body.tenantId || body.tenant_id || (req as any).tenant_id || 'tenant-alm-nexus';
   const newProject = {
     id: body.id || `proj-${Date.now()}`,
-    tenantId: targetTenantId,
-    tenant_id: targetTenantId,
+    companyId,
+    tenantId: companyId,
+    tenant_id: companyId,
+    departmentId: body.departmentId || (req.companyRole === 'department_head' ? req.membership?.departmentIds?.[0] : undefined),
+    ownerId: req.user!.id,
     clientName: body.clientName,
     clientEmail: body.clientEmail || '',
     clientPhone: body.clientPhone || '',
@@ -147,8 +136,8 @@ projectRouter.post('/', (req: Request, res: Response) => {
     balanceTxId: body.balanceTxId || '',
     paymentMethod: body.paymentMethod || 'paypal',
     currency: 'USD',
-    assignedSalesperson: body.assignedSalesperson || 'Sales Representative',
-    salespersonEmail: body.salespersonEmail || 'sales@agencyops.dev',
+    assignedSalesperson: body.assignedSalesperson || req.user!.name,
+    salespersonEmail: body.salespersonEmail || req.user!.email,
     commissionRate: rate,
     commissionAmount: commissionAmount,
     commissionStatus: 'pending',
@@ -171,28 +160,30 @@ projectRouter.post('/', (req: Request, res: Response) => {
     updatedAt: new Date().toISOString()
   };
 
-  (db.projects as any).unshift(newProject);
+  if (!Array.isArray(db.projects)) db.projects = [];
+  db.projects.unshift(newProject);
   writeDB(db);
 
-  res.status(201).json({ success: true, project: newProject });
+  return res.status(201).json({ success: true, project: newProject });
 });
 
-projectRouter.get('/:id', (req: Request, res: Response) => {
+projectRouter.get('/:id', requireCompanyAccess, (req: AuthenticatedRequest, res: Response) => {
+  if (req.companyRole === 'employee') {
+    return res.status(403).json({ success: false, error: 'Forbidden.' });
+  }
   const db = readDB();
-  const project = (db.projects || []).find((p: any) => p.id === req.params.id);
+  const project = (db.projects || []).find(
+    (p: any) => p.id === req.params.id && isSameCompany(p, req.companyId!)
+  );
   if (!project) {
     return res.status(404).json({ error: 'Project not found.' });
   }
 
-  const authUser = (req as AuthenticatedRequest).user;
-  // If user is a collaborator, verify deal sharing authorization
-  if (authUser && authUser.role === 'collaborator') {
-    const assigned = Array.isArray(project.assignedCollaborators) ? project.assignedCollaborators : [];
-    const isAssigned = assigned.includes(authUser.id) || assigned.includes(authUser.email) || assigned.includes('partner@vance-capital.com');
-    if (!isAssigned) {
-      return res.status(403).json({ error: 'Access denied: This project deal has not been shared with your collaborator account.' });
+  if (req.companyRole === 'department_head') {
+    const allowedDepts = req.membership?.departmentIds || [];
+    if (!(project.departmentId && allowedDepts.includes(project.departmentId)) && project.ownerId !== req.user!.id) {
+      return res.status(403).json({ success: false, error: 'Forbidden: Deal belongs to another department.' });
     }
-
     return res.json({
       success: true,
       project: {
@@ -204,20 +195,27 @@ projectRouter.get('/:id', (req: Request, res: Response) => {
     });
   }
 
-  res.json({ success: true, project });
+  return res.json({ success: true, project });
 });
 
-projectRouter.put('/:id', (req: Request, res: Response) => {
+projectRouter.put('/:id', requireCompanyRole(['company_admin', 'department_head']), (req: AuthenticatedRequest, res: Response) => {
   const db = readDB();
-  const index = db.projects.findIndex((p: any) => p.id === req.params.id);
+  const index = (db.projects || []).findIndex(
+    (p: any) => p.id === req.params.id && isSameCompany(p, req.companyId!)
+  );
   if (index === -1) {
     return res.status(404).json({ error: 'Project not found.' });
   }
 
   const existing = db.projects[index];
-  const updates = req.body;
+  if (req.companyRole === 'department_head') {
+    const allowedDepts = req.membership?.departmentIds || [];
+    if (!(existing.departmentId && allowedDepts.includes(existing.departmentId)) && existing.ownerId !== req.user!.id) {
+      return res.status(403).json({ success: false, error: 'Forbidden: Deal belongs to another department.' });
+    }
+  }
 
-  // If price changed, recompute commission
+  const updates = req.body || {};
   if (updates.finalPrice && updates.finalPrice !== existing.finalPrice) {
     let rate = existing.commissionRate;
     const p = Number(updates.finalPrice);
@@ -228,7 +226,6 @@ projectRouter.put('/:id', (req: Request, res: Response) => {
     updates.commissionAmount = Number(((p * rate) / 100).toFixed(2));
   }
 
-  // Handle advance / balance payment transitions
   if (updates.advancePaid === true && !existing.advancePaid) {
     updates.advanceAmount = Number((existing.finalPrice * 0.5).toFixed(2));
     if (existing.status === 'lead' || existing.status === 'scoped') {
@@ -243,166 +240,116 @@ projectRouter.put('/:id', (req: Request, res: Response) => {
   db.projects[index] = {
     ...existing,
     ...updates,
+    id: existing.id,
+    companyId: req.companyId!,
+    tenantId: req.companyId!,
     updatedAt: new Date().toISOString()
   };
 
   writeDB(db);
-  res.json({ success: true, project: db.projects[index] });
+  return res.json({ success: true, project: db.projects[index] });
 });
 
-projectRouter.delete('/:id', (req: Request, res: Response) => {
+projectRouter.delete('/:id', requireCompanyRole(['company_admin']), (req: AuthenticatedRequest, res: Response) => {
   const db = readDB();
-  const index = (db.projects || []).findIndex((p: any) => p.id === req.params.id);
+  const index = (db.projects || []).findIndex(
+    (p: any) => p.id === req.params.id && isSameCompany(p, req.companyId!)
+  );
   if (index === -1) {
     return res.status(404).json({ error: 'Project not found.' });
   }
 
-  const authUser = (req as AuthenticatedRequest).user;
   const deleted = db.projects.splice(index, 1)[0];
   writeDB(db);
 
   logAuditAction({
-    userId: authUser?.id || 'admin',
-    userName: authUser?.name || 'Tariq Mehmood',
-    userRole: authUser?.role || 'admin',
+    userId: req.user!.id,
+    userName: req.user!.name,
+    userRole: 'company_admin',
     action: 'PROJECT_DELETED',
     entityType: 'project',
     entityId: req.params.id,
-    details: { clientName: deleted.clientName, clientCompany: deleted.clientCompany },
+    details: { clientName: deleted.clientName, clientCompany: deleted.clientCompany, companyId: req.companyId },
     ipAddress: req.ip || '127.0.0.1'
   });
 
-  res.json({ success: true, message: `Project ${deleted.clientName} removed successfully.` });
+  return res.json({ success: true, message: `Project ${deleted.clientName} removed successfully.` });
 });
 
-// Assign or remove external collaborator from deal
-projectRouter.post('/:id/collaborator', (req: Request, res: Response) => {
+projectRouter.post('/:id/collaborator', requireCompanyRole(['company_admin']), (req: AuthenticatedRequest, res: Response) => {
   const db = readDB();
-  const project = (db.projects || []).find((p: any) => p.id === req.params.id);
+  const project = (db.projects || []).find(
+    (p: any) => p.id === req.params.id && isSameCompany(p, req.companyId!)
+  );
   if (!project) {
     return res.status(404).json({ error: 'Project not found.' });
   }
 
-  const authUser = (req as AuthenticatedRequest).user;
   const { collaboratorId, collaboratorEmail, action = 'assign' } = req.body || {};
   const target = (collaboratorEmail || collaboratorId || '').trim();
-
   if (!target) {
     return res.status(400).json({ error: 'collaboratorEmail or collaboratorId is required.' });
   }
 
-  if (!Array.isArray(project.assignedCollaborators)) {
-    project.assignedCollaborators = [];
-  }
+  if (!Array.isArray(project.assignedCollaborators)) project.assignedCollaborators = [];
 
   if (action === 'assign') {
-    if (!project.assignedCollaborators.includes(target)) {
-      project.assignedCollaborators.push(target);
-    }
+    if (!project.assignedCollaborators.includes(target)) project.assignedCollaborators.push(target);
     project.isDealSheetShared = true;
-    logAuditAction({
-      userId: authUser?.id || 'admin',
-      userName: authUser?.name || 'Tariq Mehmood',
-      userRole: authUser?.role || 'admin',
-      action: 'COLLABORATOR_ASSIGNED',
-      entityType: 'project',
-      entityId: project.id,
-      details: { collaborator: target, projectTitle: project.clientCompany || project.clientName },
-      ipAddress: req.ip || '127.0.0.1'
-    });
   } else {
     project.assignedCollaborators = project.assignedCollaborators.filter((c: string) => c !== target);
-    if (project.assignedCollaborators.length === 0) {
-      project.isDealSheetShared = false;
-    }
-    logAuditAction({
-      userId: authUser?.id || 'admin',
-      userName: authUser?.name || 'Tariq Mehmood',
-      userRole: authUser?.role || 'admin',
-      action: 'COLLABORATOR_REMOVED',
-      entityType: 'project',
-      entityId: project.id,
-      details: { collaborator: target, projectTitle: project.clientCompany || project.clientName },
-      ipAddress: req.ip || '127.0.0.1'
-    });
+    if (project.assignedCollaborators.length === 0) project.isDealSheetShared = false;
   }
 
   project.updatedAt = new Date().toISOString();
   writeDB(db);
-
-  res.json({ success: true, project, assignedCollaborators: project.assignedCollaborators });
+  return res.json({ success: true, project, assignedCollaborators: project.assignedCollaborators });
 });
 
-// Partner Evaluation & Appraisal Sign-off
-projectRouter.post('/:id/evaluate', (req: Request, res: Response) => {
+projectRouter.post('/:id/evaluate', requireCompanyRole(['company_admin', 'department_head']), (req: AuthenticatedRequest, res: Response) => {
   const db = readDB();
-  const project = (db.projects || []).find((p: any) => p.id === req.params.id);
+  const project = (db.projects || []).find(
+    (p: any) => p.id === req.params.id && isSameCompany(p, req.companyId!)
+  );
   if (!project) {
     return res.status(404).json({ error: 'Project not found.' });
   }
 
-  const authUser = (req as AuthenticatedRequest).user;
   const { partnerEvaluationNotes, partnerEvaluationScore, partnerSignOff } = req.body || {};
-
-  if (partnerEvaluationNotes !== undefined) {
-    project.partnerEvaluationNotes = String(partnerEvaluationNotes);
-  }
-  if (partnerEvaluationScore !== undefined) {
-    project.partnerEvaluationScore = Number(partnerEvaluationScore);
-  }
+  if (partnerEvaluationNotes !== undefined) project.partnerEvaluationNotes = String(partnerEvaluationNotes);
+  if (partnerEvaluationScore !== undefined) project.partnerEvaluationScore = Number(partnerEvaluationScore);
   if (partnerSignOff !== undefined) {
     project.partnerSignOff = Boolean(partnerSignOff);
-    if (project.partnerSignOff) {
-      project.partnerSignOffDate = new Date().toISOString();
-    }
+    if (project.partnerSignOff) project.partnerSignOffDate = new Date().toISOString();
   }
 
   project.updatedAt = new Date().toISOString();
   writeDB(db);
-
-  logAuditAction({
-    userId: authUser?.id || 'collaborator',
-    userName: authUser?.name || 'Partner Evaluator',
-    userRole: authUser?.role || 'collaborator',
-    action: 'COLLABORATOR_DEAL_EVALUATED',
-    entityType: 'project',
-    entityId: project.id,
-    details: {
-      score: project.partnerEvaluationScore,
-      signOff: project.partnerSignOff,
-      notesSnippet: (project.partnerEvaluationNotes || '').substring(0, 100)
-    },
-    ipAddress: req.ip || '127.0.0.1'
-  });
-
-  res.json({ success: true, project });
+  return res.json({ success: true, project });
 });
 
-// Secure Domain & Website Transfer Gate (SOP Section 8)
-projectRouter.post('/:id/transfer', (req: Request, res: Response) => {
+projectRouter.post('/:id/transfer', requireCompanyRole(['company_admin']), (req: AuthenticatedRequest, res: Response) => {
   const db = readDB();
-  const project = (db.projects || []).find((p: any) => p.id === req.params.id);
+  const companyId = req.companyId!;
+  const project = (db.projects || []).find((p: any) => p.id === req.params.id && isSameCompany(p, companyId));
 
   if (!project) {
     return res.status(404).json({ error: 'Project not found.' });
   }
 
-  // Strict SOP Rule 8 Enforcement:
   if (!project.advancePaid) {
     return res.status(403).json({
-      error: 'TRANSFER REJECTED: SOP Rule 5 & 8 violation. Advance 50% payment was never confirmed.',
+      error: 'TRANSFER REJECTED: Advance 50% payment was never confirmed.',
       gatePassed: false
     });
   }
-
   if (!project.balancePaid) {
     return res.status(403).json({
-      error: 'TRANSFER REJECTED: SOP Rule 8 violation. Live website transfer is strictly prohibited until the remaining 50% balance payment is verified and cleared.',
+      error: 'TRANSFER REJECTED: Live website transfer is strictly prohibited until the remaining 50% balance payment is cleared.',
       gatePassed: false,
       balanceDue: project.finalPrice * 0.5
     });
   }
-
   if (!project.internalQAPassed) {
     return res.status(400).json({
       error: 'TRANSFER BLOCKED: Internal QA checklist has not been completed on staging domain.',
@@ -415,22 +362,8 @@ projectRouter.post('/:id/transfer', (req: Request, res: Response) => {
   project.status = 'transferred';
   project.updatedAt = new Date().toISOString();
 
-  // Create celebratory chat message
-  if (!Array.isArray(db.chatMessages)) db.chatMessages = [];
-  db.chatMessages.push({
-    id: `msg-${Date.now()}`,
-    senderId: 'system-ops',
-    senderName: 'Website Transfer System',
-    senderRole: 'admin',
-    channel: 'staging-dev',
-    content: `🎉 Website transferred successfully to client domain for ${project.clientName} (${project.clientCompany || project.websiteType})! Both 50% advance and 50% balance cleared.`,
-    timestamp: new Date().toISOString(),
-    reactions: { '🚀': 4 } as any
-  } as any);
-
   writeDB(db);
-
-  res.json({
+  return res.json({
     success: true,
     message: 'Domain transfer verified and executed securely.',
     gatePassed: true,
@@ -438,123 +371,91 @@ projectRouter.post('/:id/transfer', (req: Request, res: Response) => {
   });
 });
 
-// Discord SOP Handoff Generation (SOP Section 7)
-projectRouter.get('/:id/discord-export', (req: Request, res: Response) => {
+projectRouter.get('/:id/discord-export', requireCompanyRole(['company_admin', 'department_head']), (req: AuthenticatedRequest, res: Response) => {
   const db = readDB();
-  const project = (db.projects || []).find((p: any) => p.id === req.params.id);
+  const project = (db.projects || []).find(
+    (p: any) => p.id === req.params.id && isSameCompany(p, req.companyId!)
+  );
   if (!project) return res.status(404).json({ error: 'Project not found' });
 
-  const formatted = `📢 **NEW CLOSED CLIENT HANDOFF (SOP STEP 7)**\n--------------------------------------------------\n👤 **Client Name:** ${project.clientName} ${project.clientCompany ? `(${project.clientCompany})` : ''}\n💼 **Sales Representative:** ${project.assignedSalesperson}\n🌐 **Website Type:** ${project.websiteType.toUpperCase()}\n🎯 **Primary Purpose:** ${project.purpose}\n💰 **Agreed Pricing:** $${project.finalPrice} USD\n💳 **Payment Status:** ${project.advancePaid ? '✅ 50% Advance Received' : '⏳ Advance Pending'} (${project.paymentMethod.toUpperCase()})\n🖥️ **Domain & Hosting:** ${project.hostingStatus.replace('_', ' ').toUpperCase()} ${project.hostingProvider ? `(${project.hostingProvider})` : ''}\n🎨 **Content/Assets:** Logo: ${project.hasLogo ? '✅ Yes' : '❌ Needs Stock/Design'} | Copywriting: ${project.needsContentWriting ? '✍️ Required' : '✅ Provided'}\n🔗 **Design References:** ${project.inspirationUrls?.length ? project.inspirationUrls.join(', ') : 'None'}\n📋 **Next Action:** Coordinator to confirm scope in writing & schedule internal staging build (SOP Step 8 & 9).\n--------------------------------------------------`;
-
-  res.json({
-    success: true,
-    formattedText: formatted,
-    project
-  });
+  const formatted = `NEW CLOSED CLIENT HANDOFF\nClient Name: ${project.clientName}\nWebsite Type: ${project.websiteType}\nPricing: $${project.finalPrice} USD`;
+  return res.json({ success: true, formattedText: formatted, project });
 });
 
 // ==========================================
 // 2. Lead Scoring & Intake Endpoints (/api/leads)
 // ==========================================
 
-leadScoreRouter.get('/', (req: Request, res: Response) => {
+leadScoreRouter.get('/', requireCompanyRole(['company_admin', 'department_head']), (req: AuthenticatedRequest, res: Response) => {
   const db = readDB();
-  const tenantId = (req as any).tenant_id || 'tenant-alm-nexus';
-  let leads = Array.isArray(db.projects) ? [...db.projects] : [];
-
-  leads = leads.filter(p => !p.tenantId || p.tenantId === tenantId || p.tenant_id === tenantId);
-  res.json({ success: true, count: leads.length, data: leads });
+  const companyId = req.companyId!;
+  const leads = (Array.isArray(db.projects) ? [...db.projects] : []).filter((p: any) =>
+    isSameCompany(p, companyId)
+  );
+  return res.json({ success: true, count: leads.length, data: leads });
 });
 
-leadScoreRouter.post('/', (req: Request, res: Response) => {
+leadScoreRouter.post('/', requireCompanyRole(['company_admin', 'department_head']), (req: AuthenticatedRequest, res: Response) => {
   const db = readDB();
+  const companyId = req.companyId!;
   const body = req.body || {};
 
   if (!body.clientName && !body.name) {
     return res.status(400).json({ success: false, error: 'Prospect/Client Name is required.' });
   }
 
-  const tenantId = body.tenantId || body.tenant_id || (req as any).tenant_id || 'tenant-alm-nexus';
   const leadId = body.id || `lead-${Date.now()}`;
   const clientName = body.clientName || body.name || 'Anonymous Prospect';
   const clientEmail = body.clientEmail || body.email || '';
   const clientCompany = body.clientCompany || body.company || '';
-  const websiteUrl = body.websiteUrl || body.website || '';
   const channel = body.channel || 'linkedin';
-  const dealSize = body.dealSize || '$5k - $15k ACV';
 
   const newLead: any = {
     id: leadId,
-    tenantId,
-    tenant_id: tenantId,
+    companyId,
+    tenantId: companyId,
+    tenant_id: companyId,
+    ownerId: req.user!.id,
     clientName,
     clientEmail,
     clientCompany,
     clientPhone: body.clientPhone || body.phone || '',
-    websiteUrl,
+    websiteUrl: body.websiteUrl || body.website || '',
     channel,
     websiteType: body.websiteType || 'landing',
-    purpose: body.notes || body.purpose || 'Outbound strategy consultation & pipeline acceleration',
+    purpose: body.notes || body.purpose || 'Outbound strategy consultation',
     estimatedPrice: Number(body.estimatedPrice) || 2990,
     finalPrice: Number(body.finalPrice) || 2990,
     status: body.status || 'lead',
     source: body.source || 'leadflow_inbound',
-    bookingDate: body.bookingDate || '',
-    bookingTime: body.bookingTime || '',
-    timezone: body.timezone || 'America/New_York (EST)',
     advancePaid: false,
     balancePaid: false,
     internalQAPassed: false,
     domainTransferred: false,
-    assignedSalesperson: body.assignedSalesperson || 'Sales Desk',
-    salespersonEmail: body.salespersonEmail || '',
+    assignedSalesperson: body.assignedSalesperson || req.user!.name,
+    salespersonEmail: body.salespersonEmail || req.user!.email,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
 
-  const calculatedScore = calculateLeadScore(newLead);
-  newLead.leadScore = calculatedScore;
+  newLead.leadScore = calculateLeadScore(newLead);
 
   if (!Array.isArray(db.projects)) db.projects = [];
   db.projects.unshift(newLead);
-
-  // Real-time Chat Notification for Internal Team
-  if (!Array.isArray(db.chatMessages)) db.chatMessages = [];
-  db.chatMessages.push({
-    id: `msg-lead-intake-${Date.now()}`,
-    senderId: 'bot-inbound-lead',
-    senderName: 'LeadFlow Inbound Bot',
-    senderRole: 'sales',
-    channel: 'leads-inbound',
-    content: `🔥 **New Qualified Strategy Booking Received**\n• Name: **${clientName}**\n• Company: **${clientCompany || 'N/A'}** (${clientEmail || 'No email'})\n• Channel: ${channel.toUpperCase()}\n• Deal Size / Plan: ${dealSize}\n• Schedule: ${body.bookingDate ? `${body.bookingDate} at ${body.bookingTime} (${body.timezone})` : 'Async Review'}\n• Lead Score: **${calculatedScore}/100**`,
-    timestamp: new Date().toISOString(),
-    reactions: { '🚀': 1, '🎯': 2 } as any
-  });
-
   writeDB(db);
 
-  logAuditAction({
-    userId: 'system',
-    userName: clientName,
-    userRole: 'lead',
-    action: 'LEAD_INTAKE_SUBMITTED',
-    entityType: 'lead',
-    entityId: leadId,
-    details: { company: clientCompany, channel, bookingDate: body.bookingDate, score: calculatedScore },
-    ipAddress: req.ip || '127.0.0.1'
-  });
-
-  res.status(201).json({
+  return res.status(201).json({
     success: true,
     data: newLead,
     message: 'Lead intake successfully captured and scored in CRM.'
   });
 });
 
-leadScoreRouter.post('/score/:id', (req: Request, res: Response) => {
+leadScoreRouter.post('/score/:id', requireCompanyRole(['company_admin', 'department_head']), (req: AuthenticatedRequest, res: Response) => {
   const db = readDB();
-  const id = req.params.id;
-  const p: any = (db.projects || []).find((proj: any) => proj.id === id);
+  const p: any = (db.projects || []).find(
+    (proj: any) => proj.id === req.params.id && isSameCompany(proj, req.companyId!)
+  );
   if (!p) {
     return res.status(404).json({ success: false, message: 'Project not found' });
   }
@@ -562,23 +463,25 @@ leadScoreRouter.post('/score/:id', (req: Request, res: Response) => {
   const score = calculateLeadScore(p);
   p.leadScore = score;
   writeDB(db);
-
-  res.json({ success: true, leadScore: score, project: p });
+  return res.json({ success: true, leadScore: score, project: p });
 });
 
-leadScoreRouter.post('/score-all', (req: Request, res: Response) => {
+leadScoreRouter.post('/score-all', requireCompanyRole(['company_admin']), (req: AuthenticatedRequest, res: Response) => {
   const db = readDB();
+  const companyId = req.companyId!;
   let scoredCount = 0;
   (db.projects || []).forEach((p: any) => {
-    p.leadScore = calculateLeadScore(p);
-    scoredCount++;
+    if (isSameCompany(p, companyId)) {
+      p.leadScore = calculateLeadScore(p);
+      scoredCount++;
+    }
   });
   writeDB(db);
-  res.json({ success: true, scoredCount, message: `Scored ${scoredCount} leads successfully` });
+  return res.json({ success: true, scoredCount, message: `Scored ${scoredCount} leads successfully` });
 });
 
 // ==========================================
-// 3. Client Portal Endpoints (/api/portal)
+// 3. Client Portal Endpoints (/api/portal) - Token Isolated Guest Portal
 // ==========================================
 
 portalRouter.get('/project/:projectId', (req: Request, res: Response) => {
@@ -591,12 +494,20 @@ portalRouter.get('/project/:projectId', (req: Request, res: Response) => {
     return res.status(404).json({ success: false, message: 'Project portal not found.' });
   }
 
-  // Token validation if token is passed or if clientPortalToken matches
-  if (token && p.clientPortalToken && token !== p.clientPortalToken) {
-    return res.status(403).json({ success: false, message: 'Invalid or expired Client Portal access token.' });
+  // Require valid portal token or authenticated company membership
+  const authUser = (req as AuthenticatedRequest).user;
+  const hasCompanyMembership =
+    authUser &&
+    (db.companyMemberships || []).some(
+      (m: any) => m.userId === authUser.id && isSameCompany(p, m.companyId)
+    );
+
+  if (!hasCompanyMembership) {
+    if (!p.clientPortalToken || !token || token !== p.clientPortalToken) {
+      return res.status(403).json({ success: false, message: 'Invalid or missing Client Portal access token.' });
+    }
   }
 
-  // Sanitize data: Strictly exclude internal salesperson commissions, private sales chats, Discord credentials, employee rates
   const sanitizedPortalData = {
     id: p.id,
     clientName: p.clientName,
@@ -607,7 +518,7 @@ portalRouter.get('/project/:projectId', (req: Request, res: Response) => {
     startDate: p.startDate,
     targetDeliveryDate: p.targetDeliveryDate,
     timelineDays: p.timelineDays,
-    stagingUrl: p.stagingUrl || 'https://staging-preview.clientops-agency.internal',
+    stagingUrl: p.stagingUrl || 'https://staging-preview.clientops.internal',
     internalQAPassed: p.internalQAPassed,
     clientApproved: p.clientApproved,
     domainTransferred: p.domainTransferred,
@@ -620,21 +531,31 @@ portalRouter.get('/project/:projectId', (req: Request, res: Response) => {
     balanceTxId: p.balanceTxId,
     paymentMethod: p.paymentMethod,
     currency: p.currency || 'USD',
-    feedback: p.clientFeedback || [],
-    portalToken: p.clientPortalToken
+    feedback: p.clientFeedback || []
   };
 
-  res.json({ success: true, project: sanitizedPortalData });
+  return res.json({ success: true, project: sanitizedPortalData });
 });
 
 portalRouter.post('/feedback/:projectId', (req: Request, res: Response) => {
   const db = readDB();
   const { projectId } = req.params;
-  const { author, content, category } = req.body;
+  const { author, content, category, token } = req.body || {};
 
   const p: any = (db.projects || []).find((proj: any) => proj.id === projectId);
   if (!p) {
     return res.status(404).json({ success: false, message: 'Project not found.' });
+  }
+
+  const authUser = (req as AuthenticatedRequest).user;
+  const hasCompanyMembership =
+    authUser &&
+    (db.companyMemberships || []).some(
+      (m: any) => m.userId === authUser.id && isSameCompany(p, m.companyId)
+    );
+
+  if (!hasCompanyMembership && p.clientPortalToken && token !== p.clientPortalToken) {
+    return res.status(403).json({ success: false, message: 'Unauthorized client portal token.' });
   }
 
   if (!p.clientFeedback) p.clientFeedback = [];
@@ -648,39 +569,27 @@ portalRouter.post('/feedback/:projectId', (req: Request, res: Response) => {
   };
 
   p.clientFeedback.push(feedbackItem);
-
-  if (!Array.isArray(db.chatMessages)) db.chatMessages = [];
-  db.chatMessages.push({
-    id: `msg-client-fb-${Date.now()}`,
-    senderId: 'bot-client-portal',
-    senderName: 'Client Portal Bot',
-    senderRole: 'coordinator',
-    channel: 'staging-dev',
-    content: `📢 **New Client Feedback Submitted via Portal**\n• Project: ${p.clientCompany || p.clientName} (${p.websiteType.toUpperCase()})\n• Category: ${feedbackItem.category.toUpperCase()}\n• Note: "${content}"`,
-    timestamp: new Date().toISOString(),
-    reactions: { '🔥': 0, '👏': 0 }
-  });
-
   writeDB(db);
 
-  res.json({ success: true, message: 'Feedback submitted successfully. Development team notified.', feedbackItem });
+  return res.json({ success: true, message: 'Feedback submitted successfully.', feedbackItem });
 });
 
-portalRouter.post('/generate-link/:projectId', (req: Request, res: Response) => {
+portalRouter.post('/generate-link/:projectId', requireCompanyRole(['company_admin', 'department_head']), (req: AuthenticatedRequest, res: Response) => {
   const db = readDB();
   const { projectId } = req.params;
-  const p: any = (db.projects || []).find((proj: any) => proj.id === projectId);
+  const p: any = (db.projects || []).find(
+    (proj: any) => proj.id === projectId && isSameCompany(proj, req.companyId!)
+  );
   if (!p) {
     return res.status(404).json({ success: false, message: 'Project not found.' });
   }
 
   if (!p.clientPortalToken) {
-    p.clientPortalToken = `portal-${p.id}-${Math.random().toString(36).substring(2, 8)}`;
+    p.clientPortalToken = `portal-${p.id}-${Math.random().toString(36).substring(2, 10)}`;
+    writeDB(db);
   }
 
-  writeDB(db);
-
-  res.json({
+  return res.json({
     success: true,
     projectId: p.id,
     token: p.clientPortalToken,
@@ -691,28 +600,29 @@ portalRouter.post('/generate-link/:projectId', (req: Request, res: Response) => 
 portalRouter.post('/action/:projectId', (req: Request, res: Response) => {
   const db = readDB();
   const { projectId } = req.params;
-  const { action, token, clientName, notes } = req.body;
+  const { action, token, clientName, notes } = req.body || {};
 
   const p: any = (db.projects || []).find((proj: any) => proj.id === projectId);
   if (!p) {
     return res.status(404).json({ success: false, message: 'Project not found.' });
   }
 
-  // Token check if passed
-  if (token && p.clientPortalToken && token !== p.clientPortalToken) {
+  const authUser = (req as AuthenticatedRequest).user;
+  const hasCompanyMembership =
+    authUser &&
+    (db.companyMemberships || []).some(
+      (m: any) => m.userId === authUser.id && isSameCompany(p, m.companyId)
+    );
+
+  if (!hasCompanyMembership && p.clientPortalToken && token !== p.clientPortalToken) {
     return res.status(403).json({ success: false, message: 'Unauthorized client token.' });
   }
-
-  if (!Array.isArray(db.chatMessages)) db.chatMessages = [];
 
   if (action === 'approve_milestone') {
     p.clientApproved = true;
     p.clientApprovalDate = new Date().toISOString();
     p.clientRating = 5;
-    if (p.status === 'staging_dev') {
-      p.status = 'client_review';
-    }
-
+    if (p.status === 'staging_dev') p.status = 'client_review';
     if (!p.clientFeedback) p.clientFeedback = [];
     p.clientFeedback.push({
       id: `fb-appr-${Date.now()}`,
@@ -722,39 +632,18 @@ portalRouter.post('/action/:projectId', (req: Request, res: Response) => {
       createdAt: new Date().toISOString(),
       resolved: true
     });
-
-    db.chatMessages.push({
-      id: `msg-client-signoff-${Date.now()}`,
-      senderId: 'bot-client-portal',
-      senderName: 'Client Portal Bot',
-      senderRole: 'coordinator',
-      channel: 'staging-dev',
-      content: `🎉 **Official Client Milestone Sign-Off Received**\n• Project: ${p.clientCompany || p.clientName}\n• Approved By: ${clientName || p.clientName}\n• Notes: "${notes || 'All requirements verified on staging.'}"\n• Action Required: Prepare 50% balance clearance invoice for live DNS cutover per SOP Rule 8.`,
-      timestamp: new Date().toISOString(),
-      reactions: { '🔥': 1, '👏': 2 }
-    });
-
     writeDB(db);
-    return res.json({ success: true, message: 'Milestone sign-off recorded. Development team notified!', project: p });
+    return res.json({ success: true, message: 'Milestone sign-off recorded.', project: p });
   }
 
   if (action === 'request_meeting') {
-    db.chatMessages.push({
-      id: `msg-meeting-req-${Date.now()}`,
-      senderId: 'bot-client-portal',
-      senderName: 'Client Portal Bot',
-      senderRole: 'coordinator',
-      channel: 'announcements',
-      content: `📅 **Client Requested Staging Walkthrough Call**\n• Client: ${clientName || p.clientName} (${p.clientCompany || 'Company'})\n• Topic: "${notes || 'Interactive layout walkthrough before final sign-off.'}"\n• Preferred Channel: Google Meet / WhatsApp`,
-      timestamp: new Date().toISOString(),
-      reactions: { '🔥': 0, '👏': 1 } as any
+    return res.json({
+      success: true,
+      message: 'Meeting request received. Your account manager will confirm the schedule shortly.'
     });
-
-    writeDB(db);
-    return res.json({ success: true, message: 'Meeting request received. Your account manager will confirm the schedule within 4 hours.' });
   }
 
-  res.status(400).json({ success: false, message: 'Unknown portal action.' });
+  return res.status(400).json({ success: false, message: 'Unknown portal action.' });
 });
 
 export default projectRouter;

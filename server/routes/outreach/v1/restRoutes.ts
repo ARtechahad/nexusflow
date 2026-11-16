@@ -16,7 +16,7 @@ import {
   deliverWebhook
 } from '../../../services/outreach/webhooks';
 import { requireApiKeyScope, idempotencyMiddleware } from '../../../middlewares/apiKeyAuth';
-import { authenticateToken } from '../../../middlewares/auth';
+import { AuthenticatedRequest, requireCompanyRole } from '../../../middlewares/auth';
 import { getOutreachPool } from '../../../services/outreach/schema';
 import { getTenantUsageSummary, getTenantPlan } from '../../../services/outreach/plans';
 import { verifySingleEmail } from '../../../services/outreach/verifier';
@@ -25,6 +25,8 @@ import { validateSequenceCycles } from '../../../services/outreach/branching';
 import { enqueueOutreachJob } from '../../../services/outreach/queue';
 
 export const restV1Router = express.Router();
+
+const requireCompanyOutreachRole = requireCompanyRole(['company_admin', 'department_head']);
 
 // Helper to support both API Key (lf_...) and UI Session Token
 function flexAuth(requiredScope: ApiScope = '*', options: { isWrite?: boolean; isBulk?: boolean } = {}) {
@@ -38,10 +40,8 @@ function flexAuth(requiredScope: ApiScope = '*', options: { isWrite?: boolean; i
       return apiKeyMiddleware(req, res, next);
     }
 
-    // Fall back to UI session authentication
-    authenticateToken(req, res, () => {
-      const u = (req as any).user;
-      req.tenantId = u?.tenant_id || u?.tenantId || 'tenant-alm-nexus';
+    requireCompanyOutreachRole(req as AuthenticatedRequest, res, () => {
+      req.tenantId = (req as AuthenticatedRequest).companyId;
       next();
     });
   };
@@ -67,7 +67,7 @@ restV1Router.post('/api-keys', flexAuth('*'), async (req: Request, res: Response
       res.status(400).json({ error: 'invalid_params', details: parsed.error.issues });
       return;
     }
-    const tenantId = req.tenantId || 'tenant-alm-nexus';
+    const tenantId = req.tenantId!;
     const perms = parsed.data.scopes || parsed.data.permissions || ['*'];
     const result = await createTenantApiKey(tenantId, parsed.data.name, perms);
     res.status(201).json({
@@ -83,7 +83,7 @@ restV1Router.post('/api-keys', flexAuth('*'), async (req: Request, res: Response
 
 restV1Router.get('/api-keys', flexAuth('*'), async (req: Request, res: Response): Promise<void> => {
   try {
-    const tenantId = req.tenantId || 'tenant-alm-nexus';
+    const tenantId = req.tenantId!;
     const keys = await listTenantApiKeys(tenantId);
     res.json({ success: true, keys });
   } catch (err: any) {
@@ -93,7 +93,7 @@ restV1Router.get('/api-keys', flexAuth('*'), async (req: Request, res: Response)
 
 restV1Router.delete('/api-keys/:id', flexAuth('*'), async (req: Request, res: Response): Promise<void> => {
   try {
-    const tenantId = req.tenantId || 'tenant-alm-nexus';
+    const tenantId = req.tenantId!;
     const success = await deleteTenantApiKey(tenantId, req.params.id);
     if (!success) {
       res.status(404).json({ error: 'not_found', message: 'API key not found' });
@@ -122,7 +122,7 @@ restV1Router.post('/webhooks', flexAuth('*'), async (req: Request, res: Response
       res.status(400).json({ error: 'invalid_params', details: parsed.error.issues });
       return;
     }
-    const tenantId = req.tenantId || 'tenant-alm-nexus';
+    const tenantId = req.tenantId!;
     const hook = await createWebhookEndpoint(tenantId, parsed.data);
     res.status(201).json({ success: true, webhook: hook });
   } catch (err: any) {
@@ -132,7 +132,7 @@ restV1Router.post('/webhooks', flexAuth('*'), async (req: Request, res: Response
 
 restV1Router.get('/webhooks', flexAuth('*'), async (req: Request, res: Response): Promise<void> => {
   try {
-    const tenantId = req.tenantId || 'tenant-alm-nexus';
+    const tenantId = req.tenantId!;
     const hooks = await listWebhookEndpoints(tenantId);
     res.json({ success: true, webhooks: hooks });
   } catch (err: any) {
@@ -142,7 +142,7 @@ restV1Router.get('/webhooks', flexAuth('*'), async (req: Request, res: Response)
 
 restV1Router.delete('/webhooks/:id', flexAuth('*'), async (req: Request, res: Response): Promise<void> => {
   try {
-    const tenantId = req.tenantId || 'tenant-alm-nexus';
+    const tenantId = req.tenantId!;
     const success = await deleteWebhookEndpoint(tenantId, req.params.id);
     if (!success) {
       res.status(404).json({ error: 'not_found', message: 'Webhook not found' });
@@ -156,7 +156,7 @@ restV1Router.delete('/webhooks/:id', flexAuth('*'), async (req: Request, res: Re
 
 restV1Router.get('/webhooks/deliveries', flexAuth('*'), async (req: Request, res: Response): Promise<void> => {
   try {
-    const tenantId = req.tenantId || 'tenant-alm-nexus';
+    const tenantId = req.tenantId!;
     const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 50));
     const deliveries = await listWebhookDeliveries(tenantId, undefined, limit);
     res.json({ success: true, deliveries });
@@ -167,7 +167,7 @@ restV1Router.get('/webhooks/deliveries', flexAuth('*'), async (req: Request, res
 
 restV1Router.get('/webhooks/:id/deliveries', flexAuth('*'), async (req: Request, res: Response): Promise<void> => {
   try {
-    const tenantId = req.tenantId || 'tenant-alm-nexus';
+    const tenantId = req.tenantId!;
     const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 50));
     const webhookId = req.params.id === 'all' ? undefined : req.params.id;
     const deliveries = await listWebhookDeliveries(tenantId, webhookId, limit);
@@ -179,7 +179,7 @@ restV1Router.get('/webhooks/:id/deliveries', flexAuth('*'), async (req: Request,
 
 restV1Router.post('/webhooks/deliveries/:deliveryId/replay', flexAuth('*'), async (req: Request, res: Response): Promise<void> => {
   try {
-    const tenantId = req.tenantId || 'tenant-alm-nexus';
+    const tenantId = req.tenantId!;
     const replayed = await replayWebhookDelivery(tenantId, req.params.deliveryId);
     res.json({ success: true, replayed });
   } catch (err: any) {
@@ -197,7 +197,7 @@ restV1Router.get('/campaigns', flexAuth('campaigns:read'), async (req: Request, 
     res.status(500).json({ error: 'internal_error', message: 'DB unavailable' });
     return;
   }
-  const tenantId = req.tenantId || 'tenant-alm-nexus';
+  const tenantId = req.tenantId!;
   const status = req.query.status as string;
   let q = `SELECT * FROM ox_campaigns WHERE tenant_id = $1`;
   const p: any[] = [tenantId];
@@ -216,7 +216,7 @@ restV1Router.post('/campaigns', flexAuth('campaigns:write'), async (req: Request
     res.status(500).json({ error: 'internal_error', message: 'DB unavailable' });
     return;
   }
-  const tenantId = req.tenantId || 'tenant-alm-nexus';
+  const tenantId = req.tenantId!;
   const name = req.body?.name?.trim();
   if (!name) {
     res.status(400).json({ error: 'invalid_params', message: 'Campaign name is required' });
@@ -240,7 +240,7 @@ restV1Router.get('/campaigns/:id', flexAuth('campaigns:read'), async (req: Reque
     res.status(500).json({ error: 'internal_error', message: 'DB unavailable' });
     return;
   }
-  const tenantId = req.tenantId || 'tenant-alm-nexus';
+  const tenantId = req.tenantId!;
   const campRes = await pool.query(`SELECT * FROM ox_campaigns WHERE id = $1 AND tenant_id = $2`, [
     req.params.id,
     tenantId
@@ -267,7 +267,7 @@ restV1Router.post('/campaigns/:id/start', flexAuth('campaigns:write'), async (re
     res.status(500).json({ error: 'internal_error', message: 'DB unavailable' });
     return;
   }
-  const tenantId = req.tenantId || 'tenant-alm-nexus';
+  const tenantId = req.tenantId!;
   const usage = await getTenantUsageSummary(tenantId, pool);
   if (usage.isUpgradeRequired) {
     res.status(403).json({
@@ -294,7 +294,7 @@ restV1Router.post('/campaigns/:id/pause', flexAuth('campaigns:write'), async (re
     res.status(500).json({ error: 'internal_error', message: 'DB unavailable' });
     return;
   }
-  const tenantId = req.tenantId || 'tenant-alm-nexus';
+  const tenantId = req.tenantId!;
   await pool.query(`UPDATE ox_campaigns SET status = 'paused', updated_at = NOW() WHERE id = $1 AND tenant_id = $2`, [
     req.params.id,
     tenantId
@@ -308,7 +308,7 @@ restV1Router.post('/campaigns/:id/resume', flexAuth('campaigns:write'), async (r
     res.status(500).json({ error: 'internal_error', message: 'DB unavailable' });
     return;
   }
-  const tenantId = req.tenantId || 'tenant-alm-nexus';
+  const tenantId = req.tenantId!;
   await pool.query(`UPDATE ox_campaigns SET status = 'active', updated_at = NOW() WHERE id = $1 AND tenant_id = $2`, [
     req.params.id,
     tenantId
@@ -322,7 +322,7 @@ restV1Router.post('/campaigns/:id/enroll', flexAuth('enrollments:write'), async 
     res.status(500).json({ error: 'internal_error', message: 'DB unavailable' });
     return;
   }
-  const tenantId = req.tenantId || 'tenant-alm-nexus';
+  const tenantId = req.tenantId!;
   const campaignId = req.params.id;
   const prospectIds: string[] = req.body.prospect_ids || [];
 
@@ -352,7 +352,7 @@ restV1Router.get('/prospects', flexAuth('prospects:read'), async (req: Request, 
     res.status(500).json({ error: 'internal_error', message: 'DB unavailable' });
     return;
   }
-  const tenantId = req.tenantId || 'tenant-alm-nexus';
+  const tenantId = req.tenantId!;
   const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 50));
   const resP = await pool.query(
     `SELECT * FROM ox_prospects WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT $2`,
@@ -367,7 +367,7 @@ restV1Router.post('/prospects', flexAuth('prospects:write'), async (req: Request
     res.status(500).json({ error: 'internal_error', message: 'DB unavailable' });
     return;
   }
-  const tenantId = req.tenantId || 'tenant-alm-nexus';
+  const tenantId = req.tenantId!;
   const email = req.body?.email?.trim().toLowerCase();
   if (!email || !email.includes('@')) {
     res.status(400).json({ error: 'invalid_params', message: 'Valid email is required' });
@@ -395,7 +395,7 @@ restV1Router.post('/prospects/bulk', flexAuth('prospects:write', { isBulk: true 
     res.status(500).json({ error: 'internal_error', message: 'DB unavailable' });
     return;
   }
-  const tenantId = req.tenantId || 'tenant-alm-nexus';
+  const tenantId = req.tenantId!;
   const list = req.body.prospects;
   if (!Array.isArray(list) || list.length === 0) {
     res.status(400).json({ error: 'invalid_params', message: 'Array of prospects is required' });
@@ -420,7 +420,7 @@ restV1Router.post('/prospects/bulk', flexAuth('prospects:write', { isBulk: true 
 
 restV1Router.post('/verify', flexAuth('*'), async (req: Request, res: Response): Promise<void> => {
   const pool = getOutreachPool();
-  const tenantId = req.tenantId || 'tenant-alm-nexus';
+  const tenantId = req.tenantId!;
   const email = req.body?.email?.trim();
   if (!email) {
     res.status(400).json({ error: 'invalid_params', message: 'Email address required' });
@@ -440,7 +440,7 @@ restV1Router.get('/mailboxes', flexAuth('mailboxes:read'), async (req: Request, 
     res.status(500).json({ error: 'internal_error', message: 'DB unavailable' });
     return;
   }
-  const tenantId = req.tenantId || 'tenant-alm-nexus';
+  const tenantId = req.tenantId!;
   const resM = await pool.query(
     `SELECT id, email, sender_name, status, daily_cap, reputation_score, health_status, created_at
      FROM ox_mailboxes WHERE tenant_id = $1 AND (is_deleted IS NULL OR is_deleted = false)`,
@@ -455,7 +455,7 @@ restV1Router.get('/mailboxes/:id/health', flexAuth('mailboxes:read'), async (req
     res.status(500).json({ error: 'internal_error', message: 'DB unavailable' });
     return;
   }
-  const tenantId = req.tenantId || 'tenant-alm-nexus';
+  const tenantId = req.tenantId!;
   const resM = await pool.query(
     `SELECT m.*, d.domain, d.spf_status, d.dkim_status, d.dmarc_status, d.mx_status
      FROM ox_mailboxes m
@@ -476,7 +476,7 @@ restV1Router.get('/warmup/stats', flexAuth('warmup:read'), async (req: Request, 
     res.status(500).json({ error: 'internal_error', message: 'DB unavailable' });
     return;
   }
-  const tenantId = req.tenantId || 'tenant-alm-nexus';
+  const tenantId = req.tenantId!;
   const statsRes = await pool.query(
     `SELECT SUM(warmup_sent_count)::int as sent, SUM(warmup_received_count)::int as received, SUM(spam_rescue_count)::int as rescued
      FROM ox_mailbox_daily WHERE tenant_id = $1`,
@@ -491,7 +491,7 @@ restV1Router.get('/suppressions', flexAuth('suppressions:read'), async (req: Req
     res.status(500).json({ error: 'internal_error', message: 'DB unavailable' });
     return;
   }
-  const tenantId = req.tenantId || 'tenant-alm-nexus';
+  const tenantId = req.tenantId!;
   const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 50));
   const resS = await pool.query(
     `SELECT * FROM ox_suppressions WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT $2`,
@@ -506,7 +506,7 @@ restV1Router.post('/suppressions', flexAuth('suppressions:write'), async (req: R
     res.status(500).json({ error: 'internal_error', message: 'DB unavailable' });
     return;
   }
-  const tenantId = req.tenantId || 'tenant-alm-nexus';
+  const tenantId = req.tenantId!;
   const email = req.body?.email?.trim().toLowerCase();
   const domain = req.body?.domain?.trim().toLowerCase();
   const reason = req.body?.reason || 'manual';
@@ -528,7 +528,7 @@ restV1Router.post('/suppressions', flexAuth('suppressions:write'), async (req: R
 
 restV1Router.get('/usage', flexAuth('*'), async (req: Request, res: Response): Promise<void> => {
   const pool = getOutreachPool();
-  const tenantId = req.tenantId || 'tenant-alm-nexus';
+  const tenantId = req.tenantId!;
   const usage = await getTenantUsageSummary(tenantId, pool || undefined);
   res.json({ success: true, usage });
 });

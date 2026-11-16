@@ -3,14 +3,14 @@ import {
   Mail,
   Lock,
   User,
-  Building2,
   ArrowRight,
   AlertCircle,
   CheckCircle2,
   Layers,
   ArrowLeft,
   ShieldCheck,
-  RefreshCw
+  RefreshCw,
+  Building2
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
@@ -24,7 +24,6 @@ interface RoleLoginViewProps {
 interface PendingVerificationState {
   email: string;
   fullName: string;
-  companyName: string;
   deliveryProvider?: string;
 }
 
@@ -37,7 +36,9 @@ export const RoleLoginView: React.FC<RoleLoginViewProps> = ({
     requestSignupOtp,
     resendSignupOtp,
     verifySignupOtp,
-    setActiveTab,
+    inviteToken,
+    invitePreview,
+    acceptInvite,
     showToast
   } = useApp();
 
@@ -48,9 +49,8 @@ export const RoleLoginView: React.FC<RoleLoginViewProps> = ({
   const [signInEmail, setSignInEmail] = useState('');
   const [signInPassword, setSignInPassword] = useState('');
 
-  // Create Account fields
+  // Individual-first Create Account fields (NO Company Name here)
   const [fullName, setFullName] = useState('');
-  const [companyName, setCompanyName] = useState('');
   const [signUpEmail, setSignUpEmail] = useState('');
   const [signUpPassword, setSignUpPassword] = useState('');
 
@@ -78,7 +78,14 @@ export const RoleLoginView: React.FC<RoleLoginViewProps> = ({
     setStatusMessage(null);
   }, [initialMode]);
 
-  // 30-second Resend Code cooldown timer
+  // Pre-fill email if arriving from an invite link
+  useEffect(() => {
+    if (invitePreview?.email) {
+      setSignInEmail((prev) => prev || invitePreview.email);
+      setSignUpEmail((prev) => prev || invitePreview.email);
+    }
+  }, [invitePreview?.email]);
+
   useEffect(() => {
     if (resendCooldown <= 0) return;
     const timer = window.setInterval(() => {
@@ -87,7 +94,6 @@ export const RoleLoginView: React.FC<RoleLoginViewProps> = ({
     return () => window.clearInterval(timer);
   }, [resendCooldown]);
 
-  // Auto-focus first OTP slot when entering verification step
   useEffect(() => {
     if (verificationStep) {
       const id = window.setTimeout(() => {
@@ -110,7 +116,7 @@ export const RoleLoginView: React.FC<RoleLoginViewProps> = ({
     e.preventDefault();
     const email = signInEmail.trim();
     if (!email || !signInPassword) {
-      setErrorMessage('Please enter your work email and password.');
+      setErrorMessage('Please enter your email address and password.');
       return;
     }
 
@@ -119,10 +125,12 @@ export const RoleLoginView: React.FC<RoleLoginViewProps> = ({
     try {
       const res = await login(email, signInPassword);
       if (res.success) {
-        setActiveTab('pipeline');
+        if (inviteToken) {
+          await acceptInvite(inviteToken);
+        }
         onSuccess?.();
       } else {
-        setErrorMessage(res.message || 'Invalid work email or password.');
+        setErrorMessage(res.message || 'Invalid email address or password.');
       }
     } catch (err: any) {
       setErrorMessage(err?.message || 'Unable to sign in. Please try again.');
@@ -134,11 +142,10 @@ export const RoleLoginView: React.FC<RoleLoginViewProps> = ({
   const handleCreateAccountSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanName = fullName.trim();
-    const cleanCompany = companyName.trim();
     const cleanEmail = signUpEmail.trim().toLowerCase();
 
-    if (!cleanName || !cleanCompany || !cleanEmail || !signUpPassword) {
-      setErrorMessage('Please complete all fields to create your workspace.');
+    if (!cleanName || !cleanEmail || !signUpPassword) {
+      setErrorMessage('Please enter your full name, email address, and password.');
       return;
     }
     if (signUpPassword.length < 6) {
@@ -152,7 +159,6 @@ export const RoleLoginView: React.FC<RoleLoginViewProps> = ({
     try {
       const res = await requestSignupOtp({
         fullName: cleanName,
-        companyName: cleanCompany,
         email: cleanEmail,
         password: signUpPassword
       });
@@ -161,7 +167,6 @@ export const RoleLoginView: React.FC<RoleLoginViewProps> = ({
         setVerificationStep({
           email: res.email || cleanEmail,
           fullName: cleanName,
-          companyName: cleanCompany,
           deliveryProvider: res.deliveryProvider
         });
         setOtpDigits(['', '', '', '', '', '']);
@@ -191,7 +196,6 @@ export const RoleLoginView: React.FC<RoleLoginViewProps> = ({
       return;
     }
 
-    // Handle multi-digit typing or mobile OTP autofill in one input
     if (digitsOnly.length > 1) {
       const next = [...otpDigits];
       for (let i = 0; i < 6 && index + i < 6; i++) {
@@ -265,6 +269,9 @@ export const RoleLoginView: React.FC<RoleLoginViewProps> = ({
     try {
       const res = await verifySignupOtp(verificationStep.email, combinedOtp);
       if (res.success) {
+        if (inviteToken) {
+          await acceptInvite(inviteToken);
+        }
         onSuccess?.();
       } else {
         setErrorMessage(res.message || 'Invalid or expired verification code.');
@@ -306,7 +313,7 @@ export const RoleLoginView: React.FC<RoleLoginViewProps> = ({
     e.preventDefault();
     const cleanEmail = resetEmail.trim();
     if (!cleanEmail) {
-      setErrorMessage('Please enter your work email address.');
+      setErrorMessage('Please enter your email address.');
       return;
     }
 
@@ -334,7 +341,7 @@ export const RoleLoginView: React.FC<RoleLoginViewProps> = ({
 
   return (
     <div className="w-full max-w-md mx-auto animate-fadeIn">
-      <div className="bg-[#FFFFFF] dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl p-6 sm:p-8 space-y-6">
+      <div className="bg-[#FFFFFF] dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl p-6 sm:p-8 space-y-5">
         {/* Clean Brand Header */}
         <div className="text-center space-y-2">
           <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center mx-auto shadow-xs">
@@ -347,7 +354,7 @@ export const RoleLoginView: React.FC<RoleLoginViewProps> = ({
               ? 'Reset Your Password'
               : mode === 'signin'
               ? 'Sign in to ClientOps'
-              : 'Create Your Company Workspace'}
+              : 'Create Your Personal Account'}
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
             {verificationStep ? (
@@ -358,14 +365,29 @@ export const RoleLoginView: React.FC<RoleLoginViewProps> = ({
                 Code expires in 10 minutes.
               </>
             ) : showForgotPassword ? (
-              'Enter your work email and we will send recovery instructions.'
+              'Enter your email address and we will send recovery instructions.'
             ) : mode === 'signin' ? (
-              'Enter your workspace credentials to access your operations dashboard.'
+              'Sign in to manage your companies, departments, and operations.'
             ) : (
-              'Create your account and verify your work email to launch your workspace.'
+              'Register your personal profile first, then create or join a company.'
             )}
           </p>
         </div>
+
+        {/* Invitation Banner if opened from an invite link */}
+        {invitePreview && !verificationStep && !showForgotPassword && (
+          <div className="p-3.5 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/35 border border-indigo-200 dark:border-indigo-500/30 text-xs space-y-1">
+            <div className="flex items-center gap-2 font-bold text-indigo-900 dark:text-indigo-200">
+              <Building2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+              <span>Team Invitation: {invitePreview.companyName}</span>
+            </div>
+            <p className="text-slate-700 dark:text-slate-300 leading-relaxed">
+              <strong>{invitePreview.invitedByName}</strong> invited <strong>{invitePreview.email}</strong> to{' '}
+              <strong>{invitePreview.departmentName}</strong> as{' '}
+              <strong>{invitePreview.role === 'department_head' ? 'Department Head' : 'Employee'}</strong> ({invitePreview.designation}).
+            </p>
+          </div>
+        )}
 
         {/* Two Simple Tabs: Sign In & Create Account */}
         {!showForgotPassword && !verificationStep && (
@@ -403,7 +425,7 @@ export const RoleLoginView: React.FC<RoleLoginViewProps> = ({
           </div>
         )}
 
-        {/* Inline Status Notice (e.g., OTP sent / resent) */}
+        {/* Inline Status Notice */}
         {statusMessage && !errorMessage && (
           <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-500/30 text-emerald-800 dark:text-emerald-300 text-xs flex items-start gap-2">
             <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
@@ -486,7 +508,6 @@ export const RoleLoginView: React.FC<RoleLoginViewProps> = ({
             </div>
           </form>
         ) : showForgotPassword ? (
-          /* FORGOT PASSWORD VIEW */
           resetSent ? (
             <div className="space-y-4 text-center py-2">
               <div className="w-10 h-10 rounded-full bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-500/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto">
@@ -511,7 +532,7 @@ export const RoleLoginView: React.FC<RoleLoginViewProps> = ({
             <form onSubmit={handleForgotPasswordSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                  Work Email
+                  Email Address
                 </label>
                 <div className="relative">
                   <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -520,7 +541,7 @@ export const RoleLoginView: React.FC<RoleLoginViewProps> = ({
                     required
                     value={resetEmail}
                     onChange={(e) => setResetEmail(e.target.value)}
-                    placeholder="you@company.com"
+                    placeholder="you@domain.com"
                     className="w-full pl-10 pr-3.5 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-[#F8FAFC] dark:bg-[#090D16] text-slate-950 dark:text-white text-xs font-medium focus:outline-hidden focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500"
                   />
                 </div>
@@ -547,11 +568,10 @@ export const RoleLoginView: React.FC<RoleLoginViewProps> = ({
             </form>
           )
         ) : mode === 'signin' ? (
-          /* SIGN IN TAB */
           <form onSubmit={handleSignInSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                Work Email
+                Email Address
               </label>
               <div className="relative">
                 <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -561,7 +581,7 @@ export const RoleLoginView: React.FC<RoleLoginViewProps> = ({
                   required
                   value={signInEmail}
                   onChange={(e) => setSignInEmail(e.target.value)}
-                  placeholder="you@company.com"
+                  placeholder="you@domain.com"
                   className="w-full pl-10 pr-3.5 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-[#F8FAFC] dark:bg-[#090D16] text-slate-950 dark:text-white text-xs font-medium focus:outline-hidden focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500"
                 />
               </div>
@@ -609,7 +629,7 @@ export const RoleLoginView: React.FC<RoleLoginViewProps> = ({
             </button>
           </form>
         ) : (
-          /* CREATE ACCOUNT TAB */
+          /* INDIVIDUAL-FIRST CREATE ACCOUNT TAB (ONLY Full Name, Email, Password) */
           <form onSubmit={handleCreateAccountSubmit} className="space-y-3.5">
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
@@ -623,7 +643,7 @@ export const RoleLoginView: React.FC<RoleLoginViewProps> = ({
                   required
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
-                  placeholder="Alex Morgan"
+                  placeholder="Ahad Rana"
                   className="w-full pl-10 pr-3.5 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-[#F8FAFC] dark:bg-[#090D16] text-slate-950 dark:text-white text-xs font-medium focus:outline-hidden focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500"
                 />
               </div>
@@ -631,25 +651,7 @@ export const RoleLoginView: React.FC<RoleLoginViewProps> = ({
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                Company / Workspace Name
-              </label>
-              <div className="relative">
-                <Building2 className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <input
-                  id="input-signup-company"
-                  type="text"
-                  required
-                  value={companyName}
-                  onChange={(e) => setCompanyName(e.target.value)}
-                  placeholder="Northstar Operations Ltd"
-                  className="w-full pl-10 pr-3.5 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-[#F8FAFC] dark:bg-[#090D16] text-slate-950 dark:text-white text-xs font-medium focus:outline-hidden focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                Work Email
+                Email Address
               </label>
               <div className="relative">
                 <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -659,7 +661,7 @@ export const RoleLoginView: React.FC<RoleLoginViewProps> = ({
                   required
                   value={signUpEmail}
                   onChange={(e) => setSignUpEmail(e.target.value)}
-                  placeholder="alex@northstar.com"
+                  placeholder="you@domain.com"
                   className="w-full pl-10 pr-3.5 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-[#F8FAFC] dark:bg-[#090D16] text-slate-950 dark:text-white text-xs font-medium focus:outline-hidden focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500"
                 />
               </div>
@@ -690,7 +692,7 @@ export const RoleLoginView: React.FC<RoleLoginViewProps> = ({
               disabled={loading}
               className="btn-tactile-primary w-full py-2.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 mt-2"
             >
-              <span>{loading ? 'Sending Verification Code...' : 'Create Workspace'}</span>
+              <span>{loading ? 'Sending Verification Code...' : 'Continue & Verify Email'}</span>
               {!loading && <ArrowRight className="w-3.5 h-3.5" />}
             </button>
           </form>

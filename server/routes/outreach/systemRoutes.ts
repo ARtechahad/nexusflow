@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import { z } from 'zod';
-import { authenticateToken, requireRole, AuthenticatedRequest } from '../../middlewares/auth';
+import { requireCompanyRole, AuthenticatedRequest } from '../../middlewares/auth';
 import { getOutreachPool } from '../../services/outreach/schema';
 import { getQueueStats, enqueue, isQueueRunning } from '../../services/outreach/queue';
 import { isEncryptionConfigured } from '../../services/outreach/crypto';
@@ -43,8 +43,7 @@ outreachSystemRouter.get('/health', (req, res: Response) => {
  */
 outreachSystemRouter.get(
   '/queue',
-  authenticateToken,
-  requireRole(['admin', 'ceo', 'bd_head']),
+  requireCompanyRole(['company_admin']),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const pool = getOutreachPool();
@@ -55,7 +54,7 @@ outreachSystemRouter.get(
         });
       }
 
-      const tenantId = req.user?.tenant_id || (req as any).tenant_id || 'tenant-alm-nexus';
+      const tenantId = req.companyId!;
       const stats = await getQueueStats(pool, tenantId);
 
       return res.json({
@@ -82,8 +81,7 @@ outreachSystemRouter.get(
  */
 outreachSystemRouter.post(
   '/queue/test-job',
-  authenticateToken,
-  requireRole(['admin', 'ceo', 'bd_head']),
+  requireCompanyRole(['company_admin']),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const parsed = testJobSchema.safeParse(req.body);
@@ -103,7 +101,7 @@ outreachSystemRouter.post(
         });
       }
 
-      const tenantId = req.user?.tenant_id || (req as any).tenant_id || 'tenant-alm-nexus';
+      const tenantId = req.companyId!;
       const { shouldFail = false, reason = 'Simulated test failure', type = 'system.test_job' } = parsed.data;
 
       const jobId = await enqueue(

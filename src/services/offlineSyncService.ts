@@ -191,10 +191,9 @@ class OfflineSyncService {
     localVersion: number = 1
   ): string {
     const id = `mut_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-    const activeTenantId = (typeof window !== 'undefined' ? localStorage.getItem('alm_nexus_tenant_id') : null) || 'tenant-alm-nexus';
+    const activeTenantId = (typeof window !== 'undefined' ? localStorage.getItem('alm_nexus_tenant_id') : null) || '';
     const enrichedPayload = {
-      tenant_id: activeTenantId,
-      tenantId: activeTenantId,
+      ...(activeTenantId ? { tenant_id: activeTenantId, tenantId: activeTenantId } : {}),
       ...payload
     };
     
@@ -359,10 +358,10 @@ class OfflineSyncService {
     const remainingQueue: QueuedMutation[] = [];
 
     const token = typeof window !== 'undefined' ? localStorage.getItem('alm_nexus_token') : null;
-    const activeTenantId = (typeof window !== 'undefined' ? localStorage.getItem('alm_nexus_tenant_id') : null) || 'tenant-alm-nexus';
+    const activeTenantId = (typeof window !== 'undefined' ? localStorage.getItem('alm_nexus_tenant_id') : null) || '';
     const authHeaders: Record<string, string> = {
       'Content-Type': 'application/json',
-      'X-Tenant-Id': activeTenantId
+      ...(activeTenantId ? { 'X-Tenant-Id': activeTenantId } : {})
     };
     if (token) {
       authHeaders['Authorization'] = `Bearer ${token}`;

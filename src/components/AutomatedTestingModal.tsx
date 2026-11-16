@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { buildAuthHeaders } from '../lib/api';
 import { AutomatedTestResult } from '../types';
 import {
   CheckCircle2,
@@ -23,7 +24,7 @@ export const AutomatedTestingModal: React.FC = () => {
   const runTests = async () => {
     setRunning(true);
     try {
-      const res = await fetch('/api/test-runner', { method: 'POST' });
+      const res = await fetch('/api/test-runner', { method: 'POST', headers: buildAuthHeaders() });
       if (res.ok) {
         const data = await res.json();
         setTestResults(data.tests || []);

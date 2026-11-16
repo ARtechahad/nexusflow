@@ -1,272 +1,238 @@
-import { Router, Request, Response } from 'express';
+import { Router, Response } from 'express';
 import crypto from 'crypto';
-import { 
-  getDB, 
-  saveDB, 
-  DEFAULT_TENANTS, 
-  DEFAULT_ACTIVITY_FEED, 
-  DEFAULT_WIKI_DOCS, 
+import {
+  getDB,
+  saveDB,
+  DEFAULT_ACTIVITY_FEED,
+  DEFAULT_WIKI_DOCS,
   DEFAULT_DEPARTMENTAL_PROGRESS,
-  hashPassword,
   logAuditAction
 } from '../db';
-import { signToken, AuthenticatedRequest } from '../middlewares/auth';
-import { resendService } from '../services/resendService';
+import {
+  AuthenticatedRequest,
+  CompanyRole,
+  getUserCompaniesSummary,
+  requireAuth,
+  requireCompanyAccess,
+  requireCompanyRole
+} from '../middlewares/auth';
+import { resendService, DEFAULT_EMAIL_FROM } from '../services/resendService';
 
 const router = Router();
 
-// ==========================================
-// TENANT OPERATIONS
-// ==========================================
-
-// List all tenants
-router.get('/', (req: Request, res: Response) => {
-  const db = getDB();
-  const tenants = db.tenants || DEFAULT_TENANTS;
+// List ONLY tenants/companies that the authenticated user belongs to
+router.get('/', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+  const { companies } = getUserCompaniesSummary(req.user!.id, req.user!.email);
   res.json({
     success: true,
-    tenants
+    tenants: companies
   });
 });
 
-// Get current active or specific tenant
-router.get('/:id', (req: Request, res: Response) => {
+// Get specific tenant (strictly verified membership; NEVER fall back to tenants[0])
+router.get('/:id', requireAuth, (req: AuthenticatedRequest, res: Response) => {
   const { id } = req.params;
-  const db = getDB();
-  const tenants = db.tenants || DEFAULT_TENANTS;
-  const tenant = tenants.find((t: any) => t.id === id || t.slug === id) || tenants[0];
-  
+  const { companies } = getUserCompaniesSummary(req.user!.id, req.user!.email);
+  const tenant = companies.find((t: any) => t.id === id || t.slug === id);
+
   if (!tenant) {
-    return res.status(404).json({ success: false, message: 'Tenant not found.' });
+    return res.status(403).json({
+      success: false,
+      message: 'Forbidden: Tenant not found or you do not have membership access.'
+    });
   }
 
-  res.json({
+  return res.json({
     success: true,
     tenant
   });
 });
 
-// Structured Multi-Step Onboarding & Tenant Setup
-router.post('/onboard', (req: Request, res: Response) => {
-  const {
-    companyName,
-    logoUrl,
-    branding,
-    businessInfo,
-    adminUser,
-    rolesConfig,
-    integrations
-  } = req.body || {};
+// Register / Onboard an additional company for the authenticated user
+router.post('/onboard', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+  const { companyName, logoUrl, branding, businessInfo, integrations } = req.body || {};
+  const cleanName = typeof companyName === 'string' ? companyName.trim() : '';
 
-  if (!companyName || !adminUser?.email || !adminUser?.name) {
+  if (!cleanName || cleanName.length < 2) {
     return res.status(400).json({
       success: false,
-      message: 'Company Name, Admin Name, and Admin Email are required for onboarding.'
+      message: 'Company Name is required for onboarding.'
     });
   }
 
   const db = getDB();
-  const tenants = db.tenants || DEFAULT_TENANTS;
-  const users = db.users || [];
+  if (!Array.isArray(db.tenants)) db.tenants = [];
+  if (!Array.isArray(db.departments)) db.departments = [];
+  if (!Array.isArray(db.companyMemberships)) db.companyMemberships = [];
+  if (!Array.isArray(db.activityFeed)) db.activityFeed = [...DEFAULT_ACTIVITY_FEED];
 
-  // Generate clean slug and tenant ID
-  const cleanSlug = companyName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'workspace';
-  const tenantId = `tenant-${cleanSlug}-${Date.now().toString().slice(-4)}`;
+  const cleanSlug = cleanName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'workspace';
+  const suffix = crypto.randomBytes(3).toString('hex');
+  const tenantId = `comp-${cleanSlug}-${suffix}`;
+  const now = new Date().toISOString();
 
-  // Create new Tenant entity
   const newTenant = {
     id: tenantId,
-    name: companyName,
-    slug: cleanSlug,
+    name: cleanName,
+    slug: `${cleanSlug}-${suffix}`,
+    ownerUserId: req.user!.id,
     logoUrl: logoUrl || '/icon.svg',
     branding: {
-      primaryColor: branding?.primaryColor || '#6366f1',
+      primaryColor: branding?.primaryColor || '#4f46e5',
       accentColor: branding?.accentColor || '#06b6d4',
-      theme: branding?.theme || 'dark',
-      geometricStyle: branding?.geometricStyle || 'cyber_glass',
+      theme: branding?.theme || 'light',
+      geometricStyle: branding?.geometricStyle || 'enterprise_clean',
       logoPreset: branding?.logoPreset || 'hexagon_nexus'
     },
     businessInfo: {
       industry: businessInfo?.industry || 'B2B Digital Services',
-      description: businessInfo?.description || 'Growth operations and automated client handling suite.',
+      companySize: businessInfo?.companySize || '1-10',
+      description: businessInfo?.description || `${cleanName} company operations workspace.`,
       website: businessInfo?.website || '',
-      targetRevenueUSD: businessInfo?.targetRevenueUSD || 100000,
+      targetRevenueUSD: businessInfo?.targetRevenueUSD || 0,
       coreObjectives: businessInfo?.coreObjectives || [
-        'LinkedIn & Gmail automated pipeline',
-        'Stripe financial escrow milestone management',
-        'Cross-departmental team progress oversight'
+        'Departmental coordination & delivery',
+        'Unified client inbox & pipeline',
+        'Financial & commission tracking'
       ]
     },
     integrations: {
       linkedIn: {
         connected: Boolean(integrations?.linkedIn?.connected),
         accountHandle: integrations?.linkedIn?.accountHandle || '',
-        organizationName: integrations?.linkedIn?.organizationName || companyName,
+        organizationName: integrations?.linkedIn?.organizationName || cleanName,
         syncIntervalMinutes: integrations?.linkedIn?.syncIntervalMinutes || 15,
         autoOutreachEnabled: Boolean(integrations?.linkedIn?.autoOutreachEnabled),
-        lastSync: integrations?.linkedIn?.connected ? new Date().toISOString() : undefined,
         messagesSyncedCount: 0
       },
       gmail: {
         connected: Boolean(integrations?.gmail?.connected),
-        accountEmail: integrations?.gmail?.accountEmail || adminUser.email,
+        accountEmail: integrations?.gmail?.accountEmail || req.user!.email,
         threadTracking: Boolean(integrations?.gmail?.threadTracking ?? true),
         autoDraftReplies: Boolean(integrations?.gmail?.autoDraftReplies ?? true),
-        lastSync: integrations?.gmail?.connected ? new Date().toISOString() : undefined,
         emailsSyncedCount: 0
       },
       stripe: {
         connected: Boolean(integrations?.stripe?.connected),
-        liveMode: Boolean(integrations?.stripe?.liveMode ?? true),
-        publishableKeyMasked: integrations?.stripe?.publishableKeyMasked || (integrations?.stripe?.connected ? 'pk_live_...vault' : undefined),
+        liveMode: Boolean(integrations?.stripe?.liveMode ?? false),
         currency: integrations?.stripe?.currency || 'USD',
-        lastSync: integrations?.stripe?.connected ? new Date().toISOString() : undefined,
         mrrUSD: 0
       }
     },
-    rolesConfig: rolesConfig || {
+    rolesConfig: {
       admin: {
         role: 'admin',
-        title: 'Master Administrator & CEO',
+        title: 'Company Owner / Admin',
         department: 'executive',
         dashboardLayout: 'executive_macro',
         permissions: ['all']
       }
     },
     activeMembersCount: 1,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
+    createdAt: now,
+    updatedAt: now
   };
 
-  // Register or link master Admin user
-  const adminPassword = adminUser.password || 'Admin@12345';
-  const newUserId = `user-${cleanSlug}-ceo-${Date.now().toString().slice(-4)}`;
-  const registeredAdmin = {
-    id: newUserId,
-    name: adminUser.name,
-    email: adminUser.email,
-    passwordHash: hashPassword(adminPassword),
-    role: 'admin',
-    title: adminUser.title || `${companyName} CEO & Managing Director`,
-    avatar: adminUser.avatar || '',
-    tenantId: tenantId,
-    permissions: [
-      'admin:all',
-      'tenant:manage',
-      'projects:read',
-      'projects:write',
-      'commissions:approve',
-      'database:manage',
-      'integrations:manage'
-    ],
-    createdAt: new Date().toISOString()
+  const starterDepts = ['Operations', 'Engineering'].map((deptName, idx) => ({
+    id: `dept-${deptName.toLowerCase()}-${suffix}-${idx + 1}`,
+    companyId: tenantId,
+    name: deptName,
+    slug: deptName.toLowerCase(),
+    description: `${deptName} department for ${cleanName}.`,
+    createdBy: req.user!.id,
+    createdAt: now
+  }));
+
+  const ownerMembership = {
+    id: `mem-${tenantId}-${req.user!.id}`,
+    companyId: tenantId,
+    userId: req.user!.id,
+    role: 'company_admin' as CompanyRole,
+    departmentIds: starterDepts.map((d) => d.id),
+    designation: 'Company Owner',
+    joinedAt: now
   };
 
-  // Activity log for onboarding
-  const onboardingActivity = {
+  db.tenants.unshift(newTenant);
+  db.departments.push(...starterDepts);
+  db.companyMemberships.push(ownerMembership);
+  db.activityFeed.unshift({
     id: `act-${Date.now()}`,
-    tenantId: tenantId,
+    tenantId,
+    companyId: tenantId,
     type: 'system_alert',
-    title: `Workspace "${companyName}" Successfully Provisioned`,
-    description: `Master CEO account configured for ${adminUser.name}. Multi-tenant isolation active.`,
-    actorName: adminUser.name,
-    actorRole: 'Master Admin / CEO',
+    title: `Workspace "${cleanName}" Provisioned`,
+    description: `${req.user!.name} created isolated company workspace ${cleanName}.`,
+    actorName: req.user!.name,
+    actorRole: 'Company Owner',
     sourceChannel: 'system',
-    timestamp: new Date().toISOString(),
+    timestamp: now,
     isRead: false
-  };
-
-  // Persist into database cleanly without dummy project records
-  db.tenants = [newTenant, ...tenants];
-  db.users = [registeredAdmin, ...users];
-  db.activityFeed = [onboardingActivity, ...(db.activityFeed || DEFAULT_ACTIVITY_FEED)];
+  });
 
   saveDB(db);
 
-  // Trigger automated welcome email via Resend with telemetry logging
-  resendService.sendEmail({
-    to: adminUser.email,
-    subject: `Welcome to ${companyName} — Workspace Provisioned`,
-    html: `
-      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; background: #0f172a; color: #f8fafc; border-radius: 16px;">
-        <h1 style="color: #6366f1; margin-bottom: 8px;">Welcome to ${companyName}</h1>
-        <p style="color: #94a3b8; font-size: 14px;">Your multi-tenant enterprise workspace has been securely provisioned with Neon DB row-level isolation.</p>
-        <div style="background: #1e293b; padding: 16px; border-radius: 12px; margin: 20px 0;">
-          <p style="margin: 4px 0; font-size: 13px;"><strong>Tenant ID:</strong> <code>${tenantId}</code></p>
-          <p style="margin: 4px 0; font-size: 13px;"><strong>Administrator:</strong> ${adminUser.name} (${adminUser.email})</p>
-          <p style="margin: 4px 0; font-size: 13px;"><strong>Role:</strong> Chief Executive Officer (CEO)</p>
-          <p style="margin: 4px 0; font-size: 13px;"><strong>Industry:</strong> ${businessInfo?.industry || 'B2B Services'}</p>
-        </div>
-        <p style="font-size: 12px; color: #64748b;">Dispatched via ClientOps Operations Suite</p>
-      </div>
-    `,
-    text: `Welcome to ${companyName}! Your tenant ${tenantId} is now active. Admin: ${adminUser.name} (${adminUser.email}).`,
-    tenantId: tenantId,
-    metadata: {
-      action: 'tenant_onboarded',
-      tenantId: tenantId,
-      companyName: companyName
-    }
-  }).catch((err: any) => {
-    console.warn('[TenantRoutes] Resend welcome email non-blocking notice:', err?.message || err);
-  });
-
-  // Sign JWT session token for instant authenticated onboarding experience
-  const token = signToken({
-    id: registeredAdmin.id,
-    email: registeredAdmin.email,
-    role: registeredAdmin.role,
-    name: registeredAdmin.name,
-    title: registeredAdmin.title,
-    permissions: registeredAdmin.permissions,
-    tenant_id: tenantId,
-    tenantId: tenantId
-  });
+  resendService
+    .sendEmail({
+      to: req.user!.email,
+      from: process.env.RESEND_FROM_EMAIL || process.env.EMAIL_FROM_ADDRESS || DEFAULT_EMAIL_FROM,
+      subject: `Workspace "${cleanName}" Created on ClientOps`,
+      text: `Hello ${req.user!.name}, your company workspace "${cleanName}" is now live with isolated departments and team roles.`,
+      tenantId,
+      template: 'tenant_onboarded'
+    })
+    .catch(() => {});
 
   logAuditAction({
-    userId: registeredAdmin.id,
-    userName: registeredAdmin.name,
-    userRole: registeredAdmin.role,
+    userId: req.user!.id,
+    userName: req.user!.name,
+    userRole: 'company_admin',
     action: 'TENANT_ONBOARDED',
     entityType: 'tenant',
     entityId: tenantId,
-    details: { companyName, slug: cleanSlug, email: adminUser.email },
+    details: { companyName: cleanName },
     ipAddress: req.ip || '127.0.0.1'
   });
 
+  const { companies } = getUserCompaniesSummary(req.user!.id, req.user!.email);
   return res.json({
     success: true,
-    message: `Tenant "${companyName}" successfully established! Welcome to ALM Nexus Enterprise.`,
-    tenant: newTenant,
-    user: {
-      id: registeredAdmin.id,
-      name: registeredAdmin.name,
-      email: registeredAdmin.email,
-      role: registeredAdmin.role,
-      title: registeredAdmin.title,
-      avatar: registeredAdmin.avatar,
-      permissions: registeredAdmin.permissions,
-      tenantId: tenantId
+    message: `Company "${cleanName}" created successfully.`,
+    tenant: {
+      ...newTenant,
+      myRole: 'company_admin',
+      myDepartmentIds: ownerMembership.departmentIds,
+      myDesignation: ownerMembership.designation
     },
-    token
+    tenants: companies
   });
 });
 
-// Update Tenant Settings & Integrations
-router.put('/:id', (req: Request, res: Response) => {
+// Update Tenant Settings & Integrations (Company Owner / Admin only)
+router.put('/:id', requireAuth, (req: AuthenticatedRequest, res: Response) => {
   const { id } = req.params;
-  const updates = req.body || {};
   const db = getDB();
-  const tenants = db.tenants || DEFAULT_TENANTS;
-  const idx = tenants.findIndex((t: any) => t.id === id || t.slug === id);
+  const membership = (db.companyMemberships || []).find(
+    (m: any) => m.companyId === id && m.userId === req.user!.id
+  );
+  if (!membership || membership.role !== 'company_admin') {
+    return res.status(403).json({
+      success: false,
+      error: 'Forbidden: Only Company Owners / Admins can modify company settings.'
+    });
+  }
 
+  const tenants = db.tenants || [];
+  const idx = tenants.findIndex((t: any) => t.id === id);
   if (idx === -1) {
     return res.status(404).json({ success: false, message: 'Tenant not found.' });
   }
 
+  const updates = req.body || {};
   const updatedTenant = {
     ...tenants[idx],
     ...updates,
+    id: tenants[idx].id,
     branding: { ...tenants[idx].branding, ...(updates.branding || {}) },
     businessInfo: { ...tenants[idx].businessInfo, ...(updates.businessInfo || {}) },
     integrations: {
@@ -283,33 +249,36 @@ router.put('/:id', (req: Request, res: Response) => {
   db.tenants = tenants;
   saveDB(db);
 
-  res.json({
+  return res.json({
     success: true,
-    message: 'Tenant workspace settings updated.',
+    message: 'Company workspace settings updated.',
     tenant: updatedTenant
   });
 });
 
-// ==========================================
-// DEPARTMENTAL PROGRESS & REAL-TIME TRACKING
-// ==========================================
-
-router.get('/:id/departmental', (req: Request, res: Response) => {
+// Departmental metrics strictly scoped to verified company membership
+router.get('/:id/departmental', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+  const { id } = req.params;
   const db = getDB();
-  const departmental = db.departmentalProgress || DEFAULT_DEPARTMENTAL_PROGRESS;
-  res.json({
-    success: true,
-    departments: departmental
-  });
+  const membership = (db.companyMemberships || []).find((m: any) => m.companyId === id && m.userId === req.user!.id);
+  if (!membership) {
+    return res.status(403).json({ success: false, error: 'Forbidden: Cross-tenant access denied.' });
+  }
+  const departmental = (db.departmentalProgress || DEFAULT_DEPARTMENTAL_PROGRESS).filter(
+    (d: any) => d.companyId === id || d.tenantId === id
+  );
+  return res.json({ success: true, departments: departmental });
 });
 
-router.put('/:id/departmental/:dept', (req: Request, res: Response) => {
-  const { dept } = req.params;
+router.put('/:id/departmental/:dept', requireCompanyRole(['company_admin']), (req: AuthenticatedRequest, res: Response) => {
+  const { id, dept } = req.params;
+  if (req.companyId !== id) {
+    return res.status(403).json({ success: false, error: 'Forbidden.' });
+  }
   const updates = req.body || {};
   const db = getDB();
-  const list = db.departmentalProgress || DEFAULT_DEPARTMENTAL_PROGRESS;
-  const idx = list.findIndex((d: any) => d.department === dept);
-
+  const list = db.departmentalProgress || [];
+  const idx = list.findIndex((d: any) => d.department === dept && (d.companyId === id || d.tenantId === id));
   if (idx === -1) {
     return res.status(404).json({ success: false, message: 'Department not found.' });
   }
@@ -322,103 +291,108 @@ router.put('/:id/departmental/:dept', (req: Request, res: Response) => {
   db.departmentalProgress = list;
   saveDB(db);
 
-  res.json({
-    success: true,
-    department: list[idx]
-  });
+  return res.json({ success: true, department: list[idx] });
 });
 
-// ==========================================
-// ACTIVITY FEED STREAM & SYSTEM ALERTS
-// ==========================================
-
-router.get('/:id/activity', (req: Request, res: Response) => {
+// Activity Feed strictly scoped to companyId (ZERO cross-tenant fallback)
+router.get('/:id/activity', requireAuth, (req: AuthenticatedRequest, res: Response) => {
   const { id } = req.params;
   const db = getDB();
-  const allFeed = db.activityFeed || DEFAULT_ACTIVITY_FEED;
-  const filtered = allFeed.filter((item: any) => !item.tenantId || item.tenantId === id || id === 'all');
+  const membership = (db.companyMemberships || []).find((m: any) => m.companyId === id && m.userId === req.user!.id);
+  if (!membership) {
+    return res.status(403).json({ success: false, error: 'Forbidden: Cross-tenant access denied.' });
+  }
 
-  res.json({
+  const allFeed = db.activityFeed || DEFAULT_ACTIVITY_FEED;
+  const filtered = allFeed.filter((item: any) => item.companyId === id || item.tenantId === id);
+
+  return res.json({
     success: true,
-    activity: filtered.length > 0 ? filtered : allFeed
+    activity: filtered
   });
 });
 
-router.post('/:id/activity', (req: Request, res: Response) => {
+router.post('/:id/activity', requireAuth, (req: AuthenticatedRequest, res: Response) => {
   const { id } = req.params;
-  const { type, title, description, actorName, actorRole, sourceChannel } = req.body || {};
+  const db = getDB();
+  const membership = (db.companyMemberships || []).find((m: any) => m.companyId === id && m.userId === req.user!.id);
+  if (!membership) {
+    return res.status(403).json({ success: false, error: 'Forbidden: Cross-tenant access denied.' });
+  }
 
+  const { type, title, description, actorName, actorRole, sourceChannel } = req.body || {};
   if (!title) {
     return res.status(400).json({ success: false, message: 'Activity title is required.' });
   }
 
-  const db = getDB();
   const newActivity = {
     id: `act-${Date.now()}`,
     tenantId: id,
+    companyId: id,
     type: type || 'system_alert',
     title,
     description: description || '',
-    actorName: actorName || 'System Automated Bot',
-    actorRole: actorRole || 'Automation Engine',
+    actorName: actorName || req.user!.name,
+    actorRole: actorRole || membership.role,
     sourceChannel: sourceChannel || 'system',
     timestamp: new Date().toISOString(),
     isRead: false
   };
 
-  db.activityFeed = [newActivity, ...(db.activityFeed || DEFAULT_ACTIVITY_FEED)];
+  db.activityFeed = [newActivity, ...(db.activityFeed || [])];
   saveDB(db);
 
-  res.json({
-    success: true,
-    activityItem: newActivity
-  });
+  return res.json({ success: true, activityItem: newActivity });
 });
 
-// ==========================================
-// GLOBAL COMPANY WIKI / KNOWLEDGE BASE
-// ==========================================
-
-router.get('/:id/wiki', (req: Request, res: Response) => {
+// Company Wiki strictly scoped to companyId (ZERO cross-tenant fallback)
+router.get('/:id/wiki', requireAuth, (req: AuthenticatedRequest, res: Response) => {
   const { id } = req.params;
   const db = getDB();
-  const docs = db.wikiDocs || DEFAULT_WIKI_DOCS;
-  const filtered = docs.filter((d: any) => !d.tenantId || d.tenantId === id || id === 'all');
+  const membership = (db.companyMemberships || []).find((m: any) => m.companyId === id && m.userId === req.user!.id);
+  if (!membership) {
+    return res.status(403).json({ success: false, error: 'Forbidden: Cross-tenant access denied.' });
+  }
 
-  res.json({
+  const docs = db.wikiDocs || DEFAULT_WIKI_DOCS;
+  const filtered = docs.filter((d: any) => d.companyId === id || d.tenantId === id);
+
+  return res.json({
     success: true,
-    wikiDocs: filtered.length > 0 ? filtered : docs
+    wikiDocs: filtered
   });
 });
 
-router.post('/:id/wiki', (req: Request, res: Response) => {
+router.post('/:id/wiki', requireCompanyAccess, (req: AuthenticatedRequest, res: Response) => {
   const { id } = req.params;
-  const { title, category, description, content, author, tags } = req.body || {};
+  const db = getDB();
+  const membership = (db.companyMemberships || []).find((m: any) => m.companyId === id && m.userId === req.user!.id);
+  if (!membership) {
+    return res.status(403).json({ success: false, error: 'Forbidden: Cross-tenant access denied.' });
+  }
 
+  const { title, category, description, content, author, tags } = req.body || {};
   if (!title || !content) {
     return res.status(400).json({ success: false, message: 'Title and content are required.' });
   }
 
-  const db = getDB();
   const newDoc = {
     id: `wiki-${Date.now()}`,
     tenantId: id,
+    companyId: id,
     title,
     category: category || 'outreach_scripts',
     description: description || '',
     content,
-    author: author || 'Team Member',
+    author: author || req.user!.name,
     updatedAt: new Date().toISOString(),
     tags: Array.isArray(tags) ? tags : ['sop', 'general']
   };
 
-  db.wikiDocs = [newDoc, ...(db.wikiDocs || DEFAULT_WIKI_DOCS)];
+  db.wikiDocs = [newDoc, ...(db.wikiDocs || [])];
   saveDB(db);
 
-  res.json({
-    success: true,
-    doc: newDoc
-  });
+  return res.json({ success: true, doc: newDoc });
 });
 
 export default router;

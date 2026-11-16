@@ -11,17 +11,22 @@ import {
   Coins,
   Database,
   Plus,
-  Briefcase
+  Briefcase,
+  MessageSquare
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { AvailabilityStatus } from '../types';
 
 export const UserProfileDashboard: React.FC = () => {
   const {
     currentUser,
-    role,
+    companyRole,
     tenants,
     currentTenant,
+    pendingInvites,
     switchTenant,
+    acceptInvite,
+    updateMyAvailability,
     setActiveTab,
     setIsOnboardingModalOpen,
     projects,
@@ -30,6 +35,9 @@ export const UserProfileDashboard: React.FC = () => {
     formatMoney
   } = useApp();
 
+  const isAdmin = companyRole === 'company_admin';
+  const isDeptHead = companyRole === 'department_head';
+
   const totalDeals = projects.length;
   const totalPipelineValue = projects.reduce((acc, p) => acc + (p.finalPrice || p.estimatedPrice || 0), 0);
 
@@ -37,8 +45,26 @@ export const UserProfileDashboard: React.FC = () => {
     if (tenant) {
       await switchTenant(tenant.id);
     }
-    setActiveTab('pipeline');
   };
+
+  const roleShortcuts = isAdmin
+    ? [
+        { id: 'pipeline', title: 'Executive Dashboard', desc: `${totalDeals} deals (${formatMoney(totalPipelineValue)})`, icon: Kanban },
+        { id: 'departmental', title: 'Departments & Team', desc: 'Structure, invites & tasks', icon: Users },
+        { id: 'outreach_suite', title: 'Email Hub', desc: 'Mailboxes, campaigns & warmup', icon: Send },
+        { id: 'commissions', title: 'Commission Ledger', desc: 'Splits, advances & payouts', icon: Coins }
+      ]
+    : isDeptHead
+    ? [
+        { id: 'departmental', title: 'Department Operations', desc: 'Roster, employees & tasks', icon: Users },
+        { id: 'chat', title: 'Department Chat', desc: 'Private room & work updates', icon: MessageSquare },
+        { id: 'outreach_suite', title: 'Email Hub', desc: 'Connected mailboxes & sequences', icon: Send },
+        { id: 'inbox', title: 'Client Inbox', desc: `${unreadInboxCount} unread threads`, icon: Mail }
+      ]
+    : [
+        { id: 'departmental', title: 'My Department', desc: 'Assigned tasks & live team roster', icon: Users },
+        { id: 'chat', title: 'Department Chat', desc: 'Team room & daily work status', icon: MessageSquare }
+      ];
 
   return (
     <div className="max-w-7xl mx-auto py-2 space-y-6 animate-fadeIn">
@@ -64,7 +90,13 @@ export const UserProfileDashboard: React.FC = () => {
                   {currentUser?.name || 'Workspace Member'}
                 </h1>
                 <span className="text-xs font-mono font-semibold text-indigo-600 dark:text-indigo-400">
-                  {role.replace('_', ' ').toUpperCase()}
+                  {companyRole === 'company_admin'
+                    ? 'COMPANY OWNER'
+                    : companyRole === 'department_head'
+                    ? 'DEPARTMENT HEAD'
+                    : companyRole === 'employee'
+                    ? 'EMPLOYEE'
+                    : 'VERIFIED ACCOUNT'}
                 </span>
                 <span className="text-xs font-medium text-emerald-700 dark:text-emerald-400">
                   &bull; Session Verified
@@ -74,19 +106,34 @@ export const UserProfileDashboard: React.FC = () => {
                 {currentUser?.email || 'No email configured'}
               </p>
               <p className="text-xs text-slate-500 dark:text-slate-400 font-mono tabular-nums">
-                {currentUser?.title || 'Workspace Operator'} &bull; {tenants.length} Registered Company {tenants.length === 1 ? 'Workspace' : 'Workspaces'}
+                {currentTenant?.myDesignation || currentUser?.title || 'Personal Profile'} &bull;{' '}
+                {tenants.length} Company {tenants.length === 1 ? 'Membership' : 'Memberships'}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5 shrink-0">
-            <button
-              type="button"
-              onClick={() => setActiveTab('commissions')}
-              className="btn-tactile-secondary px-3.5 py-2 rounded-lg text-xs font-semibold cursor-pointer whitespace-nowrap"
+          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+            <select
+              value={currentUser?.availabilityStatus || 'Available'}
+              onChange={(e) => updateMyAvailability(e.target.value as AvailabilityStatus)}
+              aria-label="My Availability Status"
+              className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-[#F8FAFC] dark:bg-[#090D16] text-xs font-semibold text-slate-800 dark:text-slate-200 cursor-pointer"
             >
-              Team Splits &amp; Ledger
-            </button>
+              <option value="Available">Status: Available</option>
+              <option value="In a Meeting">Status: In a Meeting</option>
+              <option value="Busy">Status: Busy</option>
+              <option value="Offline">Status: Offline</option>
+            </select>
+
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => setActiveTab('commissions')}
+                className="btn-tactile-secondary px-3.5 py-2 rounded-lg text-xs font-semibold cursor-pointer whitespace-nowrap"
+              >
+                Team Splits &amp; Ledger
+              </button>
+            )}
             <button
               type="button"
               onClick={logout}
@@ -101,28 +148,71 @@ export const UserProfileDashboard: React.FC = () => {
         <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs text-slate-600 dark:text-slate-300">
           <div className="flex items-center gap-2">
             <Database className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-            <span>Workspace Data: <strong className="text-slate-950 dark:text-white">Isolated &amp; Synced</strong></span>
+            <span>
+              Tenant Boundary: <strong className="text-slate-950 dark:text-white">Strictly Isolated</strong>
+            </span>
           </div>
           <div className="flex items-center gap-2">
             <ShieldCheck className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
-            <span>Account Status: <strong className="text-slate-950 dark:text-white">Verified Member</strong></span>
+            <span>
+              Account Status: <strong className="text-slate-950 dark:text-white">Email OTP Verified</strong>
+            </span>
           </div>
           <div className="flex items-center gap-2">
-            <Mail className="w-4 h-4 text-slate-500 dark:text-slate-400 shrink-0" />
-            <span>Email Hub: <strong className="text-slate-950 dark:text-white">Mailbox Sync Ready</strong></span>
+            <Users className="w-4 h-4 text-slate-500 dark:text-slate-400 shrink-0" />
+            <span>
+              Live Availability:{' '}
+              <strong className="text-slate-950 dark:text-white">
+                {currentUser?.availabilityStatus || 'Available'}
+              </strong>
+            </span>
           </div>
         </div>
       </div>
 
-      {/* 2. Additional Company Workspace CTA */}
+      {/* Pending Invitations Banner */}
+      {pendingInvites.length > 0 && (
+        <div className="rounded-xl bg-[#FFFFFF] dark:bg-[#111827] border border-indigo-200 dark:border-indigo-800 p-5 space-y-3">
+          <h2 className="text-sm font-bold text-slate-950 dark:text-white flex items-center gap-2">
+            <Mail className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+            <span>Pending Company Invitations ({pendingInvites.length})</span>
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {pendingInvites.map((inv) => (
+              <div
+                key={inv.id}
+                className="p-3.5 rounded-lg bg-[#F8FAFC] dark:bg-[#090D16] border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3"
+              >
+                <div className="min-w-0">
+                  <div className="text-xs font-bold text-slate-950 dark:text-white truncate">
+                    {inv.companyName} &middot; {inv.departmentName}
+                  </div>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                    {inv.role === 'department_head' ? 'Department Head' : 'Employee'} ({inv.designation})
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => acceptInvite(inv.token)}
+                  className="btn-tactile-primary px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer shrink-0 whitespace-nowrap"
+                >
+                  Accept &amp; Join
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 2. Register New Company CTA */}
       <div className="rounded-xl bg-[#FFFFFF] dark:bg-[#111827] border border-slate-200 dark:border-slate-800 p-5">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="space-y-1 max-w-2xl">
             <h2 className="text-base font-bold text-slate-950 dark:text-white tracking-tight">
-              Need a separate workspace for another company or division?
+              Register Another Company Under Your Account
             </h2>
             <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-              Create an isolated workspace with its own connected mailboxes, client pipeline, team roles, and commission ledger.
+              Every company gets its own isolated departments, team hierarchy, connected mailboxes, client pipeline, and financial ledger.
             </p>
           </div>
 
@@ -132,7 +222,7 @@ export const UserProfileDashboard: React.FC = () => {
             className="btn-tactile-secondary inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-semibold text-xs cursor-pointer shrink-0 whitespace-nowrap"
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>Create Additional Workspace</span>
+            <span>Register New Company</span>
           </button>
         </div>
       </div>
@@ -143,10 +233,10 @@ export const UserProfileDashboard: React.FC = () => {
           <div>
             <h3 className="text-base font-bold text-slate-950 dark:text-white flex items-center gap-2">
               <Building2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-              <span>Your Registered Company Workspaces</span>
+              <span>Your Companies &amp; Memberships</span>
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Select a workspace to manage its connected mailboxes, deals pipeline, team tasks, and commission splits
+              Switch between companies you own or belong to as a Department Head or Employee
             </p>
           </div>
 
@@ -163,6 +253,12 @@ export const UserProfileDashboard: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {tenants.map((t) => {
             const isCurrent = currentTenant?.id === t.id;
+            const roleLabel =
+              t.myRole === 'company_admin'
+                ? 'Owner'
+                : t.myRole === 'department_head'
+                ? 'Dept Head'
+                : 'Employee';
             return (
               <div
                 key={t.id}
@@ -182,27 +278,28 @@ export const UserProfileDashboard: React.FC = () => {
                         <h4 className="font-bold text-sm text-slate-950 dark:text-white truncate">
                           {t.name}
                         </h4>
-                        <span className="text-[11px] text-slate-500 dark:text-slate-400 font-mono truncate block">
-                          {t.slug || t.id}
+                        <span className="text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold truncate block">
+                          {roleLabel}
+                          {t.myDesignation ? ` · ${t.myDesignation}` : ''}
                         </span>
                       </div>
                     </div>
 
                     {isCurrent && (
-                      <span className="text-[11px] font-mono font-semibold text-indigo-600 dark:text-indigo-400 shrink-0">
+                      <span className="text-[11px] font-mono font-semibold text-emerald-600 dark:text-emerald-400 shrink-0">
                         ACTIVE
                       </span>
                     )}
                   </div>
 
                   <p className="text-xs text-slate-600 dark:text-slate-400 line-clamp-2">
-                    {t.businessInfo?.description || 'Multi-tenant company operations & client communication workspace.'}
+                    {t.businessInfo?.description || 'Multi-tenant company operations & department workspace.'}
                   </p>
 
                   <div className="flex items-center gap-4 text-[11px] text-slate-500 dark:text-slate-400 pt-1">
                     <span className="flex items-center gap-1">
                       <Briefcase className="w-3.5 h-3.5 text-indigo-500" />
-                      {t.businessInfo?.industry || 'B2B Operations'}
+                      {t.industry || t.businessInfo?.industry || 'B2B Operations'}
                     </span>
                     <span className="flex items-center gap-1 font-mono tabular-nums">
                       <Users className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
@@ -213,7 +310,7 @@ export const UserProfileDashboard: React.FC = () => {
 
                 <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
                   <span className="text-[11px] font-mono text-slate-400 truncate">
-                    {t.id.slice(0, 18)}
+                    {t.departmentsCount ?? 0} Depts
                   </span>
 
                   <button
@@ -221,7 +318,7 @@ export const UserProfileDashboard: React.FC = () => {
                     onClick={() => handleEnterWorkspace(t)}
                     className="btn-tactile-primary inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer shrink-0 whitespace-nowrap"
                   >
-                    <span>Enter Dashboard</span>
+                    <span>Open Workspace</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -231,20 +328,15 @@ export const UserProfileDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* 4. Core Operational Shortcuts */}
+      {/* 4. Role-Filtered Module Shortcuts */}
       <div className="space-y-3">
         <h3 className="text-base font-bold text-slate-950 dark:text-white flex items-center gap-2">
           <Layers className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-          <span>Core Workspace Modules</span>
+          <span>Authorized Modules</span>
         </h3>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {[
-            { id: 'pipeline', title: 'Executive Dashboard', desc: `${totalDeals} deals (${formatMoney(totalPipelineValue)})`, icon: Kanban },
-            { id: 'outreach_suite', title: 'Email Hub', desc: 'Mailboxes, campaigns & warmup', icon: Send },
-            { id: 'inbox', title: 'Unified Client Inbox', desc: `${unreadInboxCount} unread threads`, icon: Mail },
-            { id: 'commissions', title: 'Commission Ledger', desc: 'Splits, advances & payouts', icon: Coins }
-          ].map((mod) => {
+          {roleShortcuts.map((mod) => {
             const Icon = mod.icon;
             return (
               <button

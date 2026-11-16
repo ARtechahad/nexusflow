@@ -36,20 +36,29 @@ const INITIAL_STATE: OutreachTelemetryState = {
 };
 
 let cachedState: OutreachTelemetryState | null = null;
+let cachedKey = '';
 let cachedAt = 0;
 let inflightPromise: Promise<OutreachTelemetryState> | null = null;
 const CACHE_TTL_MS = 30_000;
 
-async function fetchOutreachTelemetrySnapshot(): Promise<OutreachTelemetryState> {
+export function clearOutreachTelemetryCache(): void {
+  cachedState = null;
+  cachedKey = '';
+  cachedAt = 0;
+  inflightPromise = null;
+}
+
+async function fetchOutreachTelemetrySnapshot(scopeKey: string): Promise<OutreachTelemetryState> {
   const now = Date.now();
-  if (cachedState && now - cachedAt < CACHE_TTL_MS) {
+  if (cachedState && cachedKey === scopeKey && now - cachedAt < CACHE_TTL_MS) {
     return cachedState;
   }
 
-  if (inflightPromise) {
+  if (inflightPromise && cachedKey === scopeKey) {
     return inflightPromise;
   }
 
+  cachedKey = scopeKey;
   inflightPromise = (async () => {
     try {
       const health = await getOutreachHealth().catch(() => null);
@@ -112,12 +121,19 @@ async function fetchOutreachTelemetrySnapshot(): Promise<OutreachTelemetryState>
   return inflightPromise;
 }
 
-export function useOutreachTelemetry(): OutreachTelemetryState {
-  const [state, setState] = useState<OutreachTelemetryState>(() => cachedState || INITIAL_STATE);
+export function useOutreachTelemetry(enabled: boolean = true, tenantScopeKey: string = ''): OutreachTelemetryState {
+  const [state, setState] = useState<OutreachTelemetryState>(() => {
+    if (!enabled) return { ...INITIAL_STATE, loading: false };
+    return cachedState && cachedKey === tenantScopeKey ? cachedState : INITIAL_STATE;
+  });
 
   useEffect(() => {
+    if (!enabled || !tenantScopeKey) {
+      setState({ ...INITIAL_STATE, loading: false });
+      return;
+    }
     let active = true;
-    fetchOutreachTelemetrySnapshot().then(result => {
+    fetchOutreachTelemetrySnapshot(tenantScopeKey).then(result => {
       if (active) {
         setState(result);
       }
@@ -125,7 +141,7 @@ export function useOutreachTelemetry(): OutreachTelemetryState {
     return () => {
       active = false;
     };
-  }, []);
+  }, [enabled, tenantScopeKey]);
 
   return state;
 }

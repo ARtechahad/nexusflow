@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
+import { buildAuthHeaders } from '../lib/api';
 import { ApiToken } from '../types';
 import {
   Key,
@@ -23,7 +24,7 @@ import {
 } from 'lucide-react';
 
 export const ApiTokenManagementSection: React.FC = () => {
-  const { showToast, refreshProjects, setActiveTab, role, currentUser } = useApp();
+  const { showToast, refreshProjects, setActiveTab, role, currentUser, currentTenant } = useApp();
 
   const [tokens, setTokens] = useState<ApiToken[]>([]);
   const [loadingTokens, setLoadingTokens] = useState<boolean>(true);
@@ -58,9 +59,14 @@ export const ApiTokenManagementSection: React.FC = () => {
   const [testResult, setTestResult] = useState<any>(null);
 
   const fetchTokens = async () => {
+    if (!currentTenant?.id) {
+      setTokens([]);
+      setLoadingTokens(false);
+      return;
+    }
     try {
       setLoadingTokens(true);
-      const res = await fetch('/api/api-tokens');
+      const res = await fetch('/api/api-tokens', { headers: buildAuthHeaders() });
       if (res.ok) {
         const data = await res.json();
         setTokens(data.tokens || []);
@@ -79,7 +85,7 @@ export const ApiTokenManagementSection: React.FC = () => {
 
   useEffect(() => {
     fetchTokens();
-  }, []);
+  }, [currentTenant?.id]);
 
   const handleGenerateToken = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -92,10 +98,7 @@ export const ApiTokenManagementSection: React.FC = () => {
       setIsGenerating(true);
       const res = await fetch('/api/api-tokens', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(localStorage.getItem('alm_nexus_token') ? { Authorization: `Bearer ${localStorage.getItem('alm_nexus_token')}` } : {})
-        },
+        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           name: newTokenName.trim(),
           permissions: selectedPermissions,
@@ -131,9 +134,7 @@ export const ApiTokenManagementSection: React.FC = () => {
     try {
       const res = await fetch(`/api/api-tokens/${id}`, {
         method: 'DELETE',
-        headers: {
-          ...(localStorage.getItem('alm_nexus_token') ? { Authorization: `Bearer ${localStorage.getItem('alm_nexus_token')}` } : {})
-        }
+        headers: buildAuthHeaders()
       });
       const data = await res.json();
       if (res.ok && data.success) {

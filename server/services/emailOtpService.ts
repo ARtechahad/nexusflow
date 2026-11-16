@@ -10,7 +10,7 @@ export const OTP_MAX_ATTEMPTS = 5;
 
 export interface PendingSignupData {
   fullName: string;
-  companyName: string;
+  companyName?: string;
   email: string;
   passwordHash: string;
 }
@@ -194,7 +194,7 @@ export async function deleteOtpRecord(email: string): Promise<void> {
 export async function dispatchOtpEmail(params: {
   email: string;
   fullName: string;
-  companyName: string;
+  companyName?: string;
   otpCode: string;
 }) {
   const fromAddress =
@@ -203,19 +203,18 @@ export async function dispatchOtpEmail(params: {
     DEFAULT_EMAIL_FROM;
 
   const escapedName = params.fullName.replace(/[<>&"]/g, '');
-  const escapedCompany = params.companyName.replace(/[<>&"]/g, '');
 
   const html = `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 540px; margin: 0 auto; padding: 32px 24px; background-color: #f8fafc; color: #0f172a;">
       <div style="background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 32px;">
         <div style="font-size: 13px; font-weight: 700; color: #4f46e5; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px;">
-          ClientOps Verification
+          ClientOps Account Verification
         </div>
         <h1 style="margin: 0 0 12px 0; font-size: 22px; font-weight: 800; color: #0f172a;">
           Verify your email address
         </h1>
         <p style="margin: 0 0 24px 0; font-size: 14px; line-height: 1.6; color: #475569;">
-          Hi ${escapedName}, use the 6-digit verification code below to finish creating the workspace <strong>${escapedCompany}</strong>:
+          Hi ${escapedName}, enter the 6-digit verification code below to activate your personal ClientOps account:
         </p>
         <div style="background-color: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 24px;">
           <span style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 32px; font-weight: 800; letter-spacing: 0.3em; color: #0f172a;">
@@ -226,13 +225,13 @@ export async function dispatchOtpEmail(params: {
           This verification code expires in <strong>10 minutes</strong>.
         </p>
         <p style="margin: 0; font-size: 12px; color: #94a3b8;">
-          If you did not request this workspace, you can safely ignore this email.
+          Once verified, you can create your own company workspace or accept an invitation from your team.
         </p>
       </div>
     </div>
   `;
 
-  const text = `Hi ${params.fullName},\n\nYour ClientOps verification code for ${params.companyName} is: ${params.otpCode}\n\nThis code expires in 10 minutes. If you did not request this, you can safely ignore this email.`;
+  const text = `Hi ${params.fullName},\n\nYour ClientOps verification code is: ${params.otpCode}\n\nThis code expires in 10 minutes. Once verified, you can create a company workspace or accept a team invitation.`;
 
   return resendService.sendEmail({
     to: params.email,
@@ -243,7 +242,6 @@ export async function dispatchOtpEmail(params: {
     template: 'email_verification_otp',
     metadata: {
       email: params.email,
-      companyName: params.companyName,
       expiresInMinutes: 10
     }
   });

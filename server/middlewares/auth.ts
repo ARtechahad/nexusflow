@@ -1,6 +1,14 @@
 import crypto from 'crypto';
 import { Request, Response, NextFunction } from 'express';
-import { getDB, saveDB, hashPassword, verifyPassword, DEFAULT_USERS, logAuditAction, verifyApiToken } from '../db';
+import {
+  getDB,
+  saveDB,
+  hashPassword,
+  verifyPassword,
+  DEFAULT_USERS,
+  logAuditAction,
+  verifyApiToken
+} from '../db';
 
 function getJwtSecret(): string {
   const secret = process.env.JWT_SECRET;
@@ -10,13 +18,25 @@ function getJwtSecret(): string {
   if (process.env.NODE_ENV === 'production') {
     throw new Error('FATAL: JWT_SECRET environment variable is missing in production. App cannot start securely.');
   }
-  // In development / non-production, generate a random secret per process and log warning
   const generated = crypto.randomBytes(32).toString('hex');
   console.warn('⚠️ [Auth Security Warning] JWT_SECRET is not set. Generated a random secret for this process session.');
   return generated;
 }
 
 const JWT_SECRET = getJwtSecret();
+
+export type CompanyRole = 'company_admin' | 'department_head' | 'employee';
+export type AvailabilityStatus = 'Available' | 'In a Meeting' | 'Busy' | 'Offline';
+
+export interface CompanyMembership {
+  id: string;
+  companyId: string;
+  userId: string;
+  role: CompanyRole;
+  departmentIds: string[];
+  designation: string;
+  joinedAt: string;
+}
 
 export interface TokenPayload {
   id: string;
@@ -27,14 +47,19 @@ export interface TokenPayload {
   permissions: string[];
   tenant_id?: string;
   tenantId?: string;
-  exp: number; // Unix timestamp in seconds
+  exp: number;
 }
 
 export interface AuthenticatedRequest extends Request {
   user?: TokenPayload;
+  requestedCompanyId?: string;
+  companyId?: string;
+  tenant_id?: string;
+  tenantId?: string;
+  membership?: CompanyMembership;
+  companyRole?: CompanyRole;
 }
 
-// Base64URL encode/decode helpers
 function base64UrlEncode(str: string): string {
   return Buffer.from(str)
     .toString('base64')
@@ -51,9 +76,6 @@ function base64UrlDecode(str: string): string {
   return Buffer.from(base64, 'base64').toString('utf-8');
 }
 
-/**
- * Sign a JWT-compatible Bearer token with HMAC-SHA256
- */
 export function signToken(payload: Omit<TokenPayload, 'exp'>, expiresInSeconds: number = 86400 * 7): string {
   const header = { alg: 'HS256', typ: 'JWT' };
   const fullPayload: TokenPayload = {
@@ -76,9 +98,6 @@ export function signToken(payload: Omit<TokenPayload, 'exp'>, expiresInSeconds: 
   return `${dataToSign}.${signature}`;
 }
 
-/**
- * Verify and decode a JWT-compatible Bearer token
- */
 export function verifyToken(token: string): TokenPayload | null {
   if (!token) return null;
   const parts = token.split('.');
@@ -101,41 +120,254 @@ export function verifyToken(token: string): TokenPayload | null {
 
   try {
     const payload: TokenPayload = JSON.parse(base64UrlDecode(encodedPayload));
-    // Expiration check
     if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
       return null;
     }
     return payload;
-  } catch (err) {
+  } catch {
     return null;
   }
 }
 
+export function getUserMemberships(userId: string): CompanyMembership[] {
+  if (!userId) return [];
+  const db = getDB();
+  const list: CompanyMembership[] = Array.isArray(db.companyMemberships) ? db.companyMemberships : [];
+  return list.filter((m) => m.userId === userId);
+}
+
+export function getUserCompaniesSummary(userId: string, userEmail?: string) {
+  const db = getDB();
+  const memberships = getUserMemberships(userId);
+  const tenants = Array.isArray(db.tenants) ? db.tenants : [];
+  const departments = Array.isArray(db.departments) ? db.departments : [];
+  const allMemberships = Array.isArray(db.companyMemberships) ? db.companyMemberships : [];
+  const invites = Array.isArray(db.companyInvites) ? db.companyInvites : [];
+
+  const companies = memberships
+    .map((m) => {
+      const company = tenants.find((t: any) => t.id === m.companyId);
+      if (!company) return null;
+      const companyDepts = departments.filter((d: any) => d.companyId === company.id);
+      const companyMembers = allMemberships.filter((cm: any) => cm.companyId === company.id);
+      return {
+        ...company,
+        myRole: m.role,
+        myDepartmentIds: Array.isArray(m.departmentIds) ? m.departmentIds : [],
+        myDesignation: m.designation || '',
+        departmentsCount: companyDepts.length,
+        activeMembersCount: companyMembers.length || 1
+      };
+    })
+    .filter(Boolean);
+
+  const normalizedEmail = (userEmail || '').trim().toLowerCase();
+  const now = Date.now();
+  const pendingInvites = normalizedEmail
+    ? invites
+        .filter((inv: any) => {
+          const isEmailMatch = (inv.email || '').trim().toLowerCase() === normalizedEmail;
+          const isPending = inv.status === 'pending';
+          const isNotExpired = !inv.expiresAt || new Date(inv.expiresAt).getTime() > now;
+          return isEmailMatch && isPending && isNotExpired;
+        })
+        .map((inv: any) => {
+          const company = tenants.find((t: any) => t.id === inv.companyId);
+          const dept = departments.find((d: any) => d.id === inv.departmentId);
+          return {
+            id: inv.id,
+            token: inv.token,
+            companyId: inv.companyId,
+            companyName: company?.name || inv.companyName || 'Company',
+            departmentId: inv.departmentId,
+            departmentName: dept?.name || inv.departmentName || 'Department',
+            role: inv.role,
+            designation: inv.designation || '',
+            invitedByName: inv.invitedByName || 'Administrator',
+            expiresAt: inv.expiresAt,
+            createdAt: inv.createdAt
+          };
+        })
+    : [];
+
+  return { companies, memberships, pendingInvites };
+}
+
+export function hasDepartmentAccess(membership: CompanyMembership | undefined, departmentId: string): boolean {
+  if (!membership) return false;
+  if (membership.role === 'company_admin') return true;
+  return Array.isArray(membership.departmentIds) && membership.departmentIds.includes(departmentId);
+}
+
 /**
- * Express Middleware to extract and verify Bearer token
+ * Extract bearer/cookie/query JWT token and requested company ID without inventing any default tenant fallback.
  */
-export function authenticateToken(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
+export function authenticateToken(req: AuthenticatedRequest, _res: Response, next: NextFunction): void {
   const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.substring(7) : null;
-  const tenantFromHeader = (req.headers['x-tenant-id'] || req.headers['tenant-id'] || req.query.tenant_id || req.query.tenantId) as string;
+  const headerToken = typeof authHeader === 'string' && authHeader.startsWith('Bearer ') ? authHeader.substring(7) : null;
+  const cookieToken = req.cookies?.alm_nexus_token || null;
+  const queryToken = typeof req.query?.token === 'string' ? req.query.token : null;
+  const token = headerToken || cookieToken || queryToken;
+
+  const rawRequested =
+    (req.headers['x-company-id'] as string) ||
+    (req.headers['x-tenant-id'] as string) ||
+    (req.headers['tenant-id'] as string) ||
+    (req.query?.companyId as string) ||
+    (req.query?.tenantId as string) ||
+    (req.query?.tenant_id as string) ||
+    undefined;
+
+  const requestedCompanyId =
+    rawRequested && rawRequested !== 'undefined' && rawRequested !== 'null' && rawRequested !== 'all'
+      ? rawRequested.trim()
+      : undefined;
+
+  if (requestedCompanyId) {
+    req.requestedCompanyId = requestedCompanyId;
+  }
 
   if (token) {
     const decoded = verifyToken(token);
     if (decoded) {
-      req.user = decoded;
+      const db = getDB();
+      const dbUser = (db.users || []).find((u: any) => u.id === decoded.id);
+      if (dbUser) {
+        req.user = {
+          ...decoded,
+          email: dbUser.email,
+          name: dbUser.name,
+          role: dbUser.role,
+          title: dbUser.title || decoded.title,
+          permissions: dbUser.permissions || decoded.permissions || []
+        };
+      } else {
+        req.user = decoded;
+      }
+
+      const memberships = getUserMemberships(req.user.id);
+      const targetCompanyId = requestedCompanyId || decoded.tenant_id || decoded.tenantId;
+      const matchedMembership = targetCompanyId
+        ? memberships.find((m) => m.companyId === targetCompanyId)
+        : memberships[0];
+
+      if (matchedMembership) {
+        req.membership = matchedMembership;
+        req.companyId = matchedMembership.companyId;
+        req.tenant_id = matchedMembership.companyId;
+        req.tenantId = matchedMembership.companyId;
+        req.companyRole = matchedMembership.role;
+      }
     }
   }
-
-  // Multi-tenant resolution: pass tenant_id across all request handlers
-  const resolvedTenantId = req.user?.tenant_id || req.user?.tenantId || tenantFromHeader || 'tenant-alm-nexus';
-  (req as any).tenant_id = resolvedTenantId;
-  (req as any).tenantId = resolvedTenantId;
 
   next();
 }
 
 /**
- * Express Middleware to require authentication and specific role
+ * Require a verified logged-in user (returns 401 if unauthenticated).
+ */
+export function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
+  if (!req.user?.id) {
+    res.status(401).json({
+      success: false,
+      error: 'Unauthorized: Valid authenticated session required.'
+    });
+    return;
+  }
+  next();
+}
+
+/**
+ * Resolve & enforce company membership isolation on every tenant-scoped endpoint.
+ * Rejects unauthenticated calls (401), users with 0 companies (403 NO_COMPANY_MEMBERSHIP),
+ * and any attempt to access a company the user does not belong to (403 Cross-tenant access denied).
+ */
+export function requireCompanyAccess(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
+  if (!req.user?.id) {
+    res.status(401).json({
+      success: false,
+      error: 'Unauthorized: Valid authenticated session required.'
+    });
+    return;
+  }
+
+  const explicitCompanyId =
+    (req.params?.companyId as string) ||
+    req.requestedCompanyId ||
+    (req.body?.companyId as string) ||
+    (req.body?.tenantId as string) ||
+    (req.body?.tenant_id as string) ||
+    undefined;
+
+  const memberships = getUserMemberships(req.user.id);
+
+  if (explicitCompanyId) {
+    const cleanId = explicitCompanyId.trim();
+    if (cleanId === 'all') {
+      res.status(403).json({
+        success: false,
+        error: 'Forbidden: Cross-company wildcard queries are not permitted.'
+      });
+      return;
+    }
+    const found = memberships.find((m) => m.companyId === cleanId);
+    if (!found) {
+      res.status(403).json({
+        success: false,
+        error: 'Forbidden: You do not have access to the requested company workspace.'
+      });
+      return;
+    }
+    req.membership = found;
+    req.companyId = found.companyId;
+    req.tenant_id = found.companyId;
+    req.tenantId = found.companyId;
+    req.companyRole = found.role;
+    next();
+    return;
+  }
+
+  const fallbackMembership =
+    (req.user.tenant_id ? memberships.find((m) => m.companyId === req.user!.tenant_id) : undefined) ||
+    memberships[0];
+
+  if (!fallbackMembership) {
+    res.status(403).json({
+      success: false,
+      code: 'NO_COMPANY_MEMBERSHIP',
+      error: 'Forbidden: You do not belong to any company yet. Create or join a company first.'
+    });
+    return;
+  }
+
+  req.membership = fallbackMembership;
+  req.companyId = fallbackMembership.companyId;
+  req.tenant_id = fallbackMembership.companyId;
+  req.tenantId = fallbackMembership.companyId;
+  req.companyRole = fallbackMembership.role;
+  next();
+}
+
+/**
+ * Enforce strict company role tier (company_admin / department_head / employee).
+ */
+export function requireCompanyRole(allowedCompanyRoles: CompanyRole[]) {
+  return (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    requireCompanyAccess(req, res, () => {
+      if (!req.companyRole || !allowedCompanyRoles.includes(req.companyRole)) {
+        return res.status(403).json({
+          success: false,
+          error: `Forbidden: Access restricted to [${allowedCompanyRoles.join(', ')}]. Current company role: ${req.companyRole || 'none'}`
+        });
+      }
+      return next();
+    });
+  };
+}
+
+/**
+ * Compatibility role guard for legacy routes (enforces membership role + legacy user role strictly).
  */
 export function requireRole(allowedRoles: string[]) {
   return (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
@@ -146,21 +378,58 @@ export function requireRole(allowedRoles: string[]) {
       });
     }
 
-    // Admins and BD Heads always bypass role restrictions
-    if (req.user.role === 'admin' || req.user.role === 'bd_head' || allowedRoles.includes(req.user.role)) {
+    // Ensure company membership is resolved before checking permissions
+    const memberships = getUserMemberships(req.user.id);
+    const targetCompanyId = req.requestedCompanyId || req.companyId || req.user.tenant_id || req.user.tenantId;
+    const membership = targetCompanyId
+      ? memberships.find((m) => m.companyId === targetCompanyId)
+      : memberships[0];
+
+    if (req.requestedCompanyId && !membership) {
+      return res.status(403).json({
+        success: false,
+        error: 'Forbidden: You do not belong to the requested company workspace.'
+      });
+    }
+
+    if (membership) {
+      req.membership = membership;
+      req.companyId = membership.companyId;
+      req.tenant_id = membership.companyId;
+      req.tenantId = membership.companyId;
+      req.companyRole = membership.role;
+
+      if (membership.role === 'company_admin') {
+        return next();
+      }
+      if (membership.role === 'department_head') {
+        const headMatches = allowedRoles.some((r) => ['department_head', 'coordinator', 'sales', 'team_member'].includes(r));
+        if (headMatches) return next();
+        return res.status(403).json({
+          success: false,
+          error: 'Forbidden: Company Owner/Admin privileges are required for this resource.'
+        });
+      }
+      // employee
+      const empMatches = allowedRoles.some((r) => ['employee', 'team_member', 'developer', 'designer'].includes(r));
+      if (empMatches) return next();
+      return res.status(403).json({
+        success: false,
+        error: 'Forbidden: Insufficient privileges for your employee account.'
+      });
+    }
+
+    if (allowedRoles.includes(req.user.role)) {
       return next();
     }
 
     return res.status(403).json({
       success: false,
-      error: `Forbidden: Access restricted to roles [${allowedRoles.join(', ')}]. Current role: ${req.user.role}`
+      error: `Forbidden: Access restricted to roles [${allowedRoles.join(', ')}].`
     });
   };
 }
 
-/**
- * Express middleware to validate API token header or query parameter for automation endpoints (n8n, Python scrapers)
- */
 export function authenticateApiKey(req: Request, res: Response, next: NextFunction): void {
   const apiKeyHeader = req.headers['x-api-key'] || req.headers['authorization'];
   let rawToken: string | null = null;
@@ -189,46 +458,44 @@ export function authenticateApiKey(req: Request, res: Response, next: NextFuncti
   }
 
   (req as any).apiToken = check.token;
+  if (check.token.tenantId || check.token.companyId) {
+    (req as any).companyId = check.token.companyId || check.token.tenantId;
+    (req as any).tenant_id = (req as any).companyId;
+    (req as any).tenantId = (req as any).companyId;
+  }
   next();
 }
 
 /**
- * Authenticate login credentials against agency_users
- * Supports email lookup or direct role selection with password or PIN
+ * Authenticate login credentials strictly by verified email + password hash (zero PIN/role backdoors).
  */
-export function authenticateUser(identifier: string, passwordPlain: string, ipAddress?: string): { success: boolean; user?: any; token?: string; message?: string } {
+export function authenticateUser(
+  identifier: string,
+  passwordPlain: string,
+  ipAddress?: string
+): { success: boolean; user?: any; token?: string; companies?: any[]; pendingInvites?: any[]; message?: string } {
   const db = getDB();
   const users = db.users || DEFAULT_USERS;
-  const cleanId = (identifier || '').trim().toLowerCase();
-  
-  // Normalize role aliases (e.g. 'client' -> 'client_guest')
-  const targetRole = cleanId === 'client' ? 'client_guest' : cleanId;
+  const cleanEmail = (identifier || '').trim().toLowerCase();
 
-  // Find user by email or by role
-  let user = users.find((u: any) => u.email.toLowerCase() === cleanId);
-  if (!user) {
-    user = users.find((u: any) => u.role.toLowerCase() === targetRole);
-  }
+  const user = users.find((u: any) => (u.email || '').trim().toLowerCase() === cleanEmail);
 
   if (!user) {
     logAuditAction({
       userId: 'anonymous',
-      userName: identifier,
+      userName: cleanEmail,
       userRole: 'unknown',
       action: 'AUTH_LOGIN_FAILURE',
       entityType: 'auth',
-      entityId: identifier,
-      details: { attemptedIdentifier: identifier, reason: 'User account or role not found' },
+      entityId: cleanEmail,
+      details: { attemptedIdentifier: cleanEmail, reason: 'Account not found' },
       ipAddress: ipAddress || '127.0.0.1'
     });
-    return { success: false, message: 'Invalid credentials or role.' };
+    return { success: false, message: 'Invalid work email or password.' };
   }
 
   const verification = verifyPassword(passwordPlain, user.passwordHash);
-  const isPinMatch = passwordPlain === '1234' || passwordPlain === '0000';
-  const isPasswordMatch = verification.valid;
-
-  if (!isPasswordMatch && !isPinMatch) {
+  if (!verification.valid) {
     logAuditAction({
       userId: user.id,
       userName: user.name,
@@ -236,16 +503,14 @@ export function authenticateUser(identifier: string, passwordPlain: string, ipAd
       action: 'AUTH_LOGIN_FAILURE',
       entityType: 'auth',
       entityId: user.id,
-      details: { attemptedIdentifier: identifier, reason: 'Incorrect password or PIN' },
+      details: { attemptedIdentifier: cleanEmail, reason: 'Incorrect password' },
       ipAddress: ipAddress || '127.0.0.1'
     });
-    return { success: false, message: 'Incorrect password or PIN code.' };
+    return { success: false, message: 'Invalid work email or password.' };
   }
 
-  // Transparently upgrade legacy HMAC hashes to modern scrypt on successful login
-  if (isPasswordMatch && verification.needsUpgrade) {
+  if (verification.needsUpgrade) {
     try {
-      const db = getDB();
       const dbUser = db.users?.find((u: any) => u.id === user.id);
       if (dbUser) {
         dbUser.passwordHash = hashPassword(passwordPlain);
@@ -253,33 +518,36 @@ export function authenticateUser(identifier: string, passwordPlain: string, ipAd
         saveDB(db);
       }
     } catch {
-      // Non-fatal, login still succeeds
+      // Non-fatal
     }
   }
 
-  const tenantId = user.tenantId || user.tenant_id || 'tenant-alm-nexus';
+  const { companies, memberships, pendingInvites } = getUserCompaniesSummary(user.id, user.email);
+  const primaryCompanyId = memberships[0]?.companyId;
 
   const token = signToken({
     id: user.id,
     email: user.email,
-    role: user.role,
+    role: user.role || 'team_member',
     name: user.name,
-    title: user.title || `${user.role.toUpperCase()} Team Member`,
+    title: user.title || 'Workspace Member',
     permissions: user.permissions || [],
-    tenant_id: tenantId,
-    tenantId: tenantId
+    tenant_id: primaryCompanyId,
+    tenantId: primaryCompanyId
   });
 
   const sanitizedUser = {
     id: user.id,
     name: user.name,
     email: user.email,
-    role: user.role,
-    title: user.title || 'Team Member',
-    avatar: user.avatar,
+    role: user.role || 'team_member',
+    title: user.title || 'Workspace Member',
+    avatar: user.avatar || '',
+    availabilityStatus: user.availabilityStatus || 'Available',
+    availabilityUpdatedAt: user.availabilityUpdatedAt || user.createdAt,
     permissions: user.permissions || [],
-    tenantId: tenantId,
-    tenant_id: tenantId
+    tenantId: primaryCompanyId,
+    tenant_id: primaryCompanyId
   };
 
   logAuditAction({
@@ -289,49 +557,50 @@ export function authenticateUser(identifier: string, passwordPlain: string, ipAd
     action: 'AUTH_LOGIN_SUCCESS',
     entityType: 'user',
     entityId: user.id,
-    details: { email: user.email, role: user.role },
+    details: { email: user.email },
     ipAddress: ipAddress || '127.0.0.1'
   });
 
   return {
     success: true,
     user: sanitizedUser,
-    token
+    token,
+    companies,
+    pendingInvites
   };
 }
 
 /**
- * Register a new staff, client, or partner user account
+ * Register a new individual personal account (zero companies auto-created).
  */
-export function registerNewUser(data: { name: string; email: string; password: string; role: string; title?: string }, ipAddress?: string): { success: boolean; user?: any; token?: string; message?: string } {
+export function registerNewUser(
+  data: { name: string; email: string; password: string; role?: string; title?: string; emailVerified?: boolean },
+  ipAddress?: string
+): { success: boolean; user?: any; token?: string; companies?: any[]; pendingInvites?: any[]; message?: string } {
   const db = getDB();
-  if (!db.users) db.users = [...DEFAULT_USERS];
+  if (!Array.isArray(db.users)) db.users = [...DEFAULT_USERS];
 
-  const existing = db.users.find((u: any) => u.email.toLowerCase() === data.email.trim().toLowerCase());
+  const normalizedEmail = data.email.trim().toLowerCase();
+  const existing = db.users.find((u: any) => (u.email || '').toLowerCase() === normalizedEmail);
   if (existing) {
     return { success: false, message: 'An account with this email address already exists.' };
   }
 
-  const defaultRolePermissions: Record<string, string[]> = {
-    admin: ['admin:all', 'projects:read', 'projects:write', 'commissions:approve', 'commissions:payout', 'database:manage', 'webhooks:manage', 'api_tokens:manage', 'audit_logs:read'],
-    bd_head: ['admin:all', 'projects:read', 'projects:write', 'commissions:approve', 'commissions:payout', 'database:manage', 'webhooks:manage', 'api_tokens:manage', 'audit_logs:read'],
-    sales: ['projects:read', 'projects:write', 'outreach:generate', 'inbox:manage', 'commissions:view_own', 'chat:write'],
-    coordinator: ['projects:read', 'projects:write', 'discord:handoff', 'inbox:manage', 'chat:write'],
-    developer: ['projects:read', 'staging:review', 'qa:signoff', 'discord:handoff', 'vault:read', 'chat:write'],
-    client_guest: ['portal:access', 'milestones:review', 'staging:inspect', 'invoices:view', 'feedback:submit'],
-    collaborator: ['projects:read_assigned', 'deals:evaluate', 'staging:inspect', 'feedback:submit', 'chat:write']
-  };
-
+  const now = new Date().toISOString();
   const newUser = {
-    id: `user-${Date.now()}`,
+    id: `user-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`,
     name: data.name.trim(),
-    email: data.email.trim().toLowerCase(),
+    email: normalizedEmail,
     passwordHash: hashPassword(data.password),
-    role: data.role || 'sales',
-    title: data.title || `${(data.role || 'sales').toUpperCase()} Member`,
+    emailVerified: Boolean(data.emailVerified ?? true),
+    emailVerifiedAt: now,
+    role: data.role || 'team_member',
+    title: data.title || 'Workspace Member',
     avatar: '',
-    permissions: defaultRolePermissions[data.role] || defaultRolePermissions.sales,
-    createdAt: new Date().toISOString()
+    availabilityStatus: 'Available' as AvailabilityStatus,
+    availabilityUpdatedAt: now,
+    permissions: ['workspace:member'],
+    createdAt: now
   };
 
   db.users.push(newUser);
@@ -344,11 +613,11 @@ export function registerNewUser(data: { name: string; email: string; password: s
     action: 'USER_REGISTERED',
     entityType: 'user',
     entityId: newUser.id,
-    details: { email: newUser.email, role: newUser.role, title: newUser.title },
+    details: { email: newUser.email },
     ipAddress: ipAddress || '127.0.0.1'
   });
 
-  const userTenantId = (data as any).tenantId || (data as any).tenant_id || 'tenant-alm-nexus';
+  const { companies, pendingInvites } = getUserCompaniesSummary(newUser.id, newUser.email);
 
   const token = signToken({
     id: newUser.id,
@@ -356,9 +625,7 @@ export function registerNewUser(data: { name: string; email: string; password: s
     role: newUser.role,
     name: newUser.name,
     title: newUser.title,
-    permissions: newUser.permissions,
-    tenant_id: userTenantId,
-    tenantId: userTenantId
+    permissions: newUser.permissions
   });
 
   const sanitized = {
@@ -368,15 +635,17 @@ export function registerNewUser(data: { name: string; email: string; password: s
     role: newUser.role,
     title: newUser.title,
     avatar: newUser.avatar,
-    permissions: newUser.permissions,
-    tenantId: userTenantId,
-    tenant_id: userTenantId
+    availabilityStatus: newUser.availabilityStatus,
+    availabilityUpdatedAt: newUser.availabilityUpdatedAt,
+    permissions: newUser.permissions
   };
 
   return {
     success: true,
     user: sanitized,
     token,
-    message: 'User registered and authenticated successfully.'
+    companies,
+    pendingInvites,
+    message: 'Personal account created successfully.'
   };
 }

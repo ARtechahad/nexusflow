@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
+import { buildAuthHeaders } from '../lib/api';
 import { ScrapedLead, ScraperConfig, AIOutreachRequest, AIOutreachResponse, DripFollowUpStage } from '../types';
 import { generateAI, generateOfflineFallback } from '../services/aiService';
 import { LeadFlowEngineSection } from './LeadFlowEngineSection';
@@ -40,7 +41,8 @@ export const OutreachView: React.FC = () => {
     setActiveTab,
     outreachInitialData,
     aiSettings,
-    setIsAISettingsModalOpen
+    setIsAISettingsModalOpen,
+    currentTenant
   } = useApp();
 
   // Sub-tabs: 'scraper' | 'generator' | 'drip' | 'leadflow_engine'
@@ -100,9 +102,10 @@ export const OutreachView: React.FC = () => {
 
   // Load initial data from server
   useEffect(() => {
+    if (!currentTenant?.id) return;
     fetchScraperLeads();
     fetchDripCampaigns();
-  }, []);
+  }, [currentTenant?.id]);
 
   // When navigated with pre-filled lead data from pipeline or scraper
   useEffect(() => {
@@ -122,7 +125,7 @@ export const OutreachView: React.FC = () => {
   // Fetch Scraper data
   const fetchScraperLeads = async () => {
     try {
-      const res = await fetch('/api/scraper/leads');
+      const res = await fetch('/api/scraper/leads', { headers: buildAuthHeaders() });
       const data = await res.json();
       if (data.success) {
         setLeads(data.leads || []);
@@ -136,7 +139,7 @@ export const OutreachView: React.FC = () => {
   // Fetch Drip Campaigns
   const fetchDripCampaigns = async () => {
     try {
-      const res = await fetch('/api/drip/campaigns');
+      const res = await fetch('/api/drip/campaigns', { headers: buildAuthHeaders() });
       const data = await res.json();
       if (data.success) {
         setDripCampaigns(data.campaigns || []);
@@ -153,7 +156,7 @@ export const OutreachView: React.FC = () => {
     try {
       const res = await fetch('/api/scraper/scan', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({})
       });
       const data = await res.json();
@@ -180,7 +183,7 @@ export const OutreachView: React.FC = () => {
     try {
       const res = await fetch('/api/scraper/config', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(scraperConfig)
       });
       const data = await res.json();
@@ -217,7 +220,8 @@ export const OutreachView: React.FC = () => {
     setInjectingLeadId(lead.id);
     try {
       const res = await fetch(`/api/scraper/inject/${lead.id}`, {
-        method: 'POST'
+        method: 'POST',
+        headers: buildAuthHeaders()
       });
       const data = await res.json();
       if (data.success) {
@@ -313,7 +317,7 @@ export const OutreachView: React.FC = () => {
   const handleTriggerDripCycle = async () => {
     setIsTriggeringDrip(true);
     try {
-      const res = await fetch('/api/drip/trigger', { method: 'POST' });
+      const res = await fetch('/api/drip/trigger', { method: 'POST', headers: buildAuthHeaders() });
       const data = await res.json();
       if (data.success) {
         showToast(data.message || `Drip executed: ${data.executedCount} follow-ups sent!`);
@@ -329,7 +333,7 @@ export const OutreachView: React.FC = () => {
   // Send single drip follow-up
   const handleSendSingleDrip = async (projectId: string, clientName: string) => {
     try {
-      const res = await fetch(`/api/drip/send-now/${projectId}`, { method: 'POST' });
+      const res = await fetch(`/api/drip/send-now/${projectId}`, { method: 'POST', headers: buildAuthHeaders() });
       const data = await res.json();
       if (data.success) {
         showToast(`Follow-up email dispatched to ${clientName}!`);
@@ -343,7 +347,7 @@ export const OutreachView: React.FC = () => {
   // Toggle Drip for project
   const handleToggleDrip = async (projectId: string) => {
     try {
-      const res = await fetch(`/api/drip/toggle/${projectId}`, { method: 'PUT' });
+      const res = await fetch(`/api/drip/toggle/${projectId}`, { method: 'PUT', headers: buildAuthHeaders() });
       const data = await res.json();
       if (data.success) {
         showToast(data.message);
@@ -1020,7 +1024,7 @@ export const OutreachView: React.FC = () => {
                       try {
                         await fetch('/api/chat/messages', {
                           method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
+                          headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
                           body: JSON.stringify({
                             senderId: 'user-sales-1',
                             senderName: 'Sales Specialist',

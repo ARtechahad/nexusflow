@@ -1,9 +1,8 @@
-import express, { Request, Response } from 'express';
+import express, { Response } from 'express';
 import crypto from 'node:crypto';
 import nodemailer from 'nodemailer';
 import { z } from 'zod';
-import { authenticateToken } from '../../middlewares/auth';
-import { requireClerkAuth } from '../../middlewares/clerkAuth';
+import { AuthenticatedRequest, requireCompanyRole } from '../../middlewares/auth';
 import { resendService } from '../../services/resendService';
 import { getOutreachPool } from '../../services/outreach/schema';
 import { logger } from '../../logger';
@@ -15,11 +14,14 @@ import { readDB, writeDB } from '../../db';
 
 export const outreachInboxRouter = express.Router();
 
+// Enforce company admin or department head isolation on all outreach inbox routes
+outreachInboxRouter.use(requireCompanyRole(['company_admin', 'department_head']));
+
 // ----------------------------------------------------
 // 1. GET /inbox/threads — List threads with filters & search
 // ----------------------------------------------------
-outreachInboxRouter.get(['/inbox/threads', '/threads'], authenticateToken, async (req: Request, res: Response) => {
-  const tenantId = (req as any).user?.tenant_id || (req as any).user?.tenantId || 'tenant-alm-nexus';
+outreachInboxRouter.get(['/inbox/threads', '/threads'], async (req: AuthenticatedRequest, res: Response) => {
+  const tenantId = req.companyId!;
   const pool = getOutreachPool();
   if (!pool) {
     res.status(500).json({ error: 'Database unavailable' });
@@ -114,9 +116,9 @@ outreachInboxRouter.get(['/inbox/threads', '/threads'], authenticateToken, async
 // ----------------------------------------------------
 // 2. GET /inbox/threads/:id — Thread detail with all messages
 // ----------------------------------------------------
-outreachInboxRouter.get(['/inbox/threads/:id', '/threads/:id'], authenticateToken, async (req: Request, res: Response) => {
+outreachInboxRouter.get(['/inbox/threads/:id', '/threads/:id'], async (req: AuthenticatedRequest, res: Response) => {
   const threadId = req.params.id;
-  const tenantId = (req as any).user?.tenant_id || (req as any).user?.tenantId || 'tenant-alm-nexus';
+  const tenantId = req.companyId!;
   const pool = getOutreachPool();
   if (!pool) {
     res.status(500).json({ error: 'Database unavailable' });
@@ -173,9 +175,9 @@ outreachInboxRouter.get(['/inbox/threads/:id', '/threads/:id'], authenticateToke
 // ----------------------------------------------------
 // 3. POST /inbox/threads/:id/reply — Send manual reply through Cap Guard
 // ----------------------------------------------------
-outreachInboxRouter.post(['/inbox/threads/:id/reply', '/threads/:id/reply'], requireClerkAuth, async (req: Request, res: Response) => {
+outreachInboxRouter.post(['/inbox/threads/:id/reply', '/threads/:id/reply'], async (req: AuthenticatedRequest, res: Response) => {
   const threadId = req.params.id;
-  const tenantId = (req as any).user?.tenant_id || (req as any).user?.tenantId || (req as any).orgId || (req as any).tenant_id || 'tenant-alm-nexus';
+  const tenantId = req.companyId!;
   const pool = getOutreachPool();
   if (!pool) {
     res.status(500).json({ error: 'Database unavailable' });
@@ -322,9 +324,9 @@ outreachInboxRouter.post(['/inbox/threads/:id/reply', '/threads/:id/reply'], req
 // ----------------------------------------------------
 // 4. PATCH /inbox/threads/:id — Update label, read/unread, archive
 // ----------------------------------------------------
-outreachInboxRouter.patch(['/inbox/threads/:id', '/threads/:id'], authenticateToken, async (req: Request, res: Response) => {
+outreachInboxRouter.patch(['/inbox/threads/:id', '/threads/:id'], async (req: AuthenticatedRequest, res: Response) => {
   const threadId = req.params.id;
-  const tenantId = (req as any).user?.tenant_id || (req as any).user?.tenantId || 'tenant-alm-nexus';
+  const tenantId = req.companyId!;
   const pool = getOutreachPool();
   if (!pool) {
     res.status(500).json({ error: 'Database unavailable' });
@@ -391,9 +393,9 @@ outreachInboxRouter.patch(['/inbox/threads/:id', '/threads/:id'], authenticateTo
 // ----------------------------------------------------
 // 5. POST /inbox/threads/:id/suggest-reply — AI Suggest Reply (Gemini)
 // ----------------------------------------------------
-outreachInboxRouter.post(['/inbox/threads/:id/suggest-reply', '/threads/:id/suggest-reply'], authenticateToken, async (req: Request, res: Response) => {
+outreachInboxRouter.post(['/inbox/threads/:id/suggest-reply', '/threads/:id/suggest-reply'], async (req: AuthenticatedRequest, res: Response) => {
   const threadId = req.params.id;
-  const tenantId = (req as any).user?.tenant_id || (req as any).user?.tenantId || 'tenant-alm-nexus';
+  const tenantId = req.companyId!;
   const pool = getOutreachPool();
   if (!pool) {
     res.status(500).json({ error: 'Database unavailable' });
@@ -484,9 +486,9 @@ Respond ONLY with valid JSON in this format:
 // ----------------------------------------------------
 // 6. POST /inbox/threads/:id/create-lead — Convert interested thread to CRM lead
 // ----------------------------------------------------
-outreachInboxRouter.post(['/inbox/threads/:id/create-lead', '/threads/:id/create-lead'], authenticateToken, async (req: Request, res: Response) => {
+outreachInboxRouter.post(['/inbox/threads/:id/create-lead', '/threads/:id/create-lead'], async (req: AuthenticatedRequest, res: Response) => {
   const threadId = req.params.id;
-  const tenantId = (req as any).user?.tenant_id || (req as any).user?.tenantId || 'tenant-alm-nexus';
+  const tenantId = req.companyId!;
   const pool = getOutreachPool();
   if (!pool) {
     res.status(500).json({ error: 'Database unavailable' });
@@ -525,12 +527,13 @@ outreachInboxRouter.post(['/inbox/threads/:id/create-lead', '/threads/:id/create
 
     const newLead = {
       id: leadId,
+      companyId: tenantId,
+      tenantId,
       name: `${clientName} (${companyName})`,
       client: clientName,
       company: companyName,
       status: 'discovery',
       leadScore: 85,
-      tenantId,
       email: thread.prospect_email,
       source: `Outreach Suite - ${thread.campaign_name || 'Cold Campaign'}`,
       description: `Inbound positive response: "${thread.snippet || thread.subject}"`,

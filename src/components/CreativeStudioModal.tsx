@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Sparkles, Image as ImageIcon, Download, Check, RefreshCw, FolderPlus, Layers, Sliders } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { buildAuthHeaders } from '../lib/api';
 
 interface Props {
   isOpen: boolean;
@@ -8,7 +9,7 @@ interface Props {
 }
 
 export const CreativeStudioModal: React.FC<Props> = ({ isOpen, onClose }) => {
-  const { currentTenant, authToken, showToast } = useApp();
+  const { currentTenant, showToast } = useApp();
   const [prompt, setPrompt] = useState('Modern dark-mode SaaS dashboard interface banner with indigo neon glow, 3D analytics charts, and glassmorphic card elements.');
   const [aspectRatio, setAspectRatio] = useState<'1:1' | '16:9' | '4:3' | '9:16'>('16:9');
   const [loading, setLoading] = useState(false);
@@ -17,12 +18,10 @@ export const CreativeStudioModal: React.FC<Props> = ({ isOpen, onClose }) => {
   const [activeTab, setActiveTab] = useState<'generate' | 'vault'>('generate');
 
   const fetchMediaVault = async () => {
+    if (!currentTenant?.id) return;
     try {
       const res = await fetch('/api/ai/media-vault', {
-        headers: {
-          'X-Tenant-Id': currentTenant?.id || 'tenant-alm-nexus',
-          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
-        }
+        headers: buildAuthHeaders()
       });
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
@@ -37,23 +36,19 @@ export const CreativeStudioModal: React.FC<Props> = ({ isOpen, onClose }) => {
     if (isOpen) {
       fetchMediaVault();
     }
-  }, [isOpen]);
+  }, [isOpen, currentTenant?.id]);
 
   if (!isOpen) return null;
 
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!prompt.trim()) return;
+    if (!prompt.trim() || !currentTenant?.id) return;
 
     setLoading(true);
     try {
       const res = await fetch('/api/ai/generate-creative', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Tenant-Id': currentTenant?.id || 'tenant-alm-nexus',
-          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
-        },
+        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           prompt: prompt.trim(),
           aspectRatio

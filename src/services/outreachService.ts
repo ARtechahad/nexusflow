@@ -126,11 +126,15 @@ function getAuthHeader(): Record<string, string> {
     localStorage.getItem('agency_jwt_token') ||
     sessionStorage.getItem('agency_jwt_token') ||
     localStorage.getItem('alm_nexus_token');
+  const tenantId = localStorage.getItem('alm_nexus_tenant_id');
   const headers: Record<string, string> = {
     'Content-Type': 'application/json'
   };
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
+  }
+  if (tenantId) {
+    headers['X-Tenant-Id'] = tenantId;
   }
   return headers;
 }

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
+import { buildAuthHeaders } from '../lib/api';
 import { SecureFileRecord } from '../types';
 import {
   Lock,
@@ -16,7 +17,7 @@ import {
 } from 'lucide-react';
 
 export const SecureFileVault: React.FC = () => {
-  const { role, t, showToast } = useApp();
+  const { role, t, showToast, currentTenant } = useApp();
   const [files, setFiles] = useState<SecureFileRecord[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [isUploading, setIsUploading] = useState(false);
@@ -25,11 +26,17 @@ export const SecureFileVault: React.FC = () => {
   const [newFileAccessRole, setNewFileAccessRole] = useState<'all' | 'coordinator' | 'developer' | 'admin'>('all');
 
   const fetchFiles = async () => {
+    if (!currentTenant?.id) {
+      setFiles([]);
+      return;
+    }
     try {
-      const res = await fetch('/api/files');
+      const res = await fetch('/api/files', { headers: buildAuthHeaders() });
       if (res.ok) {
         const data = await res.json();
         setFiles(data.files || []);
+      } else {
+        setFiles([]);
       }
     } catch (e) {
       console.warn('Failed to fetch files:', e);
@@ -38,11 +45,11 @@ export const SecureFileVault: React.FC = () => {
 
   useEffect(() => {
     fetchFiles();
-  }, []);
+  }, [currentTenant?.id]);
 
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newFileName.trim()) return;
+    if (!newFileName.trim() || !currentTenant?.id) return;
 
     // Generate SHA-256 mock hash
     const mockHash = 'sha256-' + Array.from({ length: 16 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
@@ -58,7 +65,7 @@ export const SecureFileVault: React.FC = () => {
     try {
       const res = await fetch('/api/files', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(payload)
       });
       if (res.ok) {

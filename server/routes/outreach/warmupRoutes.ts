@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import { z } from 'zod';
-import { authenticateToken, AuthenticatedRequest } from '../../middlewares/auth';
+import { AuthenticatedRequest, requireCompanyRole } from '../../middlewares/auth';
 import { getOutreachPool } from '../../services/outreach/schema';
 import {
   computeDailyTarget,
@@ -14,6 +14,8 @@ import { logger } from '../../logger';
 
 export const warmupRouter = Router();
 
+warmupRouter.use(requireCompanyRole(['company_admin', 'department_head']));
+
 // Zod schema for updating mailbox warmup configuration
 const updateWarmupSchema = z.object({
   warmup_enabled: z.boolean().optional(),
@@ -23,18 +25,15 @@ const updateWarmupSchema = z.object({
   warmup_target: z.coerce.number().int().min(1).max(120).optional()
 });
 
-/**
- * Helper to resolve tenant ID safely from request
- */
 function getTenantId(req: AuthenticatedRequest): string {
-  return req.user?.tenant_id || req.user?.tenantId || 'tenant-alm-nexus';
+  return req.companyId!;
 }
 
 // ============================================================================
 // 1. GET /api/outreach/warmup/overview
 // Returns per-mailbox warmup status, today target/sent, health score, and reasons
 // ============================================================================
-warmupRouter.get('/warmup/overview', authenticateToken, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+warmupRouter.get('/warmup/overview', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const pool = getOutreachPool();
   if (!pool) {
     res.status(503).json({ error: 'Database service unavailable' });
@@ -184,7 +183,7 @@ warmupRouter.get('/warmup/overview', authenticateToken, async (req: Authenticate
 // 2. PATCH /api/outreach/warmup/:mailboxId
 // Configures warmup parameters (enable, pause, mode, speed, target <= 120)
 // ============================================================================
-warmupRouter.patch('/warmup/:mailboxId', authenticateToken, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+warmupRouter.patch('/warmup/:mailboxId', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const pool = getOutreachPool();
   if (!pool) {
     res.status(503).json({ error: 'Database service unavailable' });
@@ -292,7 +291,7 @@ warmupRouter.patch('/warmup/:mailboxId', authenticateToken, async (req: Authenti
 // 3. POST /api/outreach/warmup/:mailboxId/consent
 // Accepts the peer-to-peer network participation agreement
 // ============================================================================
-warmupRouter.post('/warmup/:mailboxId/consent', authenticateToken, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+warmupRouter.post('/warmup/:mailboxId/consent', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const pool = getOutreachPool();
   if (!pool) {
     res.status(503).json({ error: 'Database service unavailable' });
@@ -334,7 +333,7 @@ warmupRouter.post('/warmup/:mailboxId/consent', authenticateToken, async (req: A
 // 4. GET /api/outreach/warmup/:mailboxId/stats
 // Returns 14-day rolling series of inbox, spam, sent, rescued, and health scores
 // ============================================================================
-warmupRouter.get('/warmup/:mailboxId/stats', authenticateToken, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+warmupRouter.get('/warmup/:mailboxId/stats', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const pool = getOutreachPool();
   if (!pool) {
     res.status(503).json({ error: 'Database service unavailable' });
@@ -430,7 +429,7 @@ warmupRouter.get('/warmup/:mailboxId/stats', authenticateToken, async (req: Auth
 // 5. POST /api/outreach/warmup/generate-content (ADMIN ONLY)
 // Asks Gemini (gemini-3.8-flash) to generate 100 varied items, validates & saves
 // ============================================================================
-warmupRouter.post('/warmup/generate-content', authenticateToken, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+warmupRouter.post('/warmup/generate-content', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const pool = getOutreachPool();
   if (!pool) {
     res.status(503).json({ error: 'Database service unavailable' });
@@ -454,7 +453,7 @@ warmupRouter.post('/warmup/generate-content', authenticateToken, async (req: Aut
 // ============================================================================
 // 6. POST /api/outreach/warmup/run-planner (TRIGGER MANUAL PLANNER RUN)
 // ============================================================================
-warmupRouter.post('/warmup/run-planner', authenticateToken, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+warmupRouter.post('/warmup/run-planner', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const pool = getOutreachPool();
   if (!pool) {
     res.status(503).json({ error: 'Database service unavailable' });
@@ -477,13 +476,14 @@ warmupRouter.post('/warmup/run-planner', authenticateToken, async (req: Authenti
 // Simulation endpoint for acceptance checks: simulates high spam test to verify
 // 50% volume halving and >= 15% pool exclusion logic.
 // ============================================================================
-warmupRouter.post('/warmup/test-simulate-spam', authenticateToken, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+warmupRouter.post('/warmup/test-simulate-spam', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const pool = getOutreachPool();
   if (!pool) {
     res.status(503).json({ error: 'Database service unavailable' });
     return;
   }
 
+  const tenantId = getTenantId(req);
   const { mailboxId, spamPercentage } = req.body;
   if (!mailboxId) {
     res.status(400).json({ error: 'mailboxId is required' });
@@ -495,22 +495,26 @@ warmupRouter.post('/warmup/test-simulate-spam', authenticateToken, async (req: A
   const counterId = `mbxd_${mailboxId}_${todayUtc.replace(/-/g, '')}`;
 
   try {
-    // Record 100 sent with `percent` spam landing
+    const ownership = await pool.query(`SELECT id FROM ox_mailboxes WHERE id = $1 AND tenant_id = $2`, [mailboxId, tenantId]);
+    if (ownership.rowCount === 0) {
+      res.status(404).json({ error: 'Mailbox not found in your company workspace.' });
+      return;
+    }
+
     const spamCount = Math.round(percent);
     const inboxCount = 100 - spamCount;
 
     await pool.query(
       `INSERT INTO ox_mailbox_daily (id, tenant_id, mailbox_id, date_utc, warmup_sent_count, warmup_spam_count, warmup_inbox_count, updated_at)
-       VALUES ($1, 'tenant-test', $2, $3, 100, $4, $5, NOW())
+       VALUES ($1, $2, $3, $4, 100, $5, $6, NOW())
        ON CONFLICT (mailbox_id, date_utc) DO UPDATE
        SET warmup_sent_count = 100,
-           warmup_spam_count = $4,
-           warmup_inbox_count = $5,
+           warmup_spam_count = $5,
+           warmup_inbox_count = $6,
            updated_at = NOW()`,
-      [counterId, mailboxId, todayUtc, spamCount, inboxCount]
+      [counterId, tenantId, mailboxId, todayUtc, spamCount, inboxCount]
     );
 
-    // Compute updated target to see exclusion or volume reduction
     const targetResult = await computeDailyTarget(mailboxId, new Date(), { pool });
 
     res.json({
