@@ -38,6 +38,7 @@ import { offlineSyncService } from '../services/offlineSyncService';
 import { googleSheetsService } from '../services/googleSheetsService';
 import { localDatabase } from '../services/localDatabaseFallback';
 import { clearOutreachTelemetryCache } from '../hooks/useOutreachTelemetry';
+import { canAccessEmailModules } from '../utils/departmentAccess';
 
 export type AppNavTab =
   | 'sop'
@@ -113,9 +114,35 @@ interface AppContextType {
   inviteToken: string | null;
   setInviteToken: (token: string | null) => void;
   invitePreview: PendingInvitePreview | null;
+  inviteLoading: boolean;
+  inviteError: string | null;
   acceptInvite: (
     token: string
   ) => Promise<{ success: boolean; message?: string; companyId?: string; departmentId?: string }>;
+  completeInviteOnboarding: (
+    token: string,
+    payload: {
+      fullName: string;
+      password: string;
+      phone: string;
+      title?: string;
+      bio?: string;
+    }
+  ) => Promise<{
+    success: boolean;
+    message?: string;
+    code?: string;
+    companyId?: string;
+    departmentId?: string;
+  }>;
+  updateMyProfile: (payload: {
+    fullName?: string;
+    phone?: string;
+    title?: string;
+    bio?: string;
+    currentPassword?: string;
+    newPassword?: string;
+  }) => Promise<{ success: boolean; message?: string }>;
   updateMyAvailability: (status: AvailabilityStatus) => Promise<boolean>;
   isOnboardingModalOpen: boolean;
   setIsOnboardingModalOpen: (open: boolean) => void;
@@ -394,6 +421,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return null;
   });
   const [invitePreview, setInvitePreview] = useState<PendingInvitePreview | null>(null);
+  const [inviteLoading, setInviteLoading] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      return Boolean(params.get('invite'));
+    }
+    return false;
+  });
+  const [inviteError, setInviteError] = useState<string | null>(null);
   const [isOnboardingModalOpen, setIsOnboardingModalOpen] = useState<boolean>(false);
 
   const companyRole: CompanyRole | null = currentTenant?.myRole || null;
@@ -502,13 +537,48 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
     if (
       companyRole === 'department_head' &&
-      ['commissions', 'analytics', 'integrations'].includes(tab)
+      ['pipeline', 'sop', 'vault', 'gmail', 'portal', 'commissions', 'analytics', 'integrations'].includes(tab)
     ) {
-      showToast('Restricted: Company financials, commissions, and integrations require Company Owner access.', 'warning');
+      showToast('Restricted: Company-wide operations, financials, and settings require Company Owner access.', 'warning');
       return;
+    }
+    if (['outreach', 'outreach_suite', 'inbox'].includes(tab)) {
+      const activeDept =
+        departments.find((d) => d.id === selectedDepartmentId) ||
+        (departments.length === 1 ? departments[0] : null);
+      if (!canAccessEmailModules(companyRole, activeDept, departments)) {
+        showToast(
+          'Restricted: Email Hub & Client Inbox are only enabled for Sales, Marketing, and Client Success departments.',
+          'warning'
+        );
+        return;
+      }
     }
     setActiveTabState(tab);
   };
+
+  // Auto-redirect if active role/department no longer authorizes current tab
+  useEffect(() => {
+    if (!currentUser || !currentTenant || role === 'client_guest') return;
+    if (companyRole === 'employee' && !['departmental', 'chat', 'profile'].includes(activeTab)) {
+      setActiveTabState('departmental');
+      return;
+    }
+    if (companyRole === 'department_head') {
+      if (['pipeline', 'sop', 'vault', 'gmail', 'portal', 'commissions', 'analytics', 'integrations'].includes(activeTab)) {
+        setActiveTabState('departmental');
+        return;
+      }
+      if (departments.length > 0 && ['outreach', 'outreach_suite', 'inbox'].includes(activeTab)) {
+        const activeDept =
+          departments.find((d) => d.id === selectedDepartmentId) ||
+          (departments.length === 1 ? departments[0] : null);
+        if (!canAccessEmailModules(companyRole, activeDept, departments)) {
+          setActiveTabState('departmental');
+        }
+      }
+    }
+  }, [currentUser, currentTenant, companyRole, role, departments, selectedDepartmentId, activeTab]);
 
   // Sync localDatabase scope key
   useEffect(() => {
@@ -541,24 +611,41 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   useEffect(() => {
     if (!inviteToken) {
       setInvitePreview(null);
+      setInviteLoading(false);
+      setInviteError(null);
       return;
     }
     let active = true;
+    setInviteLoading(true);
+    setInviteError(null);
     fetch(`/api/invites/${encodeURIComponent(inviteToken)}`)
       .then(async (res) => {
-        if (!res.ok) return null;
-        return res.json();
+        const data = await res.json().catch(() => ({}));
+        return { ok: res.ok, data };
       })
-      .then((data) => {
+      .then(({ ok, data }) => {
         if (!active) return;
-        if (data?.success && data.invite && data.invite.status === 'pending') {
-          setInvitePreview({ ...data.invite, token: inviteToken });
+        if (ok && data?.success && data.invite) {
+          if (data.invite.status === 'pending') {
+            setInvitePreview({ ...data.invite, token: inviteToken });
+            setInviteError(null);
+          } else {
+            setInvitePreview(null);
+            setInviteError(`This invitation is ${data.invite.status} and can no longer be used.`);
+          }
         } else {
           setInvitePreview(null);
+          setInviteError(data?.message || 'Invitation link not found or invalid.');
         }
       })
       .catch(() => {
-        if (active) setInvitePreview(null);
+        if (active) {
+          setInvitePreview(null);
+          setInviteError('Unable to verify invitation link right now.');
+        }
+      })
+      .finally(() => {
+        if (active) setInviteLoading(false);
       });
     return () => {
       active = false;
@@ -1069,6 +1156,127 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
+  const completeInviteOnboarding = async (
+    tokenValue: string,
+    payload: {
+      fullName: string;
+      password: string;
+      phone: string;
+      title?: string;
+      bio?: string;
+    }
+  ): Promise<{
+    success: boolean;
+    message?: string;
+    code?: string;
+    companyId?: string;
+    departmentId?: string;
+  }> => {
+    const existingToken =
+      authToken || (typeof window !== 'undefined' ? localStorage.getItem('alm_nexus_token') : null);
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (existingToken) {
+        headers['Authorization'] = `Bearer ${existingToken}`;
+      }
+      const res = await fetch(`/api/invites/${encodeURIComponent(tokenValue)}/complete-onboarding`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (res.ok && data.success && data.token && data.user) {
+        const nextCompanies: Tenant[] = Array.isArray(data.companies) ? data.companies : [];
+        const nextInvites: PendingInvitePreview[] = Array.isArray(data.pendingInvites)
+          ? data.pendingInvites
+          : [];
+
+        clearOutreachTelemetryCache();
+        setAuthToken(data.token);
+        setCurrentUser(data.user);
+        setTenants(nextCompanies);
+        setPendingInvites(nextInvites);
+        setInviteToken(null);
+        setInvitePreview(null);
+        setInviteError(null);
+
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('alm_nexus_token', data.token);
+          localStorage.setItem('alm_nexus_user', JSON.stringify(data.user));
+          if (window.location.search.includes('invite=')) {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('invite');
+            window.history.replaceState({}, '', url.pathname + url.search);
+          }
+        }
+
+        const joinedCompany =
+          nextCompanies.find((c) => c.id === data.companyId) || nextCompanies[0] || null;
+        if (joinedCompany) {
+          applyActiveCompany(joinedCompany, data.user.role);
+        }
+        if (data.departmentId) {
+          setSelectedDepartmentId(data.departmentId);
+        }
+        setActiveTabState('departmental');
+        showToast(data.message || 'Profile completed! Welcome to your department.', 'success');
+        return {
+          success: true,
+          message: data.message,
+          companyId: data.companyId,
+          departmentId: data.departmentId
+        };
+      }
+      return {
+        success: false,
+        code: data.code,
+        message: data.message || 'Could not complete profile setup.'
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        message: err?.message || 'Network error completing profile setup.'
+      };
+    }
+  };
+
+  const updateMyProfile = async (payload: {
+    fullName?: string;
+    phone?: string;
+    title?: string;
+    bio?: string;
+    currentPassword?: string;
+    newPassword?: string;
+  }): Promise<{ success: boolean; message?: string }> => {
+    const token =
+      authToken || (typeof window !== 'undefined' ? localStorage.getItem('alm_nexus_token') : null);
+    if (!token) {
+      return { success: false, message: 'You must be signed in to update your profile.' };
+    }
+    try {
+      const res = await fetch('/api/auth/me/profile', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (res.ok && data.success && data.user) {
+        setCurrentUser(data.user);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('alm_nexus_user', JSON.stringify(data.user));
+        }
+        showToast(data.message || 'Profile saved.', 'success');
+        return { success: true, message: data.message };
+      }
+      return { success: false, message: data.message || 'Could not update profile.' };
+    } catch (err: any) {
+      return { success: false, message: err?.message || 'Network error saving profile.' };
+    }
+  };
+
   const updateMyAvailability = async (status: AvailabilityStatus): Promise<boolean> => {
     const token =
       authToken || (typeof window !== 'undefined' ? localStorage.getItem('alm_nexus_token') : null);
@@ -1277,7 +1485,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 );
               } else if (foundCompany.myRole === 'department_head') {
                 setActiveTabState((prev) =>
-                  ['commissions', 'analytics', 'integrations'].includes(prev) ? 'departmental' : prev
+                  ['pipeline', 'sop', 'vault', 'gmail', 'portal', 'commissions', 'analytics', 'integrations'].includes(prev)
+                    ? 'departmental'
+                    : prev
                 );
               }
             }
@@ -1707,7 +1917,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         inviteToken,
         setInviteToken,
         invitePreview,
+        inviteLoading,
+        inviteError,
         acceptInvite,
+        completeInviteOnboarding,
+        updateMyProfile,
         updateMyAvailability,
         isOnboardingModalOpen,
         setIsOnboardingModalOpen,

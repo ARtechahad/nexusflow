@@ -6,7 +6,7 @@ import { logger } from '../../logger';
 import { getOutreachPool } from '../../services/outreach/schema';
 import { verifyToken, signToken } from '../../services/outreach/crypto';
 import { realtimeEngine } from '../../services/realtimeEngine';
-import { AuthenticatedRequest, requireCompanyRole } from '../../middlewares/auth';
+import { AuthenticatedRequest, requireSalesOrAdminEmailAccess } from '../../middlewares/auth';
 
 export const trackingRouter = express.Router();
 
@@ -388,7 +388,7 @@ trackingRouter.post('/u/:token', trackingRateLimiter, async (req: Request, res: 
 // ----------------------------------------------------
 // 5. Custom Tracking Domain Configuration: POST /domains/:id/tracking
 // ----------------------------------------------------
-trackingRouter.post(['/domains/:id/tracking', '/:id/tracking'], requireCompanyRole(['company_admin', 'department_head']), async (req: AuthenticatedRequest, res: Response) => {
+trackingRouter.post(['/domains/:id/tracking', '/:id/tracking'], requireSalesOrAdminEmailAccess(), async (req: AuthenticatedRequest, res: Response) => {
   const domainId = req.params.id;
   const tenantId = req.companyId!;
   const { domain } = req.body;
@@ -439,7 +439,7 @@ trackingRouter.post(['/domains/:id/tracking', '/:id/tracking'], requireCompanyRo
 // ----------------------------------------------------
 // 6. Verify Custom Tracking Domain DNS & HTTPS: POST /domains/:id/tracking/verify
 // ----------------------------------------------------
-trackingRouter.post(['/domains/:id/tracking/verify', '/:id/tracking/verify'], requireCompanyRole(['company_admin', 'department_head']), async (req: AuthenticatedRequest, res: Response) => {
+trackingRouter.post(['/domains/:id/tracking/verify', '/:id/tracking/verify'], requireSalesOrAdminEmailAccess(), async (req: AuthenticatedRequest, res: Response) => {
   const domainId = req.params.id;
   const tenantId = req.companyId!;
 

@@ -2,7 +2,7 @@ import express, { Response } from 'express';
 import crypto from 'node:crypto';
 import nodemailer from 'nodemailer';
 import { z } from 'zod';
-import { AuthenticatedRequest, requireCompanyRole } from '../../middlewares/auth';
+import { AuthenticatedRequest, requireSalesOrAdminEmailAccess } from '../../middlewares/auth';
 import { resendService } from '../../services/resendService';
 import { getOutreachPool } from '../../services/outreach/schema';
 import { logger } from '../../logger';
@@ -14,7 +14,7 @@ import { readDB, writeDB } from '../../db';
 
 export const outreachInboxRouter = express.Router();
 
-const requireOutreachInboxRole = requireCompanyRole(['company_admin', 'department_head']);
+const requireOutreachInboxRole = requireSalesOrAdminEmailAccess();
 
 // ----------------------------------------------------
 // 1. GET /inbox/threads — List threads with filters & search

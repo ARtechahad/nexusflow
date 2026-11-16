@@ -2,10 +2,12 @@ import React from 'react';
 import { ShieldAlert, ArrowLeft, Lock } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { CompanyRole, UserRole } from '../types';
+import { canAccessEmailModules } from '../utils/departmentAccess';
 
 interface RoleRouteGuardProps {
   allowedRoles?: UserRole[];
   allowedCompanyRoles?: CompanyRole[];
+  requireEmailHubAccess?: boolean;
   moduleName: string;
   children: React.ReactNode;
 }
@@ -13,16 +15,22 @@ interface RoleRouteGuardProps {
 export const RoleRouteGuard: React.FC<RoleRouteGuardProps> = ({
   allowedRoles = [],
   allowedCompanyRoles,
+  requireEmailHubAccess = false,
   moduleName,
   children
 }) => {
-  const { role, companyRole, setActiveTab } = useApp();
+  const { role, companyRole, departments, selectedDepartmentId, setActiveTab } = useApp();
+  const activeDept = departments.find((d) => d.id === selectedDepartmentId) || departments[0] || null;
 
   let isAllowed = false;
   if (allowedCompanyRoles && allowedCompanyRoles.length > 0) {
     isAllowed = companyRole !== null && allowedCompanyRoles.includes(companyRole);
   } else {
     isAllowed = role === 'admin' || role === 'ceo' || role === 'bd_head' || allowedRoles.includes(role);
+  }
+
+  if (isAllowed && requireEmailHubAccess) {
+    isAllowed = canAccessEmailModules(companyRole, activeDept, departments);
   }
 
   if (!isAllowed) {

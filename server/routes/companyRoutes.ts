@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
-import { getDB, saveDB, logAuditAction } from '../db';
+import { getDB, saveDB, logAuditAction, hashPassword, verifyPassword, DEFAULT_USERS } from '../db';
 import {
   AuthenticatedRequest,
   AvailabilityStatus,
@@ -9,7 +9,8 @@ import {
   hasDepartmentAccess,
   requireAuth,
   requireCompanyAccess,
-  requireCompanyRole
+  requireCompanyRole,
+  signToken
 } from '../middlewares/auth';
 import { resendService, DEFAULT_EMAIL_FROM } from '../services/resendService';
 import { realtimeEngine } from '../services/realtimeEngine';
@@ -625,6 +626,9 @@ invitePublicRouter.get('/:token', (req: Request, res: Response) => {
   const isExpired = inv.expiresAt && new Date(inv.expiresAt).getTime() < Date.now();
   const company = (db.tenants || []).find((t: any) => t.id === inv.companyId);
   const dept = (db.departments || []).find((d: any) => d.id === inv.departmentId);
+  const userExists = Boolean(
+    (db.users || []).some((u: any) => (u.email || '').trim().toLowerCase() === (inv.email || '').trim().toLowerCase())
+  );
 
   return res.json({
     success: true,
@@ -639,8 +643,196 @@ invitePublicRouter.get('/:token', (req: Request, res: Response) => {
       designation: inv.designation,
       invitedByName: inv.invitedByName,
       status: isExpired && inv.status === 'pending' ? 'expired' : inv.status,
-      expiresAt: inv.expiresAt
+      expiresAt: inv.expiresAt,
+      userExists
     }
+  });
+});
+
+// Dedicated Invited User "Complete Your Profile" Onboarding Endpoint
+invitePublicRouter.post('/:token/complete-onboarding', (req: AuthenticatedRequest, res: Response) => {
+  const db = getDB();
+  const inv = (db.companyInvites || []).find((i: any) => i.token === req.params.token);
+  if (!inv) {
+    return res.status(404).json({ success: false, message: 'Invitation link not found or invalid.' });
+  }
+  if (inv.status !== 'pending') {
+    return res.status(400).json({ success: false, message: `This invitation is already ${inv.status}.` });
+  }
+  if (inv.expiresAt && new Date(inv.expiresAt).getTime() < Date.now()) {
+    inv.status = 'expired';
+    saveDB(db);
+    return res.status(400).json({ success: false, message: 'This invitation link has expired (7-day limit).' });
+  }
+
+  const { fullName, name, password, phone, title, bio } = req.body || {};
+  const cleanName = typeof (fullName ?? name) === 'string' ? String(fullName ?? name).trim() : '';
+  const cleanPassword = typeof password === 'string' ? password : '';
+  const cleanPhone = typeof phone === 'string' ? phone.trim() : '';
+  const cleanTitle = typeof title === 'string' && title.trim() ? title.trim() : inv.designation || (inv.role === 'department_head' ? 'Department Head' : 'Team Member');
+  const cleanBio = typeof bio === 'string' ? bio.trim().slice(0, 500) : '';
+
+  if (!cleanName || cleanName.length < 2) {
+    return res.status(400).json({ success: false, message: 'Full Name (at least 2 characters) is required.' });
+  }
+
+  if (!Array.isArray(db.users)) db.users = [...DEFAULT_USERS];
+  const invEmail = (inv.email || '').trim().toLowerCase();
+  let targetUser = db.users.find((u: any) => (u.email || '').trim().toLowerCase() === invEmail);
+  const now = new Date().toISOString();
+
+  if (!targetUser) {
+    if (!cleanPassword || cleanPassword.length < 6) {
+      return res.status(400).json({ success: false, message: 'Password (minimum 6 characters) is required.' });
+    }
+    if (!cleanPhone || cleanPhone.length < 3) {
+      return res.status(400).json({ success: false, message: 'Phone Number is required to complete your profile.' });
+    }
+
+    targetUser = {
+      id: `user-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`,
+      name: cleanName,
+      email: invEmail,
+      passwordHash: hashPassword(cleanPassword),
+      emailVerified: true,
+      emailVerifiedAt: now,
+      role: 'team_member',
+      title: cleanTitle,
+      phone: cleanPhone,
+      bio: cleanBio,
+      avatar: '',
+      availabilityStatus: 'Available' as AvailabilityStatus,
+      availabilityUpdatedAt: now,
+      permissions: ['workspace:member'],
+      createdAt: now,
+      updatedAt: now
+    };
+    db.users.push(targetUser);
+  } else {
+    const isSameSignedInUser = req.user?.id && req.user.id === targetUser.id;
+    if (!isSameSignedInUser) {
+      if (!cleanPassword) {
+        return res.status(401).json({
+          success: false,
+          code: 'EXISTING_ACCOUNT_PASSWORD_REQUIRED',
+          message: `An account already exists for ${inv.email}. Enter your password to verify and join.`
+        });
+      }
+      const check = verifyPassword(cleanPassword, targetUser.passwordHash);
+      if (!check.valid) {
+        return res.status(401).json({
+          success: false,
+          message: 'Incorrect password for this existing account.'
+        });
+      }
+    }
+
+    targetUser.name = cleanName;
+    if (cleanPhone) targetUser.phone = cleanPhone;
+    if (cleanTitle) targetUser.title = cleanTitle;
+    if (typeof bio === 'string') targetUser.bio = cleanBio;
+    targetUser.updatedAt = now;
+  }
+
+  if (!Array.isArray(db.companyMemberships)) db.companyMemberships = [];
+  let membership = db.companyMemberships.find(
+    (m: any) => m.companyId === inv.companyId && m.userId === targetUser.id
+  );
+
+  if (membership) {
+    if (!Array.isArray(membership.departmentIds)) membership.departmentIds = [];
+    if (!membership.departmentIds.includes(inv.departmentId)) {
+      membership.departmentIds.push(inv.departmentId);
+    }
+    if (membership.role === 'employee' && inv.role === 'department_head') {
+      membership.role = 'department_head';
+    }
+    if (inv.designation) {
+      membership.designation = inv.designation;
+    }
+  } else {
+    membership = {
+      id: `mem-${inv.companyId}-${targetUser.id}-${crypto.randomBytes(2).toString('hex')}`,
+      companyId: inv.companyId,
+      userId: targetUser.id,
+      role: inv.role === 'department_head' ? 'department_head' : 'employee',
+      departmentIds: [inv.departmentId],
+      designation: inv.designation || cleanTitle,
+      joinedAt: now
+    };
+    db.companyMemberships.push(membership);
+  }
+
+  inv.status = 'accepted';
+  inv.acceptedAt = now;
+  inv.acceptedByUserId = targetUser.id;
+
+  const company = (db.tenants || []).find((t: any) => t.id === inv.companyId);
+  if (company) {
+    company.activeMembersCount = db.companyMemberships.filter((m: any) => m.companyId === inv.companyId).length;
+  }
+
+  saveDB(db);
+  realtimeEngine.updateClientMembership(targetUser.id, inv.companyId, membership.role, membership.departmentIds);
+  realtimeEngine.broadcastToDepartment(inv.companyId, inv.departmentId, 'department:updated', {
+    companyId: inv.companyId,
+    departmentId: inv.departmentId,
+    action: 'member_joined',
+    userId: targetUser.id
+  });
+
+  const token = signToken({
+    id: targetUser.id,
+    email: targetUser.email,
+    role: targetUser.role || 'team_member',
+    name: targetUser.name,
+    title: targetUser.title || cleanTitle,
+    permissions: targetUser.permissions || ['workspace:member'],
+    tenant_id: inv.companyId,
+    tenantId: inv.companyId
+  });
+
+  res.cookie('alm_nexus_token', token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 7 * 24 * 60 * 60 * 1000
+  });
+
+  logAuditAction({
+    userId: targetUser.id,
+    userName: targetUser.name,
+    userRole: membership.role,
+    action: 'INVITE_ONBOARDING_COMPLETED',
+    entityType: 'invite',
+    entityId: inv.id,
+    details: { companyId: inv.companyId, departmentId: inv.departmentId, role: membership.role },
+    ipAddress: req.ip || '127.0.0.1'
+  });
+
+  const summary = getUserCompaniesSummary(targetUser.id, targetUser.email);
+  return res.json({
+    success: true,
+    message: `Profile saved! Welcome to ${inv.companyName} · ${inv.departmentName}.`,
+    token,
+    user: {
+      id: targetUser.id,
+      name: targetUser.name,
+      email: targetUser.email,
+      role: targetUser.role || 'team_member',
+      title: targetUser.title || cleanTitle,
+      phone: targetUser.phone || '',
+      bio: targetUser.bio || '',
+      avatar: targetUser.avatar || '',
+      availabilityStatus: targetUser.availabilityStatus || 'Available',
+      availabilityUpdatedAt: targetUser.availabilityUpdatedAt || now,
+      permissions: targetUser.permissions || []
+    },
+    companyId: inv.companyId,
+    departmentId: inv.departmentId,
+    membership,
+    companies: summary.companies,
+    pendingInvites: summary.pendingInvites
   });
 });
 
@@ -941,9 +1133,13 @@ companyRouter.get(
     if (!dept) return;
 
     const db = getDB();
-    const tasks = (db.departmentTasks || []).filter(
+    let tasks = (db.departmentTasks || []).filter(
       (t: any) => t.companyId === companyId && t.departmentId === deptId
     );
+
+    if (req.companyRole === 'employee') {
+      tasks = tasks.filter((t: any) => t.assigneeUserId === req.user!.id);
+    }
 
     const completed = tasks.filter((t: any) => t.status === 'completed').length;
     const inProgress = tasks.filter((t: any) => t.status === 'in_progress').length;
@@ -974,6 +1170,13 @@ companyRouter.post(
     const { deptId } = req.params;
     const dept = ensureDeptAccess(req, res, companyId, deptId);
     if (!dept) return;
+
+    if (req.companyRole === 'employee') {
+      return res.status(403).json({
+        success: false,
+        error: 'Forbidden: Only Company Owners or Department Heads can assign department tasks.'
+      });
+    }
 
     const { title, description, status, priority, assigneeUserId, dueDate } = req.body || {};
     const cleanTitle = typeof title === 'string' ? title.trim() : '';
@@ -1052,6 +1255,30 @@ companyRouter.patch(
     }
 
     const { title, description, status, priority, assigneeUserId, dueDate } = req.body || {};
+
+    if (req.companyRole === 'employee') {
+      if (task.assigneeUserId !== req.user!.id) {
+        return res.status(403).json({
+          success: false,
+          error: 'Forbidden: Employees can only update status on their own assigned tasks.'
+        });
+      }
+      if (status !== undefined && VALID_TASK_STATUSES.includes(status)) {
+        task.status = status;
+        task.completedAt = status === 'completed' ? new Date().toISOString() : undefined;
+      }
+      task.updatedAt = new Date().toISOString();
+      saveDB(db);
+
+      realtimeEngine.broadcastToDepartment(companyId, deptId, 'task:updated', {
+        companyId,
+        departmentId: deptId,
+        action: 'updated',
+        task
+      });
+      return res.json({ success: true, task });
+    }
+
     if (title !== undefined && String(title).trim()) task.title = String(title).trim();
     if (description !== undefined) task.description = String(description).trim();
     if (status !== undefined && VALID_TASK_STATUSES.includes(status)) {
@@ -1099,17 +1326,16 @@ companyRouter.delete(
     const dept = ensureDeptAccess(req, res, companyId, deptId);
     if (!dept) return;
 
+    if (req.companyRole === 'employee') {
+      return res.status(403).json({ success: false, error: 'Forbidden: Only Company Owners or Department Heads can delete tasks.' });
+    }
+
     const db = getDB();
     const idx = (db.departmentTasks || []).findIndex(
       (t: any) => t.id === taskId && t.companyId === companyId && t.departmentId === deptId
     );
     if (idx === -1) {
       return res.status(404).json({ success: false, message: 'Task not found.' });
-    }
-
-    const task = db.departmentTasks[idx];
-    if (req.companyRole === 'employee' && task.createdByUserId !== req.user!.id && task.assigneeUserId !== req.user!.id) {
-      return res.status(403).json({ success: false, error: 'Forbidden: Cannot delete tasks assigned to others.' });
     }
 
     db.departmentTasks.splice(idx, 1);

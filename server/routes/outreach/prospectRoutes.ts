@@ -2,7 +2,7 @@ import { Router, Response } from 'express';
 import crypto from 'node:crypto';
 import pg from 'pg';
 import { z } from 'zod';
-import { AuthenticatedRequest, requireCompanyRole } from '../../middlewares/auth';
+import { AuthenticatedRequest, requireSalesOrAdminEmailAccess } from '../../middlewares/auth';
 import { getOutreachPool } from '../../services/outreach/schema';
 import {
   verifySingleEmail,
@@ -27,7 +27,7 @@ function getTenantId(req: AuthenticatedRequest): string {
  * POST /tools/verify-email (and /api/outreach/tools/verify-email)
  * Single email verification with quota enforcement
  */
-prospectRoutes.post('/tools/verify-email', requireCompanyRole(['company_admin', 'department_head']), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+prospectRoutes.post('/tools/verify-email', requireSalesOrAdminEmailAccess(), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const pool = getOutreachPool();
   if (!pool) {
     res.status(503).json({ error: 'Database service unavailable' });
@@ -61,7 +61,7 @@ prospectRoutes.post('/tools/verify-email', requireCompanyRole(['company_admin', 
  * GET /verification/batches/:id
  * Retrieve bulk verification batch status and results
  */
-prospectRoutes.get('/verification/batches/:id', requireCompanyRole(['company_admin', 'department_head']), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+prospectRoutes.get('/verification/batches/:id', requireSalesOrAdminEmailAccess(), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const pool = getOutreachPool();
   if (!pool) {
     res.status(503).json({ error: 'Database service unavailable' });
@@ -109,7 +109,7 @@ prospectRoutes.get('/verification/batches/:id', requireCompanyRole(['company_adm
  * GET /verification/quota
  * Get current verification quota and usage
  */
-prospectRoutes.get('/verification/quota', requireCompanyRole(['company_admin', 'department_head']), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+prospectRoutes.get('/verification/quota', requireSalesOrAdminEmailAccess(), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const pool = getOutreachPool();
   if (!pool) {
     res.status(503).json({ error: 'Database service unavailable' });
@@ -134,7 +134,7 @@ prospectRoutes.get('/verification/quota', requireCompanyRole(['company_admin', '
  * POST /tools/admin/disposable-domains
  * Add custom disposable domain to blacklist
  */
-prospectRoutes.post('/tools/admin/disposable-domains', requireCompanyRole(['company_admin', 'department_head']), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+prospectRoutes.post('/tools/admin/disposable-domains', requireSalesOrAdminEmailAccess(), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const pool = getOutreachPool();
   const { domain } = req.body || {};
   if (!domain || typeof domain !== 'string') {
@@ -192,7 +192,7 @@ prospectRoutes.post('/tools/spam-check', async (req: AuthenticatedRequest, res: 
  * GET /prospects
  * List prospects with search, filter, tags, list_id, and pagination
  */
-prospectRoutes.get('/prospects', requireCompanyRole(['company_admin', 'department_head']), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+prospectRoutes.get('/prospects', requireSalesOrAdminEmailAccess(), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const pool = getOutreachPool();
   if (!pool) {
     res.status(503).json({ error: 'Database service unavailable' });
@@ -281,7 +281,7 @@ prospectRoutes.get('/prospects', requireCompanyRole(['company_admin', 'departmen
  * POST /prospects
  * Create a single prospect
  */
-prospectRoutes.post('/prospects', requireCompanyRole(['company_admin', 'department_head']), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+prospectRoutes.post('/prospects', requireSalesOrAdminEmailAccess(), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const pool = getOutreachPool();
   if (!pool) {
     res.status(503).json({ error: 'Database service unavailable' });
@@ -380,7 +380,7 @@ prospectRoutes.post('/prospects', requireCompanyRole(['company_admin', 'departme
  * GET /prospects/:id
  * Retrieve single prospect
  */
-prospectRoutes.get('/prospects/:id', requireCompanyRole(['company_admin', 'department_head']), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+prospectRoutes.get('/prospects/:id', requireSalesOrAdminEmailAccess(), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const pool = getOutreachPool();
   if (!pool) {
     res.status(503).json({ error: 'Database service unavailable' });
@@ -411,7 +411,7 @@ prospectRoutes.get('/prospects/:id', requireCompanyRole(['company_admin', 'depar
  * PATCH /prospects/:id
  * Update prospect fields
  */
-prospectRoutes.patch('/prospects/:id', requireCompanyRole(['company_admin', 'department_head']), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+prospectRoutes.patch('/prospects/:id', requireSalesOrAdminEmailAccess(), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const pool = getOutreachPool();
   if (!pool) {
     res.status(503).json({ error: 'Database service unavailable' });
@@ -484,7 +484,7 @@ prospectRoutes.patch('/prospects/:id', requireCompanyRole(['company_admin', 'dep
  * DELETE /prospects/:id
  * Delete prospect
  */
-prospectRoutes.delete('/prospects/:id', requireCompanyRole(['company_admin', 'department_head']), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+prospectRoutes.delete('/prospects/:id', requireSalesOrAdminEmailAccess(), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const pool = getOutreachPool();
   if (!pool) {
     res.status(503).json({ error: 'Database service unavailable' });
@@ -515,7 +515,7 @@ prospectRoutes.delete('/prospects/:id', requireCompanyRole(['company_admin', 'de
  * POST /prospects/import-csv
  * CSV Bulk import with column mapping, syntax validation, suppression filtering & duplicate detection
  */
-prospectRoutes.post('/prospects/import-csv', requireCompanyRole(['company_admin', 'department_head']), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+prospectRoutes.post('/prospects/import-csv', requireSalesOrAdminEmailAccess(), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const pool = getOutreachPool();
   if (!pool) {
     res.status(503).json({ error: 'Database service unavailable' });
@@ -715,7 +715,7 @@ prospectRoutes.post('/prospects/import-csv', requireCompanyRole(['company_admin'
  * GET /prospects/export-csv
  * Export prospects as CSV format
  */
-prospectRoutes.get('/prospects/export-csv', requireCompanyRole(['company_admin', 'department_head']), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+prospectRoutes.get('/prospects/export-csv', requireSalesOrAdminEmailAccess(), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const pool = getOutreachPool();
   if (!pool) {
     res.status(503).json({ error: 'Database service unavailable' });
@@ -763,7 +763,7 @@ prospectRoutes.get('/prospects/export-csv', requireCompanyRole(['company_admin',
  * POST /prospects/verify
  * Bulk prospect verification queued via ox_jobs
  */
-prospectRoutes.post('/prospects/verify', requireCompanyRole(['company_admin', 'department_head']), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+prospectRoutes.post('/prospects/verify', requireSalesOrAdminEmailAccess(), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const pool = getOutreachPool();
   if (!pool) {
     res.status(503).json({ error: 'Database service unavailable' });
@@ -822,7 +822,7 @@ prospectRoutes.post('/prospects/verify', requireCompanyRole(['company_admin', 'd
  * Lead Sourcing Hook (Apollo / Hunter API integration)
  * Never scrapes LinkedIn. Returns clear error if neither key configured.
  */
-prospectRoutes.post('/prospects/find', requireCompanyRole(['company_admin', 'department_head']), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+prospectRoutes.post('/prospects/find', requireSalesOrAdminEmailAccess(), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const { domain, company, title } = req.body || {};
 
   if (!domain && !company) {
@@ -936,7 +936,7 @@ prospectRoutes.post('/prospects/find', requireCompanyRole(['company_admin', 'dep
  * GET /suppressions
  * List suppressions for tenant with pagination & search
  */
-prospectRoutes.get('/suppressions', requireCompanyRole(['company_admin', 'department_head']), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+prospectRoutes.get('/suppressions', requireSalesOrAdminEmailAccess(), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const pool = getOutreachPool();
   if (!pool) {
     res.status(503).json({ error: 'Database service unavailable' });
@@ -992,7 +992,7 @@ prospectRoutes.get('/suppressions', requireCompanyRole(['company_admin', 'depart
  * POST /suppressions
  * Add email or domain to suppression list
  */
-prospectRoutes.post('/suppressions', requireCompanyRole(['company_admin', 'department_head']), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+prospectRoutes.post('/suppressions', requireSalesOrAdminEmailAccess(), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const pool = getOutreachPool();
   if (!pool) {
     res.status(503).json({ error: 'Database service unavailable' });
@@ -1049,7 +1049,7 @@ prospectRoutes.post('/suppressions', requireCompanyRole(['company_admin', 'depar
  * DELETE /suppressions/:id
  * Remove suppression entry
  */
-prospectRoutes.delete('/suppressions/:id', requireCompanyRole(['company_admin', 'department_head']), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+prospectRoutes.delete('/suppressions/:id', requireSalesOrAdminEmailAccess(), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const pool = getOutreachPool();
   if (!pool) {
     res.status(503).json({ error: 'Database service unavailable' });
@@ -1080,7 +1080,7 @@ prospectRoutes.delete('/suppressions/:id', requireCompanyRole(['company_admin', 
  * POST /suppressions/import-csv
  * Import CSV of emails/domains to suppression list
  */
-prospectRoutes.post('/suppressions/import-csv', requireCompanyRole(['company_admin', 'department_head']), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+prospectRoutes.post('/suppressions/import-csv', requireSalesOrAdminEmailAccess(), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const pool = getOutreachPool();
   if (!pool) {
     res.status(503).json({ error: 'Database service unavailable' });

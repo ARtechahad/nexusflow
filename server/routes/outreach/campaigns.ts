@@ -1,7 +1,7 @@
 import express, { Request, Response } from 'express';
 import { z } from 'zod';
 import crypto from 'node:crypto';
-import { AuthenticatedRequest, requireCompanyRole } from '../../middlewares/auth';
+import { AuthenticatedRequest, requireSalesOrAdminEmailAccess } from '../../middlewares/auth';
 import { getOutreachPool } from '../../services/outreach/schema';
 import { logger } from '../../logger';
 import { validateTemplate } from '../../services/outreach/render';
@@ -122,7 +122,7 @@ const TestSendSchema = z.object({
 });
 
 // 1. GET /api/outreach/campaigns - List campaigns with mailbox count & enrollment stats
-campaignsRouter.get('/campaigns', requireCompanyRole(['company_admin', 'department_head']), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+campaignsRouter.get('/campaigns', requireSalesOrAdminEmailAccess(), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const tenantId = req.companyId!;
     const pool = getPoolOrThrow();
@@ -153,7 +153,7 @@ campaignsRouter.get('/campaigns', requireCompanyRole(['company_admin', 'departme
 });
 
 // 2. POST /api/outreach/campaigns - Create campaign
-campaignsRouter.post('/campaigns', requireCompanyRole(['company_admin', 'department_head']), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+campaignsRouter.post('/campaigns', requireSalesOrAdminEmailAccess(), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const tenantId = req.companyId!;
     const userId = req.user?.id;
@@ -214,7 +214,7 @@ campaignsRouter.post('/campaigns', requireCompanyRole(['company_admin', 'departm
 });
 
 // 3. GET /api/outreach/campaigns/:id - Get single campaign with steps, variants & mailboxes
-campaignsRouter.get('/campaigns/:id', requireCompanyRole(['company_admin', 'department_head']), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+campaignsRouter.get('/campaigns/:id', requireSalesOrAdminEmailAccess(), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const tenantId = req.companyId!;
     const { id } = req.params;
@@ -274,7 +274,7 @@ campaignsRouter.get('/campaigns/:id', requireCompanyRole(['company_admin', 'depa
 });
 
 // 4. PUT /api/outreach/campaigns/:id/steps - Replace/update sequence steps and variants
-campaignsRouter.put('/campaigns/:id/steps', requireCompanyRole(['company_admin', 'department_head']), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+campaignsRouter.put('/campaigns/:id/steps', requireSalesOrAdminEmailAccess(), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const pool = getPoolOrThrow();
   const client = await pool.connect();
   try {
@@ -393,7 +393,7 @@ campaignsRouter.put('/campaigns/:id/steps', requireCompanyRole(['company_admin',
 });
 
 // 5. POST /api/outreach/campaigns/:id/enroll - Enroll prospects or batch CSV rows
-campaignsRouter.post('/campaigns/:id/enroll', requireCompanyRole(['company_admin', 'department_head']), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+campaignsRouter.post('/campaigns/:id/enroll', requireSalesOrAdminEmailAccess(), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const pool = getPoolOrThrow();
   const client = await pool.connect();
   try {
@@ -503,7 +503,7 @@ campaignsRouter.post('/campaigns/:id/enroll', requireCompanyRole(['company_admin
 });
 
 // 6. POST /api/outreach/campaigns/:id/start - Start campaign with validation checklist
-campaignsRouter.post('/campaigns/:id/start', requireCompanyRole(['company_admin', 'department_head']), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+campaignsRouter.post('/campaigns/:id/start', requireSalesOrAdminEmailAccess(), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const tenantId = req.companyId!;
     const { id } = req.params;
@@ -616,7 +616,7 @@ campaignsRouter.post('/campaigns/:id/start', requireCompanyRole(['company_admin'
 });
 
 // 7. POST /api/outreach/campaigns/:id/pause - Pause campaign
-campaignsRouter.post('/campaigns/:id/pause', requireCompanyRole(['company_admin', 'department_head']), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+campaignsRouter.post('/campaigns/:id/pause', requireSalesOrAdminEmailAccess(), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const tenantId = req.companyId!;
     const { id } = req.params;
@@ -635,7 +635,7 @@ campaignsRouter.post('/campaigns/:id/pause', requireCompanyRole(['company_admin'
 });
 
 // 8. GET /api/outreach/campaigns/:id/stats - Campaign performance analytics
-campaignsRouter.get('/campaigns/:id/stats', requireCompanyRole(['company_admin', 'department_head']), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+campaignsRouter.get('/campaigns/:id/stats', requireSalesOrAdminEmailAccess(), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const tenantId = req.companyId!;
     const { id } = req.params;
@@ -699,7 +699,7 @@ campaignsRouter.get('/campaigns/:id/stats', requireCompanyRole(['company_admin',
 });
 
 // 9. POST /api/outreach/campaigns/:id/test-send - Test send rendered step through Cap Guard & sender
-campaignsRouter.post('/campaigns/:id/test-send', requireCompanyRole(['company_admin', 'department_head']), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+campaignsRouter.post('/campaigns/:id/test-send', requireSalesOrAdminEmailAccess(), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const tenantId = req.companyId!;
     const { id: campaignId } = req.params;

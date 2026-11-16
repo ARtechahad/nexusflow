@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import { z } from 'zod';
-import { AuthenticatedRequest, requireCompanyRole } from '../../middlewares/auth';
+import { AuthenticatedRequest, requireSalesOrAdminEmailAccess } from '../../middlewares/auth';
 import { getOutreachPool } from '../../services/outreach/schema';
 import {
   computeDailyTarget,
@@ -14,7 +14,7 @@ import { logger } from '../../logger';
 
 export const warmupRouter = Router();
 
-const requireWarmupRole = requireCompanyRole(['company_admin', 'department_head']);
+const requireWarmupRole = requireSalesOrAdminEmailAccess();
 
 // Zod schema for updating mailbox warmup configuration
 const updateWarmupSchema = z.object({

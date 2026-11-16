@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import { z } from 'zod';
-import { AuthenticatedRequest, requireCompanyRole } from '../../middlewares/auth';
+import { AuthenticatedRequest, requireSalesOrAdminEmailAccess } from '../../middlewares/auth';
 import { getOutreachPool } from '../../services/outreach/schema';
 import {
   getOutreachAnalytics,
@@ -23,7 +23,7 @@ function getPoolOrThrow() {
   return pool;
 }
 
-const requireAnalyticsRole = requireCompanyRole(['company_admin', 'department_head']);
+const requireAnalyticsRole = requireSalesOrAdminEmailAccess();
 
 // 1. GET /api/outreach/analytics/overview
 analyticsRouter.get('/analytics/overview', requireAnalyticsRole, async (req: AuthenticatedRequest, res: Response): Promise<void> => {

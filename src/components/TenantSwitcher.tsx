@@ -11,7 +11,8 @@ function formatCompanyRoleLabel(role?: CompanyRole): string {
 }
 
 export const TenantSwitcher: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
-  const { currentTenant, tenants, switchTenant, setIsOnboardingModalOpen } = useApp();
+  const { currentTenant, tenants, companyRole, switchTenant, setIsOnboardingModalOpen } = useApp();
+  const canRegisterCompany = companyRole === 'company_admin' || tenants.length === 0;
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -96,20 +97,22 @@ export const TenantSwitcher: React.FC<{ compact?: boolean }> = ({ compact = fals
             })}
           </div>
 
-          <div className="pt-2 border-t border-slate-200 dark:border-slate-800">
-            <button
-              id="btn-register-new-company"
-              type="button"
-              onClick={() => {
-                setIsOpen(false);
-                setIsOnboardingModalOpen(true);
-              }}
-              className="btn-tactile-secondary w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer whitespace-nowrap"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Register New Company</span>
-            </button>
-          </div>
+          {canRegisterCompany && (
+            <div className="pt-2 border-t border-slate-200 dark:border-slate-800">
+              <button
+                id="btn-register-new-company"
+                type="button"
+                onClick={() => {
+                  setIsOpen(false);
+                  setIsOnboardingModalOpen(true);
+                }}
+                className="btn-tactile-secondary w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer whitespace-nowrap"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Register New Company</span>
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

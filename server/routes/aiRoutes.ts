@@ -5,7 +5,7 @@ import {
   AuthenticatedRequest,
   requireAuth,
   requireCompanyAccess,
-  requireCompanyRole
+  requireSalesOrAdminEmailAccess
 } from '../middlewares/auth';
 import {
   enrichLeadWithGoogleSearch,
@@ -552,7 +552,7 @@ aiRouter.post('/outreach', async (req: Request, res: Response) => {
 // 5. Unified Communications Inbox (/api/inbox)
 // ==========================================
 
-inboxRouter.get('/messages', requireCompanyRole(['company_admin', 'department_head']), (req: AuthenticatedRequest, res: Response) => {
+inboxRouter.get('/messages', requireSalesOrAdminEmailAccess(), (req: AuthenticatedRequest, res: Response) => {
   const db = readDB();
   const channel = typeof req.query.channel === 'string' ? req.query.channel : '';
   const status = typeof req.query.status === 'string' ? req.query.status : '';
@@ -596,7 +596,7 @@ inboxRouter.get('/messages', requireCompanyRole(['company_admin', 'department_he
   });
 });
 
-inboxRouter.post('/messages', requireCompanyRole(['company_admin', 'department_head']), (req: AuthenticatedRequest, res: Response) => {
+inboxRouter.post('/messages', requireSalesOrAdminEmailAccess(), (req: AuthenticatedRequest, res: Response) => {
   const db = readDB();
   const body = req.body || {};
   
@@ -633,7 +633,7 @@ inboxRouter.post('/messages', requireCompanyRole(['company_admin', 'department_h
   res.json({ success: true, message: 'Message logged to Unified Inbox', data: newMessage });
 });
 
-inboxRouter.put('/status/:id', requireCompanyRole(['company_admin', 'department_head']), (req: AuthenticatedRequest, res: Response) => {
+inboxRouter.put('/status/:id', requireSalesOrAdminEmailAccess(), (req: AuthenticatedRequest, res: Response) => {
   const db = readDB();
   const id = req.params.id;
   const { status } = req.body || {};
@@ -651,7 +651,7 @@ inboxRouter.put('/status/:id', requireCompanyRole(['company_admin', 'department_
   res.json({ success: true, message: `Status updated to ${msg.status}`, data: msg });
 });
 
-inboxRouter.post('/reply/:id', requireCompanyRole(['company_admin', 'department_head']), (req: AuthenticatedRequest, res: Response) => {
+inboxRouter.post('/reply/:id', requireSalesOrAdminEmailAccess(), (req: AuthenticatedRequest, res: Response) => {
   const db = readDB();
   const id = req.params.id;
   const { replyText, senderName, channel } = req.body || {};
@@ -679,7 +679,7 @@ inboxRouter.post('/reply/:id', requireCompanyRole(['company_admin', 'department_
   res.json({ success: true, message: 'Reply sent successfully and recorded in thread', replyItem });
 });
 
-inboxRouter.post('/ai-reply/:id', requireCompanyRole(['company_admin', 'department_head']), async (req: AuthenticatedRequest, res: Response) => {
+inboxRouter.post('/ai-reply/:id', requireSalesOrAdminEmailAccess(), async (req: AuthenticatedRequest, res: Response) => {
   const db = readDB();
   const id = req.params.id;
   const msg = ((db as any).clientInquiries || []).find(

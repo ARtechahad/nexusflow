@@ -159,6 +159,7 @@ export interface PendingInvitePreview {
   invitedByName: string;
   status?: string;
   expiresAt: string;
+  userExists?: boolean;
 }
 
 export interface DepartmentTask {
@@ -912,6 +913,8 @@ export interface AuthUser {
   email: string;
   role: UserRole;
   title: string;
+  phone?: string;
+  bio?: string;
   avatar: string;
   permissions: string[];
   availabilityStatus?: AvailabilityStatus;

@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import { z } from 'zod';
-import { requireCompanyRole, AuthenticatedRequest } from '../../middlewares/auth';
+import { requireSalesOrAdminEmailAccess, AuthenticatedRequest } from '../../middlewares/auth';
 import { getOutreachPool } from '../../services/outreach/schema';
 import {
   testMailboxConnection,
@@ -81,7 +81,7 @@ mailboxesRouter.get(['/mailboxes/presets', '/presets'], (req, res: Response) => 
  */
 mailboxesRouter.post(
   ['/mailboxes/test', '/test'],
-  requireCompanyRole(['company_admin', 'department_head']),
+  requireSalesOrAdminEmailAccess(),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const parsed = testConnectionSchema.safeParse(req.body);
@@ -111,7 +111,7 @@ mailboxesRouter.post(
  */
 mailboxesRouter.post(
   ['/mailboxes', '/'],
-  requireCompanyRole(['company_admin', 'department_head']),
+  requireSalesOrAdminEmailAccess(),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const pool = getOutreachPool();
@@ -152,7 +152,7 @@ mailboxesRouter.post(
  */
 mailboxesRouter.get(
   ['/mailboxes', '/'],
-  requireCompanyRole(['company_admin', 'department_head']),
+  requireSalesOrAdminEmailAccess(),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const pool = getOutreachPool();
@@ -186,7 +186,7 @@ mailboxesRouter.get(
  */
 mailboxesRouter.patch(
   ['/mailboxes/:id', '/:id'],
-  requireCompanyRole(['company_admin', 'department_head']),
+  requireSalesOrAdminEmailAccess(),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const pool = getOutreachPool();
@@ -226,7 +226,7 @@ mailboxesRouter.patch(
  */
 mailboxesRouter.delete(
   ['/mailboxes/:id', '/:id'],
-  requireCompanyRole(['company_admin', 'department_head']),
+  requireSalesOrAdminEmailAccess(),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const pool = getOutreachPool();
@@ -265,7 +265,7 @@ mailboxesRouter.delete(
  */
 mailboxesRouter.post(
   ['/mailboxes/bulk-import', '/bulk-import'],
-  requireCompanyRole(['company_admin', 'department_head']),
+  requireSalesOrAdminEmailAccess(),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const pool = getOutreachPool();
@@ -301,7 +301,7 @@ mailboxesRouter.post(
  */
 mailboxesRouter.get(
   '/domains',
-  requireCompanyRole(['company_admin', 'department_head']),
+  requireSalesOrAdminEmailAccess(),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const pool = getOutreachPool();
@@ -350,7 +350,7 @@ mailboxesRouter.get(
  */
 mailboxesRouter.post(
   '/domains/:id/check-dns',
-  requireCompanyRole(['company_admin', 'department_head']),
+  requireSalesOrAdminEmailAccess(),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const pool = getOutreachPool();

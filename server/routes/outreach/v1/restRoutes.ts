@@ -16,7 +16,7 @@ import {
   deliverWebhook
 } from '../../../services/outreach/webhooks';
 import { requireApiKeyScope, idempotencyMiddleware } from '../../../middlewares/apiKeyAuth';
-import { AuthenticatedRequest, requireCompanyRole } from '../../../middlewares/auth';
+import { AuthenticatedRequest, requireSalesOrAdminEmailAccess } from '../../../middlewares/auth';
 import { getOutreachPool } from '../../../services/outreach/schema';
 import { getTenantUsageSummary, getTenantPlan } from '../../../services/outreach/plans';
 import { verifySingleEmail } from '../../../services/outreach/verifier';
@@ -26,7 +26,7 @@ import { enqueueOutreachJob } from '../../../services/outreach/queue';
 
 export const restV1Router = express.Router();
 
-const requireCompanyOutreachRole = requireCompanyRole(['company_admin', 'department_head']);
+const requireCompanyOutreachRole = requireSalesOrAdminEmailAccess();
 
 // Helper to support both API Key (lf_...) and UI Session Token
 function flexAuth(requiredScope: ApiScope = '*', options: { isWrite?: boolean; isBulk?: boolean } = {}) {

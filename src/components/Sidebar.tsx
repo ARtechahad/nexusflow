@@ -24,6 +24,7 @@ import {
 import { useApp } from '../context/AppContext';
 import { CompanyRole } from '../types';
 import { ThemeToggle } from './ThemeToggle';
+import { canAccessEmailModules } from '../utils/departmentAccess';
 
 interface SidebarProps {
   mobileOpen: boolean;
@@ -37,6 +38,7 @@ interface NavGroup {
     label: string;
     icon: React.ComponentType<{ className?: string }>;
     companyRoles: CompanyRole[];
+    requiresEmailHubAccess?: boolean;
     dynamicCount?: number;
   }[];
 }
@@ -63,7 +65,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
   } = useApp();
 
   const effectiveCompanyRole: CompanyRole = companyRole || 'employee';
-  const activeDept = departments.find((d) => d.id === selectedDepartmentId);
+  const isOwner = effectiveCompanyRole === 'company_admin';
+  const activeDept = departments.find((d) => d.id === selectedDepartmentId) || departments[0] || null;
+  const emailHubAuthorized = canAccessEmailModules(effectiveCompanyRole, activeDept, departments);
 
   const companyRoleLabels: Record<CompanyRole, string> = {
     company_admin: 'Company Owner',
@@ -119,14 +123,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
           id: 'outreach_suite',
           label: 'Mailboxes & Campaigns',
           icon: Send,
-          companyRoles: ['company_admin', 'department_head']
+          companyRoles: ['company_admin', 'department_head'],
+          requiresEmailHubAccess: true
         },
         {
           id: 'inbox',
           label: 'Unified Client Inbox',
           icon: Inbox,
           dynamicCount: unreadInboxCount > 0 ? unreadInboxCount : undefined,
-          companyRoles: ['company_admin', 'department_head']
+          companyRoles: ['company_admin', 'department_head'],
+          requiresEmailHubAccess: true
         },
         {
           id: 'gmail',
@@ -137,7 +143,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
       ]
     },
     {
-      label: 'Financials & Account',
+      label: isOwner ? 'Financials & Account' : 'My Account',
       items: [
         {
           id: 'commissions',
@@ -153,7 +159,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
         },
         {
           id: 'profile',
-          label: 'Account & Companies',
+          label: isOwner ? 'Account & Companies' : 'My Profile',
           icon: User,
           companyRoles: ['company_admin', 'department_head', 'employee']
         }
@@ -266,7 +272,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
               <div
                 onClick={() => handleNavClick('profile')}
                 className="p-2 rounded-lg bg-[#F8FAFC] dark:bg-[#090D16] border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2 cursor-pointer hover:border-indigo-300 dark:hover:border-indigo-500/40 transition-colors"
-                title="Open Account & Companies"
+                title={isOwner ? 'Open Account & Companies' : 'Open My Profile'}
               >
                 <div className="flex items-center gap-2 min-w-0">
                   <div className="w-7 h-7 rounded-md bg-slate-900 dark:bg-indigo-600 text-white flex items-center justify-center font-bold text-xs shrink-0">
@@ -318,9 +324,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
         {/* Strict Role-Filtered Navigation */}
         <nav className="px-2.5 py-2 flex-1 overflow-y-auto space-y-3">
           {navGroups.map((group) => {
-            const visibleItems = group.items.filter((item) =>
-              item.companyRoles.includes(effectiveCompanyRole)
-            );
+            const visibleItems = group.items.filter((item) => {
+              if (!item.companyRoles.includes(effectiveCompanyRole)) return false;
+              if (item.requiresEmailHubAccess && !emailHubAuthorized) return false;
+              return true;
+            });
             if (visibleItems.length === 0) return null;
 
             return (

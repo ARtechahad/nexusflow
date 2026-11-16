@@ -4,6 +4,7 @@ import {
   getDB,
   saveDB,
   hashPassword,
+  verifyPassword,
   logAuditAction,
   DEFAULT_USERS
 } from '../db';
@@ -372,6 +373,8 @@ router.post('/signup/verify-otp', async (req: Request, res: Response) => {
       emailVerifiedAt: now,
       role: 'team_member',
       title: 'Personal Account',
+      phone: '',
+      bio: '',
       avatar: '',
       availabilityStatus: 'Available' as AvailabilityStatus,
       availabilityUpdatedAt: now,
@@ -420,6 +423,8 @@ router.post('/signup/verify-otp', async (req: Request, res: Response) => {
         email: registeredUser.email,
         role: registeredUser.role,
         title: registeredUser.title,
+        phone: registeredUser.phone,
+        bio: registeredUser.bio,
         avatar: registeredUser.avatar,
         availabilityStatus: registeredUser.availabilityStatus,
         availabilityUpdatedAt: registeredUser.availabilityUpdatedAt,
@@ -499,6 +504,8 @@ router.get('/me', (req: Request, res: Response) => {
       email: dbUser.email,
       role: dbUser.role,
       title: dbUser.title || 'Workspace Member',
+      phone: dbUser.phone || '',
+      bio: dbUser.bio || '',
       avatar: dbUser.avatar || '',
       availabilityStatus: dbUser.availabilityStatus || 'Available',
       availabilityUpdatedAt: dbUser.availabilityUpdatedAt || dbUser.createdAt,
@@ -507,6 +514,83 @@ router.get('/me', (req: Request, res: Response) => {
     companies,
     memberships,
     pendingInvites
+  });
+});
+
+// Update own personal profile details (Full Name, Phone Number, Title, Bio, optional Password)
+router.patch('/me/profile', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+  const { name, fullName, phone, title, bio, currentPassword, newPassword } = req.body || {};
+
+  const db = getDB();
+  const dbUser = (db.users || []).find((u: any) => u.id === req.user!.id);
+  if (!dbUser) {
+    return res.status(404).json({ success: false, message: 'User account not found.' });
+  }
+
+  const nextName = typeof (fullName ?? name) === 'string' ? String(fullName ?? name).trim() : undefined;
+  if (nextName !== undefined) {
+    if (nextName.length < 2) {
+      return res.status(400).json({ success: false, message: 'Full name must be at least 2 characters.' });
+    }
+    dbUser.name = nextName;
+  }
+
+  if (typeof phone === 'string') {
+    dbUser.phone = phone.trim();
+  }
+  if (typeof title === 'string') {
+    dbUser.title = title.trim() || dbUser.title || 'Workspace Member';
+  }
+  if (typeof bio === 'string') {
+    dbUser.bio = bio.trim().slice(0, 500);
+  }
+
+  if (typeof newPassword === 'string' && newPassword.length > 0) {
+    if (newPassword.length < 6) {
+      return res.status(400).json({ success: false, message: 'New password must be at least 6 characters.' });
+    }
+    if (dbUser.passwordHash) {
+      if (typeof currentPassword !== 'string' || !currentPassword) {
+        return res.status(400).json({ success: false, message: 'Please enter your current password to set a new password.' });
+      }
+      const check = verifyPassword(currentPassword, dbUser.passwordHash);
+      if (!check.valid) {
+        return res.status(401).json({ success: false, message: 'Current password is incorrect.' });
+      }
+    }
+    dbUser.passwordHash = hashPassword(newPassword);
+  }
+
+  dbUser.updatedAt = new Date().toISOString();
+  saveDB(db);
+
+  logAuditAction({
+    userId: dbUser.id,
+    userName: dbUser.name,
+    userRole: dbUser.role,
+    action: 'USER_PROFILE_UPDATED',
+    entityType: 'user',
+    entityId: dbUser.id,
+    details: { updatedFields: ['name', 'phone', 'title', 'bio'].filter((k) => req.body?.[k] !== undefined || (k === 'name' && fullName !== undefined)) },
+    ipAddress: req.ip || '127.0.0.1'
+  });
+
+  return res.json({
+    success: true,
+    message: 'Personal profile updated successfully.',
+    user: {
+      id: dbUser.id,
+      name: dbUser.name,
+      email: dbUser.email,
+      role: dbUser.role,
+      title: dbUser.title || 'Workspace Member',
+      phone: dbUser.phone || '',
+      bio: dbUser.bio || '',
+      avatar: dbUser.avatar || '',
+      availabilityStatus: dbUser.availabilityStatus || 'Available',
+      availabilityUpdatedAt: dbUser.availabilityUpdatedAt || dbUser.createdAt,
+      permissions: dbUser.permissions || []
+    }
   });
 });
 
@@ -590,6 +674,8 @@ router.get('/users', requireCompanyAccess, (req: AuthenticatedRequest, res: Resp
         designation: m?.designation || '',
         departmentIds: m?.departmentIds || [],
         title: m?.designation || u.title,
+        phone: u.phone || '',
+        bio: u.bio || '',
         avatar: u.avatar || '',
         availabilityStatus: u.availabilityStatus || 'Available',
         availabilityUpdatedAt: u.availabilityUpdatedAt || u.createdAt

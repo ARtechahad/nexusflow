@@ -44,6 +44,8 @@ export interface TokenPayload {
   role: string;
   name: string;
   title: string;
+  phone?: string;
+  bio?: string;
   permissions: string[];
   tenant_id?: string;
   tenantId?: string;
@@ -199,6 +201,25 @@ export function hasDepartmentAccess(membership: CompanyMembership | undefined, d
   return Array.isArray(membership.departmentIds) && membership.departmentIds.includes(departmentId);
 }
 
+const SALES_CLIENT_DEPT_PATTERN = /\b(sales|marketing|client[\s_-]*success|business[\s_-]*development|bd|growth|outreach|revenue|account[\s_-]*management|crm|partnerships)\b/i;
+
+export function isSalesOrClientDepartmentName(name?: string, slug?: string): boolean {
+  const combined = `${name || ''} ${slug || ''}`.trim();
+  if (!combined) return false;
+  return SALES_CLIENT_DEPT_PATTERN.test(combined);
+}
+
+export function hasSalesEmailAccess(req: AuthenticatedRequest): boolean {
+  if (req.companyRole === 'company_admin') return true;
+  if (req.companyRole !== 'department_head' || !req.membership || !req.companyId) return false;
+  const db = getDB();
+  const deptIds = Array.isArray(req.membership.departmentIds) ? req.membership.departmentIds : [];
+  const companyDepts = (db.departments || []).filter(
+    (d: any) => d.companyId === req.companyId && deptIds.includes(d.id)
+  );
+  return companyDepts.some((d: any) => isSalesOrClientDepartmentName(d.name, d.slug));
+}
+
 /**
  * Extract bearer/cookie/query JWT token and requested company ID without inventing any default tenant fallback.
  */
@@ -239,6 +260,8 @@ export function authenticateToken(req: AuthenticatedRequest, _res: Response, nex
           name: dbUser.name,
           role: dbUser.role,
           title: dbUser.title || decoded.title,
+          phone: dbUser.phone || '',
+          bio: dbUser.bio || '',
           permissions: dbUser.permissions || decoded.permissions || []
         };
       } else {
@@ -362,6 +385,27 @@ export function requireCompanyRole(allowedCompanyRoles: CompanyRole[]) {
         });
       }
       return next();
+    });
+  };
+}
+
+/**
+ * Enforce Email Hub / Unified Client Inbox access:
+ * Permitted for Company Owners and Department Heads of Sales / Marketing / Client Success departments.
+ */
+export function requireSalesOrAdminEmailAccess() {
+  return (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    requireCompanyAccess(req, res, () => {
+      if (req.companyRole === 'company_admin') {
+        return next();
+      }
+      if (req.companyRole === 'department_head' && hasSalesEmailAccess(req)) {
+        return next();
+      }
+      return res.status(403).json({
+        success: false,
+        error: 'Forbidden: Email Hub and Client Inbox are restricted to Company Owners and Sales, Marketing, or Client Success Department Heads.'
+      });
     });
   };
 }
@@ -542,6 +586,8 @@ export function authenticateUser(
     email: user.email,
     role: user.role || 'team_member',
     title: user.title || 'Workspace Member',
+    phone: user.phone || '',
+    bio: user.bio || '',
     avatar: user.avatar || '',
     availabilityStatus: user.availabilityStatus || 'Available',
     availabilityUpdatedAt: user.availabilityUpdatedAt || user.createdAt,
@@ -574,7 +620,16 @@ export function authenticateUser(
  * Register a new individual personal account (zero companies auto-created).
  */
 export function registerNewUser(
-  data: { name: string; email: string; password: string; role?: string; title?: string; emailVerified?: boolean },
+  data: {
+    name: string;
+    email: string;
+    password: string;
+    role?: string;
+    title?: string;
+    phone?: string;
+    bio?: string;
+    emailVerified?: boolean;
+  },
   ipAddress?: string
 ): { success: boolean; user?: any; token?: string; companies?: any[]; pendingInvites?: any[]; message?: string } {
   const db = getDB();
@@ -595,7 +650,9 @@ export function registerNewUser(
     emailVerified: Boolean(data.emailVerified ?? true),
     emailVerifiedAt: now,
     role: data.role || 'team_member',
-    title: data.title || 'Workspace Member',
+    title: data.title?.trim() || 'Workspace Member',
+    phone: data.phone?.trim() || '',
+    bio: data.bio?.trim() || '',
     avatar: '',
     availabilityStatus: 'Available' as AvailabilityStatus,
     availabilityUpdatedAt: now,
@@ -634,6 +691,8 @@ export function registerNewUser(
     email: newUser.email,
     role: newUser.role,
     title: newUser.title,
+    phone: newUser.phone,
+    bio: newUser.bio,
     avatar: newUser.avatar,
     availabilityStatus: newUser.availabilityStatus,
     availabilityUpdatedAt: newUser.availabilityUpdatedAt,
