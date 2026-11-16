@@ -5,14 +5,17 @@ import { getNeonPool, neonQuery } from './db';
 import { getDB, saveDB, logAuditAction } from '../db';
 
 /**
- * Default reliable Resend API Key fallback if process.env.RESEND_API_KEY is not defined.
+ * Default Resend API Key fallback (must be configured via process.env.RESEND_API_KEY).
  */
-export const DEFAULT_RESEND_API_KEY = 're_LXiiEzAS_86mprrkSQfUGaJHZRK25Pp18';
+export const DEFAULT_RESEND_API_KEY = '';
 
 /**
- * Standard default sender address conforming to Resend onboarding domain or custom env.
+ * Standard default sender address conforming to process.env.RESEND_FROM_EMAIL or onboarding domain.
  */
-export const DEFAULT_EMAIL_FROM = process.env.EMAIL_FROM_ADDRESS || 'ALM Nexus <onboarding@resend.dev>';
+export const DEFAULT_EMAIL_FROM =
+  process.env.RESEND_FROM_EMAIL ||
+  process.env.EMAIL_FROM_ADDRESS ||
+  'ClientOps <onboarding@resend.dev>';
 
 /**
  * Resend Email Attachment Contract
@@ -74,12 +77,28 @@ export interface SendEmailResult {
 class ResendServiceManager {
   private client: Resend | null = null;
   private currentApiKey: string = '';
+  private invalidKeys = new Set<string>();
 
   /**
-   * Resolves active API Key from environment or fallback
+   * Resolves active API Key strictly from environment configuration
    */
   public getApiKey(): string {
-    return (process.env.RESEND_API_KEY || DEFAULT_RESEND_API_KEY).trim();
+    const raw = (process.env.RESEND_API_KEY || DEFAULT_RESEND_API_KEY || '').trim();
+    if (!raw || raw === 'MY_RESEND_API_KEY' || raw.includes('your_resend_api_key')) {
+      return '';
+    }
+    return raw;
+  }
+
+  /**
+   * Returns true only when a syntactically plausible, non-rejected Resend API key is present
+   */
+  public isConfigured(): boolean {
+    const key = this.getApiKey();
+    if (!key || !key.startsWith('re_') || key.length < 16) {
+      return false;
+    }
+    return !this.invalidKeys.has(key);
   }
 
   /**
@@ -87,6 +106,9 @@ class ResendServiceManager {
    */
   public getClient(): Resend {
     const key = this.getApiKey();
+    if (!key) {
+      throw new Error('RESEND_API_KEY is not configured.');
+    }
     if (!this.client || this.currentApiKey !== key) {
       this.currentApiKey = key;
       this.client = new Resend(key);
@@ -98,6 +120,11 @@ class ResendServiceManager {
    * Normalizes sender from name and address with safe defaults
    */
   public resolveFromAddress(customFrom?: string, fromName?: string): string {
+    const resolvedDefault =
+      process.env.RESEND_FROM_EMAIL ||
+      process.env.EMAIL_FROM_ADDRESS ||
+      DEFAULT_EMAIL_FROM;
+
     if (customFrom && customFrom.trim()) {
       const cleanFrom = customFrom.trim();
       // If already formatted like "Name <email@domain.com>", preserve it
@@ -111,13 +138,13 @@ class ResendServiceManager {
     }
 
     if (fromName && fromName.trim()) {
-      const defaultAddr = DEFAULT_EMAIL_FROM.includes('<')
-        ? DEFAULT_EMAIL_FROM.split('<')[1].replace('>', '')
-        : 'onboarding@resend.dev';
+      const defaultAddr = resolvedDefault.includes('<')
+        ? resolvedDefault.split('<')[1].replace('>', '')
+        : resolvedDefault;
       return `"${fromName.trim()}" <${defaultAddr}>`;
     }
 
-    return DEFAULT_EMAIL_FROM;
+    return resolvedDefault;
   }
 
   /**
@@ -142,6 +169,49 @@ class ResendServiceManager {
       }
     });
 
+    // If no valid Resend API key is configured (or the active key was already rejected),
+    // skip the external HTTP call cleanly and persist local outbox telemetry.
+    if (!this.isConfigured()) {
+      const reason = this.getApiKey()
+        ? 'Configured RESEND_API_KEY is invalid or rejected.'
+        : 'RESEND_API_KEY not configured in environment.';
+
+      logger.info(`[Resend Engine] ${reason} Preserved outbound email to ${recipientStr} in local outbox.`, {
+        context: 'ResendService',
+        tenantId,
+        details: { to: recipientStr, template: options.template || 'direct' }
+      });
+
+      try {
+        await this.recordTelemetry({
+          id: telemetryId,
+          tenantId,
+          recipient: recipientStr,
+          sender: initialFrom,
+          subject: options.subject,
+          status: 'queued_local',
+          template: options.template || 'direct',
+          metadata: options.metadata || {},
+          errorMessage: reason
+        });
+      } catch (recErr: any) {
+        logger.debug(`[Resend Engine] Background telemetry logging note: ${recErr.message}`);
+      }
+
+      return {
+        success: false,
+        messageId: `local_${telemetryId}`,
+        recipient: recipientStr,
+        from: initialFrom,
+        subject: options.subject,
+        provider: 'fallback_simulated',
+        error: reason,
+        timestamp: new Date().toISOString(),
+        telemetryId
+      };
+    }
+
+    const activeKey = this.getApiKey();
     const client = this.getClient();
 
     // Prepare payload for Resend SDK
@@ -176,35 +246,45 @@ class ResendServiceManager {
       const res = await client.emails.send(basePayload);
 
       if (res.error) {
-        // If the error was domain verification (e.g., custom mailbox domain not yet verified in Resend dashboard),
-        // gracefully fall back to onboarding@resend.dev with the original sender set as replyTo
         const errMsg = res.error.message || '';
-        const isDomainError = errMsg.toLowerCase().includes('domain') || errMsg.toLowerCase().includes('verify');
+        const errName = (res.error as any)?.name || '';
+        const isAuthOrKeyError =
+          errName === 'validation_error' && /api key/i.test(errMsg) ||
+          /api key is invalid|unauthorized|invalid api key/i.test(errMsg);
 
-        if (isDomainError && !initialFrom.includes('onboarding@resend.dev')) {
-          logger.warn(`[Resend Engine] Sender domain not verified in Resend. Retrying with onboarding fallback...`, {
-            context: 'ResendService',
-            details: { originalFrom: initialFrom, error: errMsg }
-          });
-
-          const fallbackFrom = DEFAULT_EMAIL_FROM;
-          actualFromUsed = fallbackFrom;
-
-          const retryPayload = {
-            ...basePayload,
-            from: fallbackFrom,
-            replyTo: options.replyTo || (options.from ? [options.from] : undefined)
-          };
-
-          const retryRes = await client.emails.send(retryPayload);
-
-          if (retryRes.error) {
-            dispatchError = retryRes.error.message;
-          } else if (retryRes.data?.id) {
-            resendMessageId = retryRes.data.id;
-          }
+        if (isAuthOrKeyError) {
+          this.invalidKeys.add(activeKey);
+          dispatchError = errMsg;
         } else {
-          dispatchError = res.error.message;
+          // If the error was domain verification (e.g., custom mailbox domain not yet verified in Resend dashboard),
+          // gracefully fall back to onboarding@resend.dev with the original sender set as replyTo
+          const isDomainError = errMsg.toLowerCase().includes('domain') || errMsg.toLowerCase().includes('verify');
+
+          if (isDomainError && !initialFrom.includes('onboarding@resend.dev')) {
+            logger.warn(`[Resend Engine] Sender domain not verified in Resend. Retrying with onboarding fallback...`, {
+              context: 'ResendService',
+              details: { originalFrom: initialFrom, error: errMsg }
+            });
+
+            const fallbackFrom = DEFAULT_EMAIL_FROM;
+            actualFromUsed = fallbackFrom;
+
+            const retryPayload = {
+              ...basePayload,
+              from: fallbackFrom,
+              replyTo: options.replyTo || (options.from ? [options.from] : undefined)
+            };
+
+            const retryRes = await client.emails.send(retryPayload);
+
+            if (retryRes.error) {
+              dispatchError = retryRes.error.message;
+            } else if (retryRes.data?.id) {
+              resendMessageId = retryRes.data.id;
+            }
+          } else {
+            dispatchError = res.error.message;
+          }
         }
       } else if (res.data?.id) {
         resendMessageId = res.data.id;
@@ -292,7 +372,27 @@ class ResendServiceManager {
     timestamp: string;
   }> {
     const key = this.getApiKey();
+    if (!key) {
+      return {
+        ok: false,
+        message: 'RESEND_API_KEY is not configured. Outbound emails are stored in local telemetry until an API key is added.',
+        apiKeyMasked: 'Not configured',
+        defaultFrom: DEFAULT_EMAIL_FROM,
+        timestamp: new Date().toISOString()
+      };
+    }
+
     const masked = key.length > 8 ? `${key.substring(0, 6)}...${key.substring(key.length - 4)}` : '****';
+
+    if (!this.isConfigured()) {
+      return {
+        ok: false,
+        message: 'Configured RESEND_API_KEY is invalid or was rejected by Resend. Please provide a valid key.',
+        apiKeyMasked: masked,
+        defaultFrom: DEFAULT_EMAIL_FROM,
+        timestamp: new Date().toISOString()
+      };
+    }
 
     try {
       const client = this.getClient();
@@ -304,6 +404,16 @@ class ResendServiceManager {
           return {
             ok: true,
             message: 'Connected to Resend API (Sending Key verified & active).',
+            apiKeyMasked: masked,
+            defaultFrom: DEFAULT_EMAIL_FROM,
+            timestamp: new Date().toISOString()
+          };
+        }
+        if (/api key/i.test(err.message || '')) {
+          this.invalidKeys.add(key);
+          return {
+            ok: false,
+            message: `Resend API key rejected: ${err.message}`,
             apiKeyMasked: masked,
             defaultFrom: DEFAULT_EMAIL_FROM,
             timestamp: new Date().toISOString()
@@ -347,7 +457,7 @@ class ResendServiceManager {
     recipient: string;
     sender: string;
     subject: string;
-    status: 'sent' | 'failed';
+    status: 'sent' | 'failed' | 'queued_local';
     template: string;
     metadata: Record<string, any>;
     errorMessage?: string;

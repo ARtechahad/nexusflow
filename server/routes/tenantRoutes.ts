@@ -197,7 +197,7 @@ router.post('/onboard', (req: Request, res: Response) => {
           <p style="margin: 4px 0; font-size: 13px;"><strong>Role:</strong> Chief Executive Officer (CEO)</p>
           <p style="margin: 4px 0; font-size: 13px;"><strong>Industry:</strong> ${businessInfo?.industry || 'B2B Services'}</p>
         </div>
-        <p style="font-size: 12px; color: #64748b;">Dispatched securely via Resend API (Key: re_LXiiEzAS...)</p>
+        <p style="font-size: 12px; color: #64748b;">Dispatched via ClientOps Operations Suite</p>
       </div>
     `,
     text: `Welcome to ${companyName}! Your tenant ${tenantId} is now active. Admin: ${adminUser.name} (${adminUser.email}).`,

@@ -16,19 +16,40 @@ export interface NeonConnectionTestResult {
 
 // Global reference to the singleton Neon PG Pool
 let neonPool: pg.Pool | null = null;
-let isNeonConnecting = false;
+let isDatabaseReachable: boolean | null = null;
+
+/**
+ * Synchronizes pool reachability state from initPostgresPool / migrateToPostgres
+ */
+export function setNeonPoolReachability(pool: pg.Pool | null, reachable: boolean): void {
+  isDatabaseReachable = reachable;
+  if (reachable && pool) {
+    neonPool = pool;
+  } else if (!reachable) {
+    neonPool = null;
+  }
+}
 
 /**
  * Resolves the target database connection string across common Neon and PostgreSQL env vars
  */
 export function getDatabaseUrl(): string | null {
-  const url =
+  const raw =
     process.env.DATABASE_URL ||
     process.env.NEON_DATABASE_URL ||
     process.env.POSTGRES_URL ||
     process.env.POSTGRES_PRISMA_URL;
 
-  return url ? url.trim() : null;
+  const trimmed = raw ? raw.trim() : '';
+  if (
+    !trimmed ||
+    !trimmed.startsWith('postgres') ||
+    trimmed.includes('MY_DATABASE_URL') ||
+    trimmed.includes('your_database_url')
+  ) {
+    return null;
+  }
+  return trimmed;
 }
 
 /**
@@ -43,6 +64,10 @@ export function isNeonConnection(url?: string): boolean {
  * Creates or retrieves the singleton Neon PostgreSQL pool with serverless-tuned settings
  */
 export function getNeonPool(): pg.Pool | null {
+  if (isDatabaseReachable === false) {
+    return null;
+  }
+
   if (neonPool) {
     return neonPool;
   }
@@ -89,10 +114,12 @@ export function getNeonPool(): pg.Pool | null {
  * Test database connectivity and measure latency to Neon
  */
 export async function testNeonConnection(): Promise<NeonConnectionTestResult> {
+  isDatabaseReachable = null;
   const pool = getNeonPool();
   const connString = getDatabaseUrl();
 
   if (!pool || !connString) {
+    isDatabaseReachable = false;
     return {
       ok: false,
       engine: 'disconnected',
@@ -125,6 +152,8 @@ export async function testNeonConnection(): Promise<NeonConnectionTestResult> {
       hostMasked = parsed.host;
     } catch {}
 
+    isDatabaseReachable = true;
+
     return {
       ok: true,
       engine: isNeon ? 'neon_serverless' : 'standard_postgresql',
@@ -135,6 +164,12 @@ export async function testNeonConnection(): Promise<NeonConnectionTestResult> {
       timestamp: new Date().toISOString()
     };
   } catch (err: any) {
+    if (client) {
+      client.release();
+      client = null;
+    }
+    await pool.end().catch(() => {});
+    setNeonPoolReachability(null, false);
     return {
       ok: false,
       engine: isNeonConnection(connString) ? 'neon_serverless' : 'standard_postgresql',
@@ -267,6 +302,17 @@ CREATE TABLE IF NOT EXISTS resend_email_logs (
   template VARCHAR(64),
   metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
   error_message TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 7b. Email OTP Verification Store (10-minute expiry & 30s resend cooldown)
+CREATE TABLE IF NOT EXISTS email_verification_otps (
+  email VARCHAR(255) PRIMARY KEY,
+  otp_hash VARCHAR(128) NOT NULL,
+  pending_data JSONB NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  expires_at TIMESTAMPTZ NOT NULL,
+  last_sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

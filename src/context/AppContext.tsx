@@ -60,6 +60,35 @@ interface AppContextType {
   isOnboardingModalOpen: boolean;
   setIsOnboardingModalOpen: (open: boolean) => void;
   onboardNewTenant: (data: any) => Promise<{ success: boolean; message?: string; tenant?: Tenant }>;
+  requestSignupOtp: (data: {
+    fullName: string;
+    companyName: string;
+    email: string;
+    password: string;
+  }) => Promise<{
+    success: boolean;
+    message?: string;
+    email?: string;
+    cooldownSeconds?: number;
+    expiresInSeconds?: number;
+    retryAfterSeconds?: number;
+    deliveryProvider?: string;
+  }>;
+  resendSignupOtp: (email: string) => Promise<{
+    success: boolean;
+    message?: string;
+    cooldownSeconds?: number;
+    retryAfterSeconds?: number;
+  }>;
+  verifySignupOtp: (
+    email: string,
+    code: string
+  ) => Promise<{
+    success: boolean;
+    message?: string;
+    expired?: boolean;
+    tenant?: Tenant;
+  }>;
   // Real-time Activity Feed & System Alerts
   isActivityFeedOpen: boolean;
   setIsActivityFeedOpen: (open: boolean) => void;
@@ -492,6 +521,112 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
     } catch (err: any) {
       return { success: false, message: err.message || 'Network error during onboarding.' };
+    }
+  };
+
+  const requestSignupOtp = async (payload: {
+    fullName: string;
+    companyName: string;
+    email: string;
+    password: string;
+  }) => {
+    try {
+      const res = await fetch('/api/auth/signup/request-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        return {
+          success: true,
+          message: data.message,
+          email: data.email,
+          cooldownSeconds: data.cooldownSeconds || 30,
+          expiresInSeconds: data.expiresInSeconds || 600,
+          deliveryProvider: data.deliveryProvider
+        };
+      }
+      return {
+        success: false,
+        message: data.message || 'Could not send verification code.',
+        retryAfterSeconds: data.retryAfterSeconds
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        message: err?.message || 'Network error while requesting verification code.'
+      };
+    }
+  };
+
+  const resendSignupOtp = async (email: string) => {
+    try {
+      const res = await fetch('/api/auth/signup/resend-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        return {
+          success: true,
+          message: data.message,
+          cooldownSeconds: data.cooldownSeconds || 30
+        };
+      }
+      return {
+        success: false,
+        message: data.message || 'Could not resend verification code.',
+        retryAfterSeconds: data.retryAfterSeconds
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        message: err?.message || 'Network error while resending verification code.'
+      };
+    }
+  };
+
+  const verifySignupOtp = async (email: string, code: string) => {
+    try {
+      const res = await fetch('/api/auth/signup/verify-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, code })
+      });
+      const data = await res.json();
+      if (res.ok && data.success && data.token && data.user && data.tenant) {
+        setTenants(prev => [data.tenant, ...prev]);
+        setCurrentTenant(data.tenant);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('alm_nexus_tenant_id', data.tenant.id);
+          localStorage.setItem('clientops_setup_checklist', 'true');
+        }
+        setAuthToken(data.token);
+        setCurrentUser(data.user);
+        setRoleState(data.user.role);
+        localStorage.setItem('alm_nexus_token', data.token);
+        localStorage.setItem('alm_nexus_user', JSON.stringify(data.user));
+        setShowSetupChecklist(true);
+        showToast(`Email verified! Workspace "${data.tenant.name}" is ready.`, 'success');
+        refreshProjects();
+        refreshActivityFeed();
+        refreshWikiDocs();
+        refreshDepartmentalProgress();
+        setActiveTabState('pipeline');
+        return { success: true, tenant: data.tenant, message: data.message };
+      }
+      return {
+        success: false,
+        message: data.message || 'Invalid or expired verification code.',
+        expired: Boolean(data.expired)
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        message: err?.message || 'Network error while verifying code.'
+      };
     }
   };
 
@@ -1052,6 +1187,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         isOnboardingModalOpen,
         setIsOnboardingModalOpen,
         onboardNewTenant,
+        requestSignupOtp,
+        resendSignupOtp,
+        verifySignupOtp,
         isActivityFeedOpen,
         setIsActivityFeedOpen,
         activityFeed,

@@ -1,7 +1,9 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import dns from 'node:dns';
 import pg from 'pg';
+import { getDatabaseUrl, setNeonPoolReachability } from './services/db';
 
 const { Pool } = pg;
 
@@ -224,7 +226,8 @@ export const INITIAL_DB = {
   ],
 
   // PHASE 3: DISPATCH LOGS
-  nudgeLogs: [] as any[]
+  nudgeLogs: [] as any[],
+  emailVerificationOtps: [] as any[]
 };
 
 // Database read/write helpers with PostgreSQL & atomic fallback
@@ -243,6 +246,7 @@ export function readDB(): any {
   if (!Array.isArray(parsed.salespersonProfiles)) parsed.salespersonProfiles = INITIAL_DB.salespersonProfiles || [];
   if (!Array.isArray(parsed.nudgeTemplates)) parsed.nudgeTemplates = INITIAL_DB.nudgeTemplates || [];
   if (!Array.isArray(parsed.nudgeLogs)) parsed.nudgeLogs = INITIAL_DB.nudgeLogs || [];
+  if (!Array.isArray(parsed.emailVerificationOtps)) parsed.emailVerificationOtps = [];
   if (!Array.isArray(parsed.users)) parsed.users = DEFAULT_USERS;
   if (!Array.isArray(parsed.connectors)) parsed.connectors = DEFAULT_CONNECTORS;
   if (!Array.isArray(parsed.webhookLogs)) parsed.webhookLogs = [];
@@ -802,21 +806,47 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 );
 
 ALTER TABLE IF EXISTS audit_logs ADD COLUMN IF NOT EXISTS tenant_id VARCHAR(64) DEFAULT 'tenant-alm-nexus';
+
+CREATE TABLE IF NOT EXISTS email_verification_otps (
+  email VARCHAR(255) PRIMARY KEY,
+  otp_hash VARCHAR(128) NOT NULL,
+  pending_data JSONB NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  expires_at TIMESTAMPTZ NOT NULL,
+  last_sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 `;
 
 /**
  * Initialize PostgreSQL connection pool if DATABASE_URL is configured
  */
 export async function initPostgresPool(connectionString?: string): Promise<boolean> {
-  const connUrl = connectionString || process.env.DATABASE_URL || process.env.POSTGRES_URL;
+  const connUrl = (connectionString && connectionString.trim()) || getDatabaseUrl();
   if (!connUrl) {
     isPgConnected = false;
+    setNeonPoolReachability(null, false);
     return false;
   }
 
+  let newPool: pg.Pool | null = null;
   try {
+    // Fast pre-flight DNS check for remote hosts so stale/deleted hostnames fall back cleanly
+    try {
+      const parsed = new URL(connUrl.replace(/^postgres(ql)?:\/\//i, 'http://'));
+      const host = parsed.hostname;
+      if (host && host !== 'localhost' && host !== '127.0.0.1') {
+        await dns.promises.lookup(host);
+      }
+    } catch (dnsErr: any) {
+      isPgConnected = false;
+      setNeonPoolReachability(null, false);
+      console.log(`ℹ️ [Database Engine] Remote PostgreSQL host unreachable (${dnsErr?.code || dnsErr?.message}). Using local JSON disk persistence.`);
+      return false;
+    }
+
     const isSslRequired = !connUrl.includes('localhost') && !connUrl.includes('127.0.0.1');
-    const newPool = new Pool({
+    newPool = new Pool({
       connectionString: connUrl,
       ssl: isSslRequired ? { rejectUnauthorized: false } : false,
       max: 10,
@@ -838,6 +868,7 @@ export async function initPostgresPool(connectionString?: string): Promise<boole
 
     pgPool = newPool;
     isPgConnected = true;
+    setNeonPoolReachability(newPool, true);
 
     // Run Neon-specific schema and Clerk user sync tables
     try {
@@ -849,8 +880,12 @@ export async function initPostgresPool(connectionString?: string): Promise<boole
     console.log(`✅ [Database Engine] Connected to ${isNeon ? 'Neon Serverless PostgreSQL' : 'PostgreSQL'} successfully (${lastPgPingMs}ms latency). Schema verified.`);
     return true;
   } catch (err: any) {
-    console.warn(`⚠️ [Database Engine] PostgreSQL connection failed: ${err.message}. Running in resilient local JSON disk mode.`);
+    if (newPool) {
+      await newPool.end().catch(() => {});
+    }
     isPgConnected = false;
+    setNeonPoolReachability(null, false);
+    console.log(`ℹ️ [Database Engine] PostgreSQL unavailable (${err?.code || err?.message}). Using local JSON disk persistence.`);
     return false;
   }
 }
@@ -904,7 +939,8 @@ export function loadLocalDB(initialFallbackData: any): any {
       activityFeed: Array.isArray(parsed.activityFeed) ? parsed.activityFeed : DEFAULT_ACTIVITY_FEED,
       wikiDocs: Array.isArray(parsed.wikiDocs) && parsed.wikiDocs.length > 0 ? parsed.wikiDocs : DEFAULT_WIKI_DOCS,
       departmentalProgress: Array.isArray(parsed.departmentalProgress) ? parsed.departmentalProgress : DEFAULT_DEPARTMENTAL_PROGRESS,
-      webhookLogs: Array.isArray(parsed.webhookLogs) ? parsed.webhookLogs : []
+      webhookLogs: Array.isArray(parsed.webhookLogs) ? parsed.webhookLogs : [],
+      emailVerificationOtps: Array.isArray(parsed.emailVerificationOtps) ? parsed.emailVerificationOtps : []
     };
 
     memoryDB = merged;
@@ -1143,8 +1179,8 @@ export async function getDatabaseStatus(): Promise<DatabaseStatus> {
     latencyMs: latency,
     poolSize: pgPool?.totalCount || 0,
     totalRecords: projectsCount + usersCount + inquiriesCount + invoicesCount + webhookLogsCount + apiTokensCount + auditLogsCount,
-    host: connUrl ? maskUrl(connUrl).split('@')[1]?.split('/')[0] : 'local-filesystem',
-    database: connUrl ? connUrl.split('/').pop()?.split('?')[0] : 'db.json (atomic write)',
+    host: pgConnectedNow && connUrl ? maskUrl(connUrl).split('@')[1]?.split('/')[0] : 'local-filesystem',
+    database: pgConnectedNow && connUrl ? connUrl.split('/').pop()?.split('?')[0] : 'db.json (atomic write)',
     lastBackupAt: lastBackupTimestamp,
     tables: [
       { name: 'agency_projects', count: projectsCount },
@@ -1156,7 +1192,7 @@ export async function getDatabaseStatus(): Promise<DatabaseStatus> {
       { name: 'api_tokens', count: apiTokensCount },
       { name: 'audit_logs', count: auditLogsCount }
     ],
-    connectionUrlMasked: maskUrl(connUrl)
+    connectionUrlMasked: pgConnectedNow ? maskUrl(connUrl) : 'local-filesystem (db.json)'
   };
 }
 
@@ -1168,9 +1204,10 @@ export async function testPostgresConnection(testUrl: string): Promise<{ ok: boo
     return { ok: false, latencyMs: 0, message: 'Invalid PostgreSQL connection URI. Must begin with postgresql:// or postgres://' };
   }
 
+  let testPool: pg.Pool | null = null;
   try {
     const isSslRequired = !testUrl.includes('localhost') && !testUrl.includes('127.0.0.1');
-    const testPool = new Pool({
+    testPool = new Pool({
       connectionString: testUrl,
       ssl: isSslRequired ? { rejectUnauthorized: false } : false,
       connectionTimeoutMillis: 5000
@@ -1181,7 +1218,6 @@ export async function testPostgresConnection(testUrl: string): Promise<{ ok: boo
     const result = await client.query('SELECT version();');
     const latency = Date.now() - start;
     client.release();
-    await testPool.end();
 
     const versionStr = result.rows[0]?.version || 'PostgreSQL';
     return {
@@ -1195,6 +1231,10 @@ export async function testPostgresConnection(testUrl: string): Promise<{ ok: boo
       latencyMs: 0,
       message: `Connection failed: ${err.message}`
     };
+  } finally {
+    if (testPool) {
+      await testPool.end().catch(() => {});
+    }
   }
 }
 
@@ -1276,6 +1316,7 @@ export async function migrateToPostgres(targetUrl: string): Promise<{ success: b
     if (pgPool) await pgPool.end().catch(() => {});
     pgPool = newPool;
     isPgConnected = true;
+    setNeonPoolReachability(newPool, true);
 
     return {
       success: true,

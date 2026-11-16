@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Mail,
   Lock,
@@ -8,7 +8,9 @@ import {
   AlertCircle,
   CheckCircle2,
   Layers,
-  ArrowLeft
+  ArrowLeft,
+  ShieldCheck,
+  RefreshCw
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
@@ -19,14 +21,22 @@ interface RoleLoginViewProps {
   onSuccess?: () => void;
 }
 
+interface PendingVerificationState {
+  email: string;
+  fullName: string;
+  companyName: string;
+  deliveryProvider?: string;
+}
+
 export const RoleLoginView: React.FC<RoleLoginViewProps> = ({
   initialMode = 'signin',
   onSuccess
 }) => {
   const {
     login,
-    loginWithGoogle,
-    onboardNewTenant,
+    requestSignupOtp,
+    resendSignupOtp,
+    verifySignupOtp,
     setActiveTab,
     showToast
   } = useApp();
@@ -44,42 +54,56 @@ export const RoleLoginView: React.FC<RoleLoginViewProps> = ({
   const [signUpEmail, setSignUpEmail] = useState('');
   const [signUpPassword, setSignUpPassword] = useState('');
 
+  // Email OTP Verification state
+  const [verificationStep, setVerificationStep] = useState<PendingVerificationState | null>(null);
+  const [otpDigits, setOtpDigits] = useState<string[]>(['', '', '', '', '', '']);
+  const [resendCooldown, setResendCooldown] = useState<number>(0);
+  const [resendingCode, setResendingCode] = useState<boolean>(false);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const otpInputRefs = useRef<Array<HTMLInputElement | null>>([]);
+
   // Forgot Password fields
   const [resetEmail, setResetEmail] = useState('');
   const [resetSent, setResetSent] = useState(false);
 
   const [loading, setLoading] = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     setMode(initialMode);
     setShowForgotPassword(false);
+    setVerificationStep(null);
+    setOtpDigits(['', '', '', '', '', '']);
     setErrorMessage(null);
+    setStatusMessage(null);
   }, [initialMode]);
+
+  // 30-second Resend Code cooldown timer
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = window.setInterval(() => {
+      setResendCooldown((prev) => (prev <= 1 ? 0 : prev - 1));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [resendCooldown]);
+
+  // Auto-focus first OTP slot when entering verification step
+  useEffect(() => {
+    if (verificationStep) {
+      const id = window.setTimeout(() => {
+        otpInputRefs.current[0]?.focus();
+      }, 60);
+      return () => window.clearTimeout(id);
+    }
+  }, [verificationStep]);
 
   const handleTabSwitch = (nextMode: AuthTabMode) => {
     setMode(nextMode);
     setShowForgotPassword(false);
+    setVerificationStep(null);
+    setOtpDigits(['', '', '', '', '', '']);
     setErrorMessage(null);
-  };
-
-  const handleGoogleSignIn = async () => {
-    setGoogleLoading(true);
-    setErrorMessage(null);
-    try {
-      const res = await loginWithGoogle();
-      if (res.success) {
-        setActiveTab('pipeline');
-        onSuccess?.();
-      } else if (!res.cancelled) {
-        setErrorMessage(res.message || 'Unable to sign in with Google.');
-      }
-    } catch (err: any) {
-      setErrorMessage(err?.message || 'Google sign-in failed.');
-    } finally {
-      setGoogleLoading(false);
-    }
+    setStatusMessage(null);
   };
 
   const handleSignInSubmit = async (e: React.FormEvent) => {
@@ -111,7 +135,7 @@ export const RoleLoginView: React.FC<RoleLoginViewProps> = ({
     e.preventDefault();
     const cleanName = fullName.trim();
     const cleanCompany = companyName.trim();
-    const cleanEmail = signUpEmail.trim();
+    const cleanEmail = signUpEmail.trim().toLowerCase();
 
     if (!cleanName || !cleanCompany || !cleanEmail || !signUpPassword) {
       setErrorMessage('Please complete all fields to create your workspace.');
@@ -124,31 +148,157 @@ export const RoleLoginView: React.FC<RoleLoginViewProps> = ({
 
     setLoading(true);
     setErrorMessage(null);
+    setStatusMessage(null);
     try {
-      const res = await onboardNewTenant({
+      const res = await requestSignupOtp({
+        fullName: cleanName,
         companyName: cleanCompany,
-        businessInfo: {
-          industry: 'Operations & Client Services',
-          description: `${cleanCompany} company operations workspace`
-        },
-        adminUser: {
-          name: cleanName,
-          email: cleanEmail,
-          password: signUpPassword,
-          title: 'Workspace Owner'
-        }
+        email: cleanEmail,
+        password: signUpPassword
       });
 
       if (res.success) {
-        setActiveTab('pipeline');
-        onSuccess?.();
+        setVerificationStep({
+          email: res.email || cleanEmail,
+          fullName: cleanName,
+          companyName: cleanCompany,
+          deliveryProvider: res.deliveryProvider
+        });
+        setOtpDigits(['', '', '', '', '', '']);
+        setResendCooldown(res.cooldownSeconds || 30);
+        setStatusMessage(res.message || `We sent a 6-digit code to ${cleanEmail}.`);
       } else {
-        setErrorMessage(res.message || 'Could not create workspace.');
+        if (typeof res.retryAfterSeconds === 'number' && res.retryAfterSeconds > 0) {
+          setResendCooldown(res.retryAfterSeconds);
+        }
+        setErrorMessage(res.message || 'Could not send verification code.');
       }
     } catch (err: any) {
-      setErrorMessage(err?.message || 'Network error while creating workspace.');
+      setErrorMessage(err?.message || 'Network error while requesting verification.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleOtpInputChange = (index: number, rawValue: string) => {
+    const digitsOnly = rawValue.replace(/\D/g, '');
+    setErrorMessage(null);
+
+    if (!digitsOnly) {
+      const next = [...otpDigits];
+      next[index] = '';
+      setOtpDigits(next);
+      return;
+    }
+
+    // Handle multi-digit typing or mobile OTP autofill in one input
+    if (digitsOnly.length > 1) {
+      const next = [...otpDigits];
+      for (let i = 0; i < 6 && index + i < 6; i++) {
+        if (digitsOnly[i]) {
+          next[index + i] = digitsOnly[i];
+        }
+      }
+      setOtpDigits(next);
+      const nextFocus = Math.min(index + digitsOnly.length, 5);
+      otpInputRefs.current[nextFocus]?.focus();
+      return;
+    }
+
+    const next = [...otpDigits];
+    next[index] = digitsOnly;
+    setOtpDigits(next);
+    if (index < 5) {
+      otpInputRefs.current[index + 1]?.focus();
+    }
+  };
+
+  const handleOtpKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Backspace') {
+      if (otpDigits[index]) {
+        const next = [...otpDigits];
+        next[index] = '';
+        setOtpDigits(next);
+      } else if (index > 0) {
+        const next = [...otpDigits];
+        next[index - 1] = '';
+        setOtpDigits(next);
+        otpInputRefs.current[index - 1]?.focus();
+      }
+    } else if (e.key === 'ArrowLeft' && index > 0) {
+      e.preventDefault();
+      otpInputRefs.current[index - 1]?.focus();
+    } else if (e.key === 'ArrowRight' && index < 5) {
+      e.preventDefault();
+      otpInputRefs.current[index + 1]?.focus();
+    }
+  };
+
+  const handleOtpPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+    if (!pasted) return;
+    setErrorMessage(null);
+    const next = ['', '', '', '', '', ''];
+    for (let i = 0; i < pasted.length; i++) {
+      next[i] = pasted[i];
+    }
+    setOtpDigits(next);
+    const focusIdx = Math.min(pasted.length, 5);
+    otpInputRefs.current[focusIdx]?.focus();
+  };
+
+  const combinedOtp = otpDigits.join('');
+
+  const handleVerifyOtpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!verificationStep) return;
+
+    if (!/^\d{6}$/.test(combinedOtp)) {
+      setErrorMessage('Please enter all 6 digits of your verification code.');
+      return;
+    }
+
+    setLoading(true);
+    setErrorMessage(null);
+    setStatusMessage(null);
+    try {
+      const res = await verifySignupOtp(verificationStep.email, combinedOtp);
+      if (res.success) {
+        onSuccess?.();
+      } else {
+        setErrorMessage(res.message || 'Invalid or expired verification code.');
+      }
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Unable to verify email code. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResendCode = async () => {
+    if (!verificationStep || resendCooldown > 0 || resendingCode) return;
+
+    setResendingCode(true);
+    setErrorMessage(null);
+    setStatusMessage(null);
+    try {
+      const res = await resendSignupOtp(verificationStep.email);
+      if (res.success) {
+        setOtpDigits(['', '', '', '', '', '']);
+        setResendCooldown(res.cooldownSeconds || 30);
+        setStatusMessage(res.message || `A new 6-digit code was sent to ${verificationStep.email}.`);
+        otpInputRefs.current[0]?.focus();
+      } else {
+        if (typeof res.retryAfterSeconds === 'number' && res.retryAfterSeconds > 0) {
+          setResendCooldown(res.retryAfterSeconds);
+        }
+        setErrorMessage(res.message || 'Unable to resend verification code.');
+      }
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Network error while resending code.');
+    } finally {
+      setResendingCode(false);
     }
   };
 
@@ -188,26 +338,37 @@ export const RoleLoginView: React.FC<RoleLoginViewProps> = ({
         {/* Clean Brand Header */}
         <div className="text-center space-y-2">
           <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center mx-auto shadow-xs">
-            <Layers className="w-5 h-5" />
+            {verificationStep ? <ShieldCheck className="w-5 h-5" /> : <Layers className="w-5 h-5" />}
           </div>
           <h2 className="text-xl font-extrabold text-slate-950 dark:text-white tracking-tight">
-            {showForgotPassword
+            {verificationStep
+              ? 'Enter Verification Code'
+              : showForgotPassword
               ? 'Reset Your Password'
               : mode === 'signin'
               ? 'Sign in to ClientOps'
               : 'Create Your Company Workspace'}
           </h2>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            {showForgotPassword
-              ? 'Enter your work email and we will send recovery instructions.'
-              : mode === 'signin'
-              ? 'Enter your workspace credentials to access your operations dashboard.'
-              : 'Set up your account and launch your workspace in seconds.'}
+          <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+            {verificationStep ? (
+              <>
+                Enter the 6-digit verification code sent to{' '}
+                <strong className="text-slate-900 dark:text-white">{verificationStep.email}</strong>.
+                <br />
+                Code expires in 10 minutes.
+              </>
+            ) : showForgotPassword ? (
+              'Enter your work email and we will send recovery instructions.'
+            ) : mode === 'signin' ? (
+              'Enter your workspace credentials to access your operations dashboard.'
+            ) : (
+              'Create your account and verify your work email to launch your workspace.'
+            )}
           </p>
         </div>
 
         {/* Two Simple Tabs: Sign In & Create Account */}
-        {!showForgotPassword && (
+        {!showForgotPassword && !verificationStep && (
           <div className="grid grid-cols-2 p-1 rounded-xl bg-[#F8FAFC] dark:bg-[#090D16] border border-slate-200 dark:border-slate-800 text-xs font-semibold">
             <button
               type="button"
@@ -242,8 +403,90 @@ export const RoleLoginView: React.FC<RoleLoginViewProps> = ({
           </div>
         )}
 
-        {/* FORGOT PASSWORD VIEW */}
-        {showForgotPassword ? (
+        {/* Inline Status Notice (e.g., OTP sent / resent) */}
+        {statusMessage && !errorMessage && (
+          <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-500/30 text-emerald-800 dark:text-emerald-300 text-xs flex items-start gap-2">
+            <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+            <span>{statusMessage}</span>
+          </div>
+        )}
+
+        {/* EMAIL OTP VERIFICATION VIEW */}
+        {verificationStep ? (
+          <form onSubmit={handleVerifyOtpSubmit} className="space-y-5">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2 text-center">
+                6-Digit Verification Code
+              </label>
+              <div className="grid grid-cols-6 gap-2 sm:gap-2.5" id="otp-input-group">
+                {otpDigits.map((digit, idx) => (
+                  <input
+                    key={idx}
+                    id={`input-otp-digit-${idx}`}
+                    ref={(el) => {
+                      otpInputRefs.current[idx] = el;
+                    }}
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete={idx === 0 ? 'one-time-code' : 'off'}
+                    maxLength={6}
+                    value={digit}
+                    onChange={(e) => handleOtpInputChange(idx, e.target.value)}
+                    onKeyDown={(e) => handleOtpKeyDown(idx, e)}
+                    onPaste={handleOtpPaste}
+                    aria-label={`Verification digit ${idx + 1}`}
+                    className="h-12 text-center text-lg font-mono font-bold tabular-nums rounded-xl border border-slate-200 dark:border-slate-700 bg-[#F8FAFC] dark:bg-[#090D16] text-slate-950 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500/35 focus:border-indigo-500 transition"
+                  />
+                ))}
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              id="btn-verify-email-submit"
+              disabled={loading || combinedOtp.length !== 6}
+              className="btn-tactile-primary w-full py-2.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+            >
+              <span>{loading ? 'Verifying Email...' : 'Verify Email'}</span>
+              {!loading && <ArrowRight className="w-3.5 h-3.5" />}
+            </button>
+
+            <div className="flex items-center justify-between gap-3 pt-1">
+              <button
+                type="button"
+                id="btn-otp-back"
+                onClick={() => {
+                  setVerificationStep(null);
+                  setOtpDigits(['', '', '', '', '', '']);
+                  setErrorMessage(null);
+                  setStatusMessage(null);
+                }}
+                className="text-xs font-medium text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white inline-flex items-center gap-1 cursor-pointer transition"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Edit details</span>
+              </button>
+
+              <button
+                type="button"
+                id="btn-resend-otp"
+                onClick={handleResendCode}
+                disabled={resendCooldown > 0 || resendingCode}
+                className="btn-tactile-secondary px-3 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed tabular-nums"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${resendingCode ? 'animate-spin' : ''}`} />
+                <span>
+                  {resendingCode
+                    ? 'Sending...'
+                    : resendCooldown > 0
+                    ? `Resend Code (${resendCooldown}s)`
+                    : 'Resend Code'}
+                </span>
+              </button>
+            </div>
+          </form>
+        ) : showForgotPassword ? (
+          /* FORGOT PASSWORD VIEW */
           resetSent ? (
             <div className="space-y-4 text-center py-2">
               <div className="w-10 h-10 rounded-full bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-500/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto">
@@ -305,102 +548,66 @@ export const RoleLoginView: React.FC<RoleLoginViewProps> = ({
           )
         ) : mode === 'signin' ? (
           /* SIGN IN TAB */
-          <div className="space-y-4">
-            <button
-              type="button"
-              onClick={handleGoogleSignIn}
-              disabled={googleLoading}
-              className="btn-tactile-secondary w-full py-2.5 px-4 rounded-lg text-xs font-semibold flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-50"
-            >
-              <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
-                <path
-                  fill="#4285F4"
-                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+          <form onSubmit={handleSignInSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                Work Email
+              </label>
+              <div className="relative">
+                <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  id="input-signin-email"
+                  type="email"
+                  required
+                  value={signInEmail}
+                  onChange={(e) => setSignInEmail(e.target.value)}
+                  placeholder="you@company.com"
+                  className="w-full pl-10 pr-3.5 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-[#F8FAFC] dark:bg-[#090D16] text-slate-950 dark:text-white text-xs font-medium focus:outline-hidden focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500"
                 />
-                <path
-                  fill="#34A853"
-                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                />
-                <path
-                  fill="#FBBC05"
-                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-                />
-                <path
-                  fill="#EA4335"
-                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-                />
-              </svg>
-              <span>{googleLoading ? 'Connecting Google...' : 'Continue with Google'}</span>
-            </button>
-
-            <div className="relative flex items-center justify-center">
-              <div className="border-t border-slate-200 dark:border-slate-800 w-full" />
-              <span className="bg-[#FFFFFF] dark:bg-[#111827] px-3 text-[11px] font-medium text-slate-400 uppercase tracking-wider shrink-0">
-                or
-              </span>
+              </div>
             </div>
 
-            <form onSubmit={handleSignInSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                  Work Email
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Password
                 </label>
-                <div className="relative">
-                  <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                  <input
-                    id="input-signin-email"
-                    type="email"
-                    required
-                    value={signInEmail}
-                    onChange={(e) => setSignInEmail(e.target.value)}
-                    placeholder="you@company.com"
-                    className="w-full pl-10 pr-3.5 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-[#F8FAFC] dark:bg-[#090D16] text-slate-950 dark:text-white text-xs font-medium focus:outline-hidden focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500"
-                  />
-                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setResetEmail(signInEmail);
+                    setShowForgotPassword(true);
+                    setErrorMessage(null);
+                  }}
+                  className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                >
+                  Forgot Password?
+                </button>
               </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                    Password
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setResetEmail(signInEmail);
-                      setShowForgotPassword(true);
-                      setErrorMessage(null);
-                    }}
-                    className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
-                  >
-                    Forgot Password?
-                  </button>
-                </div>
-                <div className="relative">
-                  <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                  <input
-                    id="input-signin-password"
-                    type="password"
-                    required
-                    value={signInPassword}
-                    onChange={(e) => setSignInPassword(e.target.value)}
-                    placeholder="Enter your password"
-                    className="w-full pl-10 pr-3.5 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-[#F8FAFC] dark:bg-[#090D16] text-slate-950 dark:text-white text-xs font-medium focus:outline-hidden focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500"
-                  />
-                </div>
+              <div className="relative">
+                <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  id="input-signin-password"
+                  type="password"
+                  required
+                  value={signInPassword}
+                  onChange={(e) => setSignInPassword(e.target.value)}
+                  placeholder="Enter your password"
+                  className="w-full pl-10 pr-3.5 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-[#F8FAFC] dark:bg-[#090D16] text-slate-950 dark:text-white text-xs font-medium focus:outline-hidden focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500"
+                />
               </div>
+            </div>
 
-              <button
-                type="submit"
-                id="btn-signin-submit"
-                disabled={loading}
-                className="btn-tactile-primary w-full py-2.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-              >
-                <span>{loading ? 'Signing In...' : 'Sign In'}</span>
-                {!loading && <ArrowRight className="w-3.5 h-3.5" />}
-              </button>
-            </form>
-          </div>
+            <button
+              type="submit"
+              id="btn-signin-submit"
+              disabled={loading}
+              className="btn-tactile-primary w-full py-2.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+            >
+              <span>{loading ? 'Signing In...' : 'Sign In'}</span>
+              {!loading && <ArrowRight className="w-3.5 h-3.5" />}
+            </button>
+          </form>
         ) : (
           /* CREATE ACCOUNT TAB */
           <form onSubmit={handleCreateAccountSubmit} className="space-y-3.5">
@@ -483,7 +690,7 @@ export const RoleLoginView: React.FC<RoleLoginViewProps> = ({
               disabled={loading}
               className="btn-tactile-primary w-full py-2.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 mt-2"
             >
-              <span>{loading ? 'Creating Workspace...' : 'Create Workspace'}</span>
+              <span>{loading ? 'Sending Verification Code...' : 'Create Workspace'}</span>
               {!loading && <ArrowRight className="w-3.5 h-3.5" />}
             </button>
           </form>

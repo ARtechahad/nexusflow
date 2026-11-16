@@ -454,7 +454,8 @@ export async function handleSendCampaignEmailJob(jobPayload: SendCampaignEmailPa
 
     if (!resendResult.success && resendResult.error) {
       const errorString = resendResult.error;
-      const isHardBounce = /invalid|rejected|blacklist|not exist|unknown user|bounce/i.test(errorString);
+      const isConfigOrAuthError = /api key|unauthorized|forbidden|not configured|rejected by resend/i.test(errorString);
+      const isHardBounce = !isConfigOrAuthError && /invalid.*(email|recipient|address)|rejected|blacklist|not exist|unknown user|bounce/i.test(errorString);
       if (isHardBounce && !isTest) {
         await pool.query(
           `INSERT INTO ox_suppressions (id, tenant_id, email, reason, source, created_at)
