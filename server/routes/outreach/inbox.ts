@@ -14,13 +14,12 @@ import { readDB, writeDB } from '../../db';
 
 export const outreachInboxRouter = express.Router();
 
-// Enforce company admin or department head isolation on all outreach inbox routes
-outreachInboxRouter.use(requireCompanyRole(['company_admin', 'department_head']));
+const requireOutreachInboxRole = requireCompanyRole(['company_admin', 'department_head']);
 
 // ----------------------------------------------------
 // 1. GET /inbox/threads — List threads with filters & search
 // ----------------------------------------------------
-outreachInboxRouter.get(['/inbox/threads', '/threads'], async (req: AuthenticatedRequest, res: Response) => {
+outreachInboxRouter.get(['/inbox/threads', '/threads'], requireOutreachInboxRole, async (req: AuthenticatedRequest, res: Response) => {
   const tenantId = req.companyId!;
   const pool = getOutreachPool();
   if (!pool) {
@@ -116,7 +115,7 @@ outreachInboxRouter.get(['/inbox/threads', '/threads'], async (req: Authenticate
 // ----------------------------------------------------
 // 2. GET /inbox/threads/:id — Thread detail with all messages
 // ----------------------------------------------------
-outreachInboxRouter.get(['/inbox/threads/:id', '/threads/:id'], async (req: AuthenticatedRequest, res: Response) => {
+outreachInboxRouter.get(['/inbox/threads/:id', '/threads/:id'], requireOutreachInboxRole, async (req: AuthenticatedRequest, res: Response) => {
   const threadId = req.params.id;
   const tenantId = req.companyId!;
   const pool = getOutreachPool();
@@ -175,7 +174,7 @@ outreachInboxRouter.get(['/inbox/threads/:id', '/threads/:id'], async (req: Auth
 // ----------------------------------------------------
 // 3. POST /inbox/threads/:id/reply — Send manual reply through Cap Guard
 // ----------------------------------------------------
-outreachInboxRouter.post(['/inbox/threads/:id/reply', '/threads/:id/reply'], async (req: AuthenticatedRequest, res: Response) => {
+outreachInboxRouter.post(['/inbox/threads/:id/reply', '/threads/:id/reply'], requireOutreachInboxRole, async (req: AuthenticatedRequest, res: Response) => {
   const threadId = req.params.id;
   const tenantId = req.companyId!;
   const pool = getOutreachPool();
@@ -324,7 +323,7 @@ outreachInboxRouter.post(['/inbox/threads/:id/reply', '/threads/:id/reply'], asy
 // ----------------------------------------------------
 // 4. PATCH /inbox/threads/:id — Update label, read/unread, archive
 // ----------------------------------------------------
-outreachInboxRouter.patch(['/inbox/threads/:id', '/threads/:id'], async (req: AuthenticatedRequest, res: Response) => {
+outreachInboxRouter.patch(['/inbox/threads/:id', '/threads/:id'], requireOutreachInboxRole, async (req: AuthenticatedRequest, res: Response) => {
   const threadId = req.params.id;
   const tenantId = req.companyId!;
   const pool = getOutreachPool();
@@ -393,7 +392,7 @@ outreachInboxRouter.patch(['/inbox/threads/:id', '/threads/:id'], async (req: Au
 // ----------------------------------------------------
 // 5. POST /inbox/threads/:id/suggest-reply — AI Suggest Reply (Gemini)
 // ----------------------------------------------------
-outreachInboxRouter.post(['/inbox/threads/:id/suggest-reply', '/threads/:id/suggest-reply'], async (req: AuthenticatedRequest, res: Response) => {
+outreachInboxRouter.post(['/inbox/threads/:id/suggest-reply', '/threads/:id/suggest-reply'], requireOutreachInboxRole, async (req: AuthenticatedRequest, res: Response) => {
   const threadId = req.params.id;
   const tenantId = req.companyId!;
   const pool = getOutreachPool();
@@ -486,7 +485,7 @@ Respond ONLY with valid JSON in this format:
 // ----------------------------------------------------
 // 6. POST /inbox/threads/:id/create-lead — Convert interested thread to CRM lead
 // ----------------------------------------------------
-outreachInboxRouter.post(['/inbox/threads/:id/create-lead', '/threads/:id/create-lead'], async (req: AuthenticatedRequest, res: Response) => {
+outreachInboxRouter.post(['/inbox/threads/:id/create-lead', '/threads/:id/create-lead'], requireOutreachInboxRole, async (req: AuthenticatedRequest, res: Response) => {
   const threadId = req.params.id;
   const tenantId = req.companyId!;
   const pool = getOutreachPool();

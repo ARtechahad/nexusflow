@@ -23,11 +23,10 @@ function getPoolOrThrow() {
   return pool;
 }
 
-// Protect all analytics routes with Company Admin / Department Head authorization
-analyticsRouter.use(requireCompanyRole(['company_admin', 'department_head']));
+const requireAnalyticsRole = requireCompanyRole(['company_admin', 'department_head']);
 
 // 1. GET /api/outreach/analytics/overview
-analyticsRouter.get('/analytics/overview', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+analyticsRouter.get('/analytics/overview', requireAnalyticsRole, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const tenantId = req.companyId!;
     const pool = getPoolOrThrow();
@@ -58,7 +57,7 @@ analyticsRouter.get('/analytics/overview', async (req: AuthenticatedRequest, res
 });
 
 // 2. GET /api/outreach/analytics/export-csv
-analyticsRouter.get('/analytics/export-csv', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+analyticsRouter.get('/analytics/export-csv', requireAnalyticsRole, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const tenantId = req.companyId!;
     const pool = getPoolOrThrow();
@@ -89,7 +88,7 @@ analyticsRouter.get('/analytics/export-csv', async (req: AuthenticatedRequest, r
 });
 
 // 3. POST /api/outreach/analytics/rollup - Trigger daily analytics rollup
-analyticsRouter.post('/analytics/rollup', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+analyticsRouter.post('/analytics/rollup', requireAnalyticsRole, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const tenantId = req.companyId!;
     const pool = getPoolOrThrow();
@@ -111,6 +110,7 @@ analyticsRouter.post('/analytics/rollup', async (req: AuthenticatedRequest, res:
 // 4. POST /api/outreach/campaigns/:id/steps/:stepId/auto-optimise
 analyticsRouter.post(
   '/campaigns/:id/steps/:stepId/auto-optimise',
+  requireAnalyticsRole,
   async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
       const tenantId = req.companyId!;
@@ -146,6 +146,7 @@ analyticsRouter.post(
 // 5. GET /api/outreach/campaigns/:id/steps/:stepId/optimisation-log
 analyticsRouter.get(
   '/campaigns/:id/steps/:stepId/optimisation-log',
+  requireAnalyticsRole,
   async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
       const tenantId = req.companyId!;
@@ -179,7 +180,7 @@ analyticsRouter.get(
 );
 
 // 6. POST /api/outreach/sequences/validate - Check for circular loops
-analyticsRouter.post('/sequences/validate', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+analyticsRouter.post('/sequences/validate', requireAnalyticsRole, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const { steps } = req.body || {};
     if (!Array.isArray(steps)) {

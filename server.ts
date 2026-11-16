@@ -239,19 +239,13 @@ app.get('/api/outreach/mcp', handleMcpGet);
 app.post('/api/outreach/mcp', handleMcpPost);
 app.post('/api/outreach/mcp/messages', handleMcpPost);
 
-// Aliases for direct endpoint paths
+// Aliases for direct /api endpoint paths (never mount API routers on non-API root paths)
 app.use('/api', outreachInboxRouter);
 app.use('/api', warmupRouter);
 app.use('/api', prospectRoutes);
 app.use('/api', outreachAnalyticsRouter);
 app.use('/api', billingRouter);
-app.use('/', warmupRouter);
-app.use('/', prospectRoutes);
-app.use('/', outreachAnalyticsRouter);
-app.use('/', billingRouter);
 app.use('/api/domains', trackingRouter);
-app.use('/domains', trackingRouter);
-app.use('/inbox', outreachInboxRouter);
 
 // Export shared database functions for any legacy external bindings
 export { readDB, writeDB, INITIAL_DB };

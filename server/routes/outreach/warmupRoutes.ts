@@ -14,7 +14,7 @@ import { logger } from '../../logger';
 
 export const warmupRouter = Router();
 
-warmupRouter.use(requireCompanyRole(['company_admin', 'department_head']));
+const requireWarmupRole = requireCompanyRole(['company_admin', 'department_head']);
 
 // Zod schema for updating mailbox warmup configuration
 const updateWarmupSchema = z.object({
@@ -33,7 +33,7 @@ function getTenantId(req: AuthenticatedRequest): string {
 // 1. GET /api/outreach/warmup/overview
 // Returns per-mailbox warmup status, today target/sent, health score, and reasons
 // ============================================================================
-warmupRouter.get('/warmup/overview', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+warmupRouter.get('/warmup/overview', requireWarmupRole, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const pool = getOutreachPool();
   if (!pool) {
     res.status(503).json({ error: 'Database service unavailable' });
@@ -183,7 +183,7 @@ warmupRouter.get('/warmup/overview', async (req: AuthenticatedRequest, res: Resp
 // 2. PATCH /api/outreach/warmup/:mailboxId
 // Configures warmup parameters (enable, pause, mode, speed, target <= 120)
 // ============================================================================
-warmupRouter.patch('/warmup/:mailboxId', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+warmupRouter.patch('/warmup/:mailboxId', requireWarmupRole, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const pool = getOutreachPool();
   if (!pool) {
     res.status(503).json({ error: 'Database service unavailable' });
@@ -291,7 +291,7 @@ warmupRouter.patch('/warmup/:mailboxId', async (req: AuthenticatedRequest, res: 
 // 3. POST /api/outreach/warmup/:mailboxId/consent
 // Accepts the peer-to-peer network participation agreement
 // ============================================================================
-warmupRouter.post('/warmup/:mailboxId/consent', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+warmupRouter.post('/warmup/:mailboxId/consent', requireWarmupRole, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const pool = getOutreachPool();
   if (!pool) {
     res.status(503).json({ error: 'Database service unavailable' });
@@ -333,7 +333,7 @@ warmupRouter.post('/warmup/:mailboxId/consent', async (req: AuthenticatedRequest
 // 4. GET /api/outreach/warmup/:mailboxId/stats
 // Returns 14-day rolling series of inbox, spam, sent, rescued, and health scores
 // ============================================================================
-warmupRouter.get('/warmup/:mailboxId/stats', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+warmupRouter.get('/warmup/:mailboxId/stats', requireWarmupRole, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const pool = getOutreachPool();
   if (!pool) {
     res.status(503).json({ error: 'Database service unavailable' });
@@ -429,7 +429,7 @@ warmupRouter.get('/warmup/:mailboxId/stats', async (req: AuthenticatedRequest, r
 // 5. POST /api/outreach/warmup/generate-content (ADMIN ONLY)
 // Asks Gemini (gemini-3.8-flash) to generate 100 varied items, validates & saves
 // ============================================================================
-warmupRouter.post('/warmup/generate-content', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+warmupRouter.post('/warmup/generate-content', requireWarmupRole, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const pool = getOutreachPool();
   if (!pool) {
     res.status(503).json({ error: 'Database service unavailable' });
@@ -453,7 +453,7 @@ warmupRouter.post('/warmup/generate-content', async (req: AuthenticatedRequest, 
 // ============================================================================
 // 6. POST /api/outreach/warmup/run-planner (TRIGGER MANUAL PLANNER RUN)
 // ============================================================================
-warmupRouter.post('/warmup/run-planner', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+warmupRouter.post('/warmup/run-planner', requireWarmupRole, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const pool = getOutreachPool();
   if (!pool) {
     res.status(503).json({ error: 'Database service unavailable' });
@@ -476,7 +476,7 @@ warmupRouter.post('/warmup/run-planner', async (req: AuthenticatedRequest, res: 
 // Simulation endpoint for acceptance checks: simulates high spam test to verify
 // 50% volume halving and >= 15% pool exclusion logic.
 // ============================================================================
-warmupRouter.post('/warmup/test-simulate-spam', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+warmupRouter.post('/warmup/test-simulate-spam', requireWarmupRole, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const pool = getOutreachPool();
   if (!pool) {
     res.status(503).json({ error: 'Database service unavailable' });
