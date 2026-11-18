@@ -156,6 +156,7 @@ export interface CompanyInvite {
 
 export interface PendingInvitePreview {
   id: string;
+  valid?: boolean;
   token: string;
   companyId: string;
   companyName: string;

@@ -798,17 +798,52 @@ companyRouter.post('/:companyId/invites', requireCompanyAccess, async (req: Auth
 
   if (!Array.isArray(db.companyInvites)) db.companyInvites = [];
 
-  // Revoke any previous pending invite to the same email+department to keep tokens clean
+  const inviterEmail = (req.user!.email || '').trim().toLowerCase();
+  const companyMemberUserIds = new Set(
+    (db.companyMemberships || [])
+      .filter((m: any) => m.companyId === companyId)
+      .map((m: any) => m.userId)
+  );
+  const existingCompanyMember = (db.users || []).find(
+    (u: any) =>
+      companyMemberUserIds.has(u.id) &&
+      (u.email || '').trim().toLowerCase() === targetEmail
+  );
+
+  if (targetEmail === inviterEmail || existingCompanyMember) {
+    return res.status(400).json({
+      success: false,
+      code: 'SELF_INVITE_NOT_ALLOWED',
+      message: 'You cannot invite yourself — you are already part of this workspace'
+    });
+  }
+
+  const nowMs = Date.now();
+  // Mark any past-due pending invites as expired before checking for active duplicates
   db.companyInvites.forEach((inv: any) => {
     if (
       inv.companyId === companyId &&
-      inv.departmentId === departmentId &&
-      (inv.email || '').toLowerCase() === targetEmail &&
-      inv.status === 'pending'
+      inv.status === 'pending' &&
+      inv.expiresAt &&
+      new Date(inv.expiresAt).getTime() <= nowMs
     ) {
-      inv.status = 'superseded';
+      inv.status = 'expired';
     }
   });
+
+  const duplicatePendingInvite = db.companyInvites.find(
+    (inv: any) =>
+      inv.companyId === companyId &&
+      (inv.email || '').trim().toLowerCase() === targetEmail &&
+      inv.status === 'pending'
+  );
+  if (duplicatePendingInvite) {
+    return res.status(400).json({
+      success: false,
+      code: 'DUPLICATE_PENDING_INVITE',
+      message: 'An active invite has already been sent to this email'
+    });
+  }
 
   const now = new Date();
   const expiresAt = new Date(now.getTime() + INVITE_TTL_MS).toISOString();
@@ -931,25 +966,40 @@ invitePublicRouter.get('/:token', (req: Request, res: Response) => {
   }
 
   const isExpired = inv.expiresAt && new Date(inv.expiresAt).getTime() < Date.now();
+  const effectiveStatus = isExpired && inv.status === 'pending' ? 'expired' : inv.status;
+  const valid = effectiveStatus === 'pending';
   const company = (db.tenants || []).find((t: any) => t.id === inv.companyId);
   const dept = (db.departments || []).find((d: any) => d.id === inv.departmentId);
   const userExists = Boolean(
     (db.users || []).some((u: any) => (u.email || '').trim().toLowerCase() === (inv.email || '').trim().toLowerCase())
   );
 
+  const companyName = company?.name || inv.companyName;
+  const departmentName = dept?.name || inv.departmentName;
+
   return res.json({
     success: true,
+    valid,
+    companyName,
+    departmentName,
+    role: inv.role,
+    email: inv.email,
+    userExists,
+    status: effectiveStatus,
+    designation: inv.designation,
+    invitedByName: inv.invitedByName,
     invite: {
       id: inv.id,
+      valid,
       companyId: inv.companyId,
-      companyName: company?.name || inv.companyName,
+      companyName,
       departmentId: inv.departmentId,
-      departmentName: dept?.name || inv.departmentName,
+      departmentName,
       email: inv.email,
       role: inv.role,
       designation: inv.designation,
       invitedByName: inv.invitedByName,
-      status: isExpired && inv.status === 'pending' ? 'expired' : inv.status,
+      status: effectiveStatus,
       expiresAt: inv.expiresAt,
       userExists
     }
@@ -991,9 +1041,6 @@ invitePublicRouter.post('/:token/complete-onboarding', (req: AuthenticatedReques
   if (!targetUser) {
     if (!cleanPassword || cleanPassword.length < 6) {
       return res.status(400).json({ success: false, message: 'Password (minimum 6 characters) is required.' });
-    }
-    if (!cleanPhone || cleanPhone.length < 3) {
-      return res.status(400).json({ success: false, message: 'Phone Number is required to complete your profile.' });
     }
 
     targetUser = {
@@ -1054,7 +1101,7 @@ invitePublicRouter.post('/:token/complete-onboarding', (req: AuthenticatedReques
     if (membership.role === 'employee' && inv.role === 'department_head') {
       membership.role = 'department_head';
     }
-    if (inv.designation) {
+    if (membership.role !== 'company_admin' && inv.designation) {
       membership.designation = inv.designation;
     }
   } else {
@@ -1192,7 +1239,7 @@ invitePublicRouter.post('/:token/accept', requireAuth, (req: AuthenticatedReques
     if (membership.role === 'employee' && inv.role === 'department_head') {
       membership.role = 'department_head';
     }
-    if (inv.designation) {
+    if (membership.role !== 'company_admin' && inv.designation) {
       membership.designation = inv.designation;
     }
   } else {
@@ -1345,13 +1392,13 @@ companyRouter.patch(
       });
     }
 
-    // Designation update (allowed for company_admin or department_head for non-admins)
+    // Designation update (allowed for company_admin or department_head for non-admins; preserve Company Owner primary designation)
     if (designation !== undefined) {
       if (!isAdmin && !isDeptHead) {
         return res.status(403).json({ success: false, error: 'Forbidden: Only Company Owners or Department Heads can edit designations.' });
       }
-      if (!isAdmin && targetMembership.role === 'company_admin') {
-        return res.status(403).json({ success: false, error: 'Forbidden: Cannot modify Company Owner designation.' });
+      if (targetMembership.role === 'company_admin') {
+        return res.status(403).json({ success: false, error: 'Forbidden: Company Owner primary role badge cannot be overwritten.' });
       }
       targetMembership.designation = String(designation).trim() || targetMembership.designation;
     }

@@ -295,7 +295,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
                       {currentUser ? currentUser.name : 'Workspace Member'}
                     </span>
                     <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400 block truncate">
-                      {currentTenant?.myDesignation || companyRoleLabels[effectiveCompanyRole]}
+                      {isOwner
+                        ? 'Company Owner'
+                        : currentTenant?.myDesignation || companyRoleLabels[effectiveCompanyRole]}
                     </span>
                   </div>
                 </div>

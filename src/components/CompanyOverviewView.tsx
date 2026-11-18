@@ -14,7 +14,8 @@ import {
   SlidersHorizontal,
   X,
   Copy,
-  Clock
+  Clock,
+  AlertCircle
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { buildAuthHeaders } from '../lib/api';
@@ -138,6 +139,7 @@ export const CompanyOverviewView: React.FC = () => {
   const [inviteDesignation, setInviteDesignation] = useState('');
   const [sendingInvite, setSendingInvite] = useState(false);
   const [generatedInviteUrl, setGeneratedInviteUrl] = useState<string | null>(null);
+  const [inviteError, setInviteError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!currentTenant?.id) return;
@@ -248,6 +250,7 @@ export const CompanyOverviewView: React.FC = () => {
     setInviteDesignation('');
     setInviteRole('employee');
     setGeneratedInviteUrl(null);
+    setInviteError(null);
     setIsInviteOpen(true);
   };
 
@@ -273,6 +276,8 @@ export const CompanyOverviewView: React.FC = () => {
     e.preventDefault();
     if (!currentTenant?.id || !inviteEmail.trim() || !inviteDeptId) return;
     setSendingInvite(true);
+    setInviteError(null);
+    setGeneratedInviteUrl(null);
     try {
       const res = await fetch(`/api/companies/${encodeURIComponent(currentTenant.id)}/invites`, {
         method: 'POST',
@@ -292,10 +297,11 @@ export const CompanyOverviewView: React.FC = () => {
         setInviteDesignation('');
         await loadOverview();
       } else {
-        showToast(data.error || data.message || 'Failed to send invitation.', 'error');
+        const msg = data.message || data.error || 'Failed to send invitation.';
+        setInviteError(msg);
       }
     } catch {
-      showToast('Network error sending invitation.', 'error');
+      setInviteError('Network error sending invitation.');
     } finally {
       setSendingInvite(false);
     }
@@ -1114,6 +1120,16 @@ export const CompanyOverviewView: React.FC = () => {
             </div>
 
             <form onSubmit={handleSendInvite} className="space-y-3.5">
+              {inviteError && (
+                <div
+                  role="alert"
+                  className="p-3 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-xs text-rose-700 dark:text-rose-300 flex items-start gap-2"
+                >
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{inviteError}</span>
+                </div>
+              )}
+
               <div>
                 <label className="block text-xs font-semibold text-[#0F172A] dark:text-slate-200 mb-1">
                   Work Email Address
@@ -1122,7 +1138,10 @@ export const CompanyOverviewView: React.FC = () => {
                   type="email"
                   required
                   value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
+                  onChange={(e) => {
+                    setInviteEmail(e.target.value);
+                    if (inviteError) setInviteError(null);
+                  }}
                   placeholder="colleague@company.com"
                   className="w-full px-3 py-2 rounded-lg border border-[#E2E8F0] dark:border-slate-700 bg-[#F8FAFC] dark:bg-[#090D16] text-xs text-[#0F172A] dark:text-white focus:outline-hidden focus:border-[#4F46E5]"
                 />

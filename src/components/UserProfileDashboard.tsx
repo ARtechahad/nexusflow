@@ -206,7 +206,9 @@ export const UserProfileDashboard: React.FC = () => {
                 {currentUser?.phone ? ` · ${currentUser.phone}` : ''}
               </p>
               <p className="text-xs text-slate-500 dark:text-slate-400 font-mono tabular-nums">
-                {currentTenant?.myDesignation || currentUser?.title || 'Personal Profile'}
+                {companyRole === 'company_admin'
+                  ? 'Company Owner'
+                  : currentTenant?.myDesignation || currentUser?.title || 'Personal Profile'}
                 {activeDept ? ` · ${activeDept.name}` : ''}
                 {isAdmin ? ` · ${tenants.length} Company ${tenants.length === 1 ? 'Membership' : 'Memberships'}` : ''}
               </p>

@@ -116,8 +116,8 @@ const AppContent: React.FC = () => {
     );
   }
 
-  // 0. Dedicated Invited User "Complete Your Profile" Onboarding Gateway (?invite=<token>)
-  if (inviteToken && !currentUser) {
+  // 0. Dedicated Smart Invite Acceptance & Onboarding Gateway (?invite=<token>)
+  if (inviteToken) {
     return (
       <>
         <InvitedOnboardingView />
@@ -165,16 +165,6 @@ const AppContent: React.FC = () => {
         <AuthModal />
         <ToastNotification toasts={toasts} onDismiss={dismissToast} />
       </div>
-    );
-  }
-
-  // 1b. Signed-in user visiting a pending invite link who hasn't joined yet or needs profile completion
-  if (currentUser && inviteToken && (tenants.length === 0 || !currentUser.phone)) {
-    return (
-      <>
-        <InvitedOnboardingView />
-        <ToastNotification toasts={toasts} onDismiss={dismissToast} />
-      </>
     );
   }
 

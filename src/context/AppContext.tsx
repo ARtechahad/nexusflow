@@ -145,7 +145,7 @@ interface AppContextType {
     payload: {
       fullName: string;
       password: string;
-      phone: string;
+      phone?: string;
       title?: string;
       bio?: string;
     }
@@ -1241,7 +1241,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     tokenValue: string
   ): Promise<{ success: boolean; message?: string; companyId?: string; departmentId?: string }> => {
     const token =
-      authToken || (typeof window !== 'undefined' ? localStorage.getItem('alm_nexus_token') : null);
+      (typeof window !== 'undefined' ? localStorage.getItem('alm_nexus_token') : null) || authToken;
     if (!token) {
       return { success: false, message: 'Please sign in first to accept this invitation.' };
     }
@@ -1263,6 +1263,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setPendingInvites(nextInvites);
         setInviteToken(null);
         setInvitePreview(null);
+        setInviteError(null);
         if (typeof window !== 'undefined' && window.location.search.includes('invite=')) {
           const url = new URL(window.location.href);
           url.searchParams.delete('invite');
@@ -1270,12 +1271,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }
 
         const joinedCompany = nextCompanies.find((c) => c.id === data.companyId) || nextCompanies[0] || null;
+        if (data.departmentId) {
+          setSelectedDepartmentId(data.departmentId);
+        }
         if (joinedCompany) {
           applyActiveCompany(joinedCompany, currentUser?.role);
-          if (data.departmentId) {
-            setSelectedDepartmentId(data.departmentId);
-          }
-          setActiveTabState(getDefaultTabForCompanyRole(joinedCompany.myRole));
+          await refreshDepartments(joinedCompany.id, token);
+          setActiveTabState(
+            joinedCompany.myRole === 'company_admin'
+              ? 'overview'
+              : getDefaultTabForCompanyRole(joinedCompany.myRole)
+          );
         }
         showToast(data.message || 'Invitation accepted!', 'success');
         return { success: true, companyId: data.companyId, departmentId: data.departmentId };
@@ -1291,7 +1297,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     payload: {
       fullName: string;
       password: string;
-      phone: string;
+      phone?: string;
       title?: string;
       bio?: string;
     }

@@ -1,13 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Building2,
   Plus,
   Trash2,
   UserPlus,
   Users,
   CheckCircle2,
-  Clock,
-  RefreshCw,
   Edit3,
   Check,
   X,
@@ -16,7 +13,6 @@ import {
   Mail,
   ListTodo,
   AlertCircle,
-  MessageSquare,
   SlidersHorizontal
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
@@ -24,8 +20,7 @@ import { buildAuthHeaders } from '../lib/api';
 import {
   DEPARTMENT_MODULE_DEFINITIONS,
   DEFAULT_DEPARTMENT_MODULES,
-  getDepartmentAllowedModules,
-  hasModuleAccess
+  getDepartmentAllowedModules
 } from '../utils/departmentAccess';
 import {
   Department,
@@ -87,8 +82,6 @@ export const DepartmentalTrackingView: React.FC<DepartmentalTrackingViewProps> =
   const activeDept: Department | null =
     departments.find((d) => d.id === selectedDepartmentId) || departments[0] || null;
 
-  const chatEnabled = hasModuleAccess(companyRole, 'chat', activeDept, departments);
-
   const [members, setMembers] = useState<DepartmentMember[]>([]);
   const [tasks, setTasks] = useState<DepartmentTask[]>([]);
   const [taskSummary, setTaskSummary] = useState({
@@ -129,6 +122,7 @@ export const DepartmentalTrackingView: React.FC<DepartmentalTrackingViewProps> =
   const [inviteDesignation, setInviteDesignation] = useState('');
   const [sendingInvite, setSendingInvite] = useState(false);
   const [lastCreatedInviteUrl, setLastCreatedInviteUrl] = useState<string | null>(null);
+  const [inviteError, setInviteError] = useState<string | null>(null);
 
   // Inline designation editor state
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
@@ -322,10 +316,11 @@ export const DepartmentalTrackingView: React.FC<DepartmentalTrackingViewProps> =
 
   const openInviteModal = () => {
     setInviteDeptId(activeDept?.id || departments[0]?.id || '');
-    setInviteRole(isAdmin ? 'employee' : 'employee');
+    setInviteRole('employee');
     setInviteEmail('');
     setInviteDesignation('');
     setLastCreatedInviteUrl(null);
+    setInviteError(null);
     setIsInviteModalOpen(true);
   };
 
@@ -333,6 +328,8 @@ export const DepartmentalTrackingView: React.FC<DepartmentalTrackingViewProps> =
     e.preventDefault();
     if (!currentTenant?.id || !inviteEmail.trim() || !inviteDeptId) return;
     setSendingInvite(true);
+    setInviteError(null);
+    setLastCreatedInviteUrl(null);
     try {
       const res = await fetch(`/api/companies/${encodeURIComponent(currentTenant.id)}/invites`, {
         method: 'POST',
@@ -352,10 +349,10 @@ export const DepartmentalTrackingView: React.FC<DepartmentalTrackingViewProps> =
         setInviteDesignation('');
         loadDepartmentWorkspace();
       } else {
-        showToast(data.error || data.message || 'Could not send invitation.', 'error');
+        setInviteError(data.message || data.error || 'Could not send invitation.');
       }
     } catch {
-      showToast('Network error sending invitation.', 'error');
+      setInviteError('Network error sending invitation.');
     } finally {
       setSendingInvite(false);
     }
@@ -533,90 +530,68 @@ export const DepartmentalTrackingView: React.FC<DepartmentalTrackingViewProps> =
 
   return (
     <div className="space-y-6 pb-12 max-w-7xl mx-auto">
-      {/* 1. Department Header & Control Bar */}
-      <div className="bg-[#FFFFFF] dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-xl p-6 shadow-2xs">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-              <Building2 className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-              <span className="font-semibold text-slate-900 dark:text-white">
-                {currentTenant?.name || 'Company'}
-              </span>
-              <span>&middot;</span>
-              <span>
-                {companyRole === 'company_admin'
-                  ? 'Company Owner View'
-                  : companyRole === 'department_head'
-                  ? 'Department Head View'
-                  : 'Department Member View'}
-              </span>
-            </div>
-            <h1 className="text-xl sm:text-2xl font-bold text-slate-950 dark:text-white tracking-tight">
-              {mode === 'departments_team'
-                ? 'Departments & Team'
-                : activeDept
-                ? `${activeDept.name} Operations`
-                : 'Department Operations'}
-            </h1>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              {mode === 'departments_team'
-                ? 'Create departments, configure per-department module permissions (including Email Outreach), and invite heads or team members.'
-                : activeDept?.description ||
-                  'Manage department members, live availability status, task completion metrics, and team workflow.'}
-            </p>
-            {activeDept && mode !== 'departments_team' && (
-              <p className="text-[11px] font-mono text-slate-500 dark:text-slate-400 pt-0.5">
-                Enabled Modules:{' '}
-                <span className="text-slate-700 dark:text-slate-300 font-semibold">
-                  {DEPARTMENT_MODULE_DEFINITIONS
-                    .filter((m) => getDepartmentAllowedModules(activeDept).includes(m.key))
-                    .map((m) => m.label)
-                    .join(' · ') || 'None'}
-                </span>
-              </p>
-            )}
+      {/* 1. Single Clean Page Header (Max 2 Actions, Zero Duplicate Controls or Repeating Metric Bars) */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="space-y-0.5 min-w-0">
+          <div className="flex items-center gap-2 text-xs text-[#64748B] dark:text-slate-400">
+            <span>{currentTenant?.name || 'Company'}</span>
+            <span aria-hidden="true">&middot;</span>
+            <span>
+              {companyRole === 'company_admin'
+                ? 'Company Owner'
+                : companyRole === 'department_head'
+                ? 'Department Head'
+                : 'Team Member'}
+            </span>
           </div>
+          <h1 className="text-2xl font-bold text-[#0F172A] dark:text-white tracking-tight truncate">
+            {mode === 'departments_team'
+              ? 'Departments & Team'
+              : activeDept
+              ? `${activeDept.name} Operations`
+              : 'Operations & Tasks'}
+          </h1>
+          <p className="text-xs text-[#64748B] dark:text-slate-400">
+            {mode === 'departments_team'
+              ? 'Create departments, manage module permissions per team, and invite members.'
+              : activeDept?.description ||
+                'Track assigned tasks, priorities, and team availability.'}
+          </p>
+        </div>
 
-          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-            {isAdmin && mode === 'departments_team' && (
-              <button
-                type="button"
-                onClick={() => {
-                  setNewDeptName('');
-                  setNewDeptDesc('');
-                  setNewDeptModules(DEFAULT_DEPARTMENT_MODULES);
-                  setIsCreateDeptOpen(true);
-                }}
-                className="btn-tactile-primary inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold cursor-pointer whitespace-nowrap"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>New Department</span>
-              </button>
-            )}
-
-            {chatEnabled && mode !== 'departments_team' && (
-              <button
-                type="button"
-                onClick={() => setActiveTab('chat')}
-                className="btn-tactile-secondary inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer whitespace-nowrap"
-              >
-                <MessageSquare className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-                <span>Department Chat</span>
-              </button>
-            )}
-
-            {canManageTeam && activeDept && (
-              <button
-                type="button"
-                onClick={openInviteModal}
-                className="btn-tactile-secondary inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer whitespace-nowrap"
-              >
-                <UserPlus className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-                <span>{isAdmin ? 'Invite Member' : 'Invite Employee'}</span>
-              </button>
-            )}
-
-            {canManageTeam && activeDept && mode !== 'departments_team' && (
+        <div className="flex items-center gap-2.5 shrink-0">
+          {mode === 'departments_team' ? (
+            <>
+              {canManageTeam && activeDept && (
+                <button
+                  type="button"
+                  onClick={openInviteModal}
+                  className="btn-tactile-secondary inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold cursor-pointer whitespace-nowrap"
+                >
+                  <UserPlus className="w-3.5 h-3.5 text-[#4F46E5] dark:text-indigo-400" />
+                  <span>Invite Member</span>
+                </button>
+              )}
+              {isAdmin && (
+                <button
+                  type="button"
+                  id="btn-new-department"
+                  onClick={() => {
+                    setNewDeptName('');
+                    setNewDeptDesc('');
+                    setNewDeptModules(DEFAULT_DEPARTMENT_MODULES);
+                    setIsCreateDeptOpen(true);
+                  }}
+                  className="btn-tactile-primary inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold cursor-pointer whitespace-nowrap"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>New Department</span>
+                </button>
+              )}
+            </>
+          ) : (
+            canManageTeam &&
+            activeDept && (
               <button
                 type="button"
                 onClick={() => {
@@ -628,130 +603,38 @@ export const DepartmentalTrackingView: React.FC<DepartmentalTrackingViewProps> =
                 <Plus className="w-3.5 h-3.5" />
                 <span>Assign Task</span>
               </button>
-            )}
-          </div>
-        </div>
-
-        {/* Department Switcher Tabs + Admin Create/Edit/Delete Department Controls */}
-        <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2 overflow-x-auto pb-1">
-            {departments.map((dept) => {
-              const isSelected = activeDept?.id === dept.id;
-              return (
-                <button
-                  key={dept.id}
-                  type="button"
-                  onClick={() => setSelectedDepartmentId(dept.id)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer whitespace-nowrap border ${
-                    isSelected
-                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
-                      : 'bg-[#F8FAFC] dark:bg-[#090D16] text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
-                  }`}
-                >
-                  {dept.name}
-                  <span className="ml-1.5 font-mono text-[11px] opacity-80 tabular-nums">
-                    {dept.memberCount ?? 0}
-                  </span>
-                </button>
-              );
-            })}
-
-            {isAdmin && (
-              <button
-                type="button"
-                id="btn-new-department"
-                onClick={() => {
-                  setNewDeptName('');
-                  setNewDeptDesc('');
-                  setNewDeptModules(DEFAULT_DEPARTMENT_MODULES);
-                  setIsCreateDeptOpen(true);
-                }}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-dashed border-slate-300 dark:border-slate-700 text-indigo-600 dark:text-indigo-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition cursor-pointer whitespace-nowrap inline-flex items-center gap-1"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>New Department</span>
-              </button>
-            )}
-          </div>
-
-          <div className="flex items-center gap-2">
-            {isAdmin && activeDept && (
-              <button
-                type="button"
-                id="btn-edit-department-permissions"
-                onClick={() => openEditPermissionsModal(activeDept)}
-                className="btn-tactile-secondary inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer whitespace-nowrap"
-              >
-                <SlidersHorizontal className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-                <span>Edit Permissions</span>
-              </button>
-            )}
-
-            <button
-              type="button"
-              onClick={loadDepartmentWorkspace}
-              disabled={loading}
-              className="btn-tactile-secondary inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer whitespace-nowrap"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-              <span>Refresh</span>
-            </button>
-
-            {isAdmin && activeDept && departments.length > 1 && (
-              <button
-                type="button"
-                onClick={() => setConfirmDeleteDeptId(activeDept.id)}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 border border-slate-200 dark:border-slate-800 transition cursor-pointer whitespace-nowrap"
-                title="Delete this department"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>Delete Dept</span>
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* KPI Summary Strip */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-5 pt-4 border-t border-slate-100 dark:border-slate-800">
-          <div>
-            <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block">
-              Team Members
-            </span>
-            <span className="text-xl font-bold text-slate-950 dark:text-white font-mono tabular-nums mt-0.5 block">
-              {members.length}{' '}
-              <span className="text-xs font-normal text-emerald-600 dark:text-emerald-400">
-                ({onlineMembersCount} active)
-              </span>
-            </span>
-          </div>
-          <div>
-            <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block">
-              {canManageTeam ? 'Department Tasks' : 'My Assigned Tasks'}
-            </span>
-            <span className="text-xl font-bold text-slate-950 dark:text-white font-mono tabular-nums mt-0.5 block">
-              {taskSummary.total}
-            </span>
-          </div>
-          <div>
-            <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block">
-              In Progress / Review
-            </span>
-            <span className="text-xl font-bold text-indigo-600 dark:text-indigo-400 font-mono tabular-nums mt-0.5 block">
-              {taskSummary.inProgress + taskSummary.review}
-            </span>
-          </div>
-          <div>
-            <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block">
-              Completion Rate
-            </span>
-            <span className="text-xl font-bold text-emerald-600 dark:text-emerald-400 font-mono tabular-nums mt-0.5 block">
-              {taskSummary.completionPercent}%
-            </span>
-          </div>
+            )
+          )}
         </div>
       </div>
 
-      {/* Company Departments Directory Grid (Departments & Team mode) */}
+      {/* Clean Department Filter Strip on Operations & Tasks (when > 1 department) */}
+      {mode !== 'departments_team' && departments.length > 1 && (
+        <div className="flex items-center gap-2 overflow-x-auto pb-1">
+          {departments.map((dept) => {
+            const isSelected = activeDept?.id === dept.id;
+            return (
+              <button
+                key={dept.id}
+                type="button"
+                onClick={() => setSelectedDepartmentId(dept.id)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer whitespace-nowrap border ${
+                  isSelected
+                    ? 'bg-[#4F46E5] text-white border-[#4F46E5]'
+                    : 'bg-[#FFFFFF] dark:bg-[#111827] text-[#64748B] dark:text-slate-300 border-[#E2E8F0] dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
+                }`}
+              >
+                {dept.name}
+                <span className="ml-1.5 font-mono text-[11px] opacity-80 tabular-nums">
+                  {dept.memberCount ?? 0}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Company Departments Grid (Departments & Team mode) — All dept-level actions live cleanly inside cards */}
       {isAdmin && mode === 'departments_team' && departments.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {departments.map((dept) => {
@@ -765,52 +648,54 @@ export const DepartmentalTrackingView: React.FC<DepartmentalTrackingViewProps> =
               <div
                 key={dept.id}
                 onClick={() => setSelectedDepartmentId(dept.id)}
-                className={`rounded-xl border p-5 bg-[#FFFFFF] dark:bg-[#111827] transition cursor-pointer flex flex-col justify-between gap-4 ${
+                className={`card-elevated rounded-xl p-5 transition cursor-pointer flex flex-col justify-between gap-4 ${
                   isSelected
-                    ? 'border-indigo-500 ring-1 ring-indigo-500/20'
-                    : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
+                    ? 'border-[#4F46E5] ring-1 ring-[#4F46E5]/20'
+                    : 'hover:border-slate-300 dark:hover:border-slate-700'
                 }`}
               >
                 <div className="space-y-2">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <h3 className="text-sm font-bold text-slate-950 dark:text-white truncate">
+                      <h3 className="text-sm font-bold text-[#0F172A] dark:text-white truncate">
                         {dept.name}
                       </h3>
-                      <p className="text-[11px] font-mono tabular-nums text-slate-500 dark:text-slate-400">
-                        {dept.memberCount ?? 0} Members &middot; {dept.tasksCompleted ?? 0}/{dept.tasksTotal ?? 0} Tasks
+                      <p className="text-[11px] font-mono tabular-nums text-[#64748B] dark:text-slate-400">
+                        {dept.memberCount ?? 0} {(dept.memberCount ?? 0) === 1 ? 'member' : 'members'} &middot;{' '}
+                        {dept.tasksCompleted ?? 0}/{dept.tasksTotal ?? 0} tasks
                       </p>
                     </div>
                     {isSelected && (
-                      <span className="text-[10px] font-mono font-semibold text-indigo-600 dark:text-indigo-400 shrink-0">
-                        SELECTED
+                      <span className="text-[11px] font-medium text-[#4F46E5] dark:text-indigo-400 shrink-0">
+                        Viewing roster
                       </span>
                     )}
                   </div>
 
                   {dept.description && (
-                    <p className="text-xs text-slate-600 dark:text-slate-400 line-clamp-2">
+                    <p className="text-xs text-[#64748B] dark:text-slate-400 line-clamp-2">
                       {dept.description}
                     </p>
                   )}
 
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed pt-1">
-                    <span className="font-semibold text-slate-700 dark:text-slate-300">Modules: </span>
+                  <p className="text-[11px] text-[#64748B] dark:text-slate-400 leading-relaxed pt-1">
+                    <span className="font-semibold text-[#0F172A] dark:text-slate-300">Modules: </span>
                     {moduleNames.length > 0 ? moduleNames.join(' · ') : 'None enabled'}
                   </p>
                 </div>
 
                 <div
-                  className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2"
+                  className="pt-3 border-t border-[#E2E8F0] dark:border-slate-800 flex items-center justify-between gap-2"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <div className="flex items-center gap-1.5">
                     <button
                       type="button"
+                      id={isSelected ? 'btn-edit-department-permissions' : undefined}
                       onClick={() => openEditPermissionsModal(dept)}
                       className="btn-tactile-secondary px-2.5 py-1.5 rounded-lg text-[11px] font-semibold inline-flex items-center gap-1 cursor-pointer"
                     >
-                      <SlidersHorizontal className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
+                      <SlidersHorizontal className="w-3 h-3 text-[#4F46E5] dark:text-indigo-400" />
                       <span>Permissions</span>
                     </button>
 
@@ -873,12 +758,12 @@ export const DepartmentalTrackingView: React.FC<DepartmentalTrackingViewProps> =
             <div className="bg-[#FFFFFF] dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-2xs space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-sm font-bold text-slate-950 dark:text-white flex items-center gap-2">
-                    <Users className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                    <span>Department Roster &amp; Live Status</span>
+                  <h2 className="text-sm font-bold text-[#0F172A] dark:text-white flex items-center gap-2">
+                    <Users className="w-4 h-4 text-[#4F46E5] dark:text-indigo-400" />
+                    <span>{activeDept.name} Roster</span>
                   </h2>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                    Individual task completion and real-time availability
+                  <p className="text-[11px] text-[#64748B] dark:text-slate-400">
+                    {members.length} {(members.length === 1 ? 'member' : 'members')} &middot; {onlineMembersCount} online
                   </p>
                 </div>
                 {currentUser && (
@@ -886,7 +771,7 @@ export const DepartmentalTrackingView: React.FC<DepartmentalTrackingViewProps> =
                     value={currentUser.availabilityStatus || 'Available'}
                     onChange={(e) => updateMyAvailability(e.target.value as AvailabilityStatus)}
                     aria-label="Update my status"
-                    className="px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-[#F8FAFC] dark:bg-[#090D16] text-xs font-semibold text-slate-800 dark:text-slate-200 cursor-pointer"
+                    className="px-2.5 py-1 rounded-lg border border-[#E2E8F0] dark:border-slate-700 bg-[#F8FAFC] dark:bg-[#090D16] text-xs font-semibold text-[#0F172A] dark:text-slate-200 cursor-pointer"
                   >
                     <option value="Available">Available</option>
                     <option value="In a Meeting">In a Meeting</option>
@@ -904,12 +789,14 @@ export const DepartmentalTrackingView: React.FC<DepartmentalTrackingViewProps> =
                 <div className="divide-y divide-slate-100 dark:divide-slate-800">
                   {members.map((member) => {
                     const isSelf = member.userId === currentUser?.id;
+                    const isMemberOwner = member.role === 'company_admin';
                     const canEditMember =
                       canManageTeam &&
-                      (isAdmin || (isDeptHead && member.role !== 'company_admin'));
+                      !isMemberOwner &&
+                      (isAdmin || isDeptHead);
                     const canRemoveMember =
                       canManageTeam &&
-                      member.role !== 'company_admin' &&
+                      !isMemberOwner &&
                       !isSelf &&
                       (isAdmin || member.role === 'employee');
 
@@ -928,19 +815,19 @@ export const DepartmentalTrackingView: React.FC<DepartmentalTrackingViewProps> =
                             </div>
                             <div className="min-w-0">
                               <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className="text-xs font-bold text-slate-950 dark:text-white truncate">
+                                <span className="text-xs font-bold text-[#0F172A] dark:text-white truncate">
                                   {member.name}
                                   {isSelf ? ' (You)' : ''}
                                 </span>
-                                <span className="text-[10px] font-mono font-semibold text-indigo-600 dark:text-indigo-400">
-                                  {member.role === 'company_admin'
-                                    ? 'Owner'
+                                <span className="text-[11px] font-semibold text-[#4F46E5] dark:text-indigo-400">
+                                  {isMemberOwner
+                                    ? 'Company Owner'
                                     : member.role === 'department_head'
-                                    ? 'Head'
-                                    : 'Member'}
+                                    ? 'Department Head'
+                                    : 'Employee'}
                                 </span>
                               </div>
-                              <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                              <div className="text-[11px] text-[#64748B] dark:text-slate-400 truncate">
                                 {member.email}
                               </div>
                             </div>
@@ -985,8 +872,10 @@ export const DepartmentalTrackingView: React.FC<DepartmentalTrackingViewProps> =
                               </button>
                             </div>
                           ) : (
-                            <div className="flex items-center gap-2 text-[11px] text-slate-600 dark:text-slate-300">
-                              <span>Role: {member.designation}</span>
+                            <div className="flex items-center gap-2 text-[11px] text-[#64748B] dark:text-slate-300">
+                              <span>
+                                {isMemberOwner ? 'Role: Company Owner' : `Title: ${member.designation}`}
+                              </span>
                               {canEditMember && (
                                 <button
                                   type="button"
@@ -1473,6 +1362,16 @@ export const DepartmentalTrackingView: React.FC<DepartmentalTrackingViewProps> =
             </div>
 
             <form onSubmit={handleSendInvite} className="space-y-3">
+              {inviteError && (
+                <div
+                  role="alert"
+                  className="p-3 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-xs text-rose-700 dark:text-rose-300 flex items-start gap-2"
+                >
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{inviteError}</span>
+                </div>
+              )}
+
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                   Recipient Email Address
@@ -1481,7 +1380,10 @@ export const DepartmentalTrackingView: React.FC<DepartmentalTrackingViewProps> =
                   type="email"
                   required
                   value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
+                  onChange={(e) => {
+                    setInviteEmail(e.target.value);
+                    if (inviteError) setInviteError(null);
+                  }}
                   placeholder="teammate@company.com"
                   className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-[#F8FAFC] dark:bg-[#090D16] text-xs text-slate-950 dark:text-white"
                 />

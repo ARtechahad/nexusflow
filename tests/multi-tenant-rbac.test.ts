@@ -834,4 +834,126 @@ describe('Enterprise Multi-Tenant, Multi-Company & Department RBAC Integration',
     assert.equal((await api(`/api/companies/${companyId}/departments/${finDeptId}/tasks`, { token: finHeadToken, companyId })).status, 200);
     assert.equal((await api('/api/commissions', { token: finEmpToken, companyId })).status, 200);
   });
+
+  test('Self-invite prevention, duplicate pending invite rejection, smart invite metadata & 1-step new-user onboarding', async () => {
+    const suffix = `${Date.now().toString(36)}4`;
+    const ownerEmail = `owner4.${suffix}@example.com`;
+    const newTeammateEmail = `newbie4.${suffix}@example.com`;
+    const existingUserEmail = `existing4.${suffix}@example.com`;
+
+    // 1. Register Company Owner & existing external user
+    const regOwner = await api('/api/auth/register', {
+      method: 'POST',
+      body: { fullName: 'Bilal Owner', email: ownerEmail, password: 'Password123!' }
+    });
+    assert.equal(regOwner.status, 200);
+    const ownerToken = regOwner.data.token;
+    const ownerUserId = regOwner.data.user.id;
+
+    const regExisting = await api('/api/auth/register', {
+      method: 'POST',
+      body: { fullName: 'Existing Peer', email: existingUserEmail, password: 'Password123!' }
+    });
+    assert.equal(regExisting.status, 200);
+
+    const compRes = await api('/api/companies', {
+      method: 'POST',
+      token: ownerToken,
+      body: {
+        name: `Guardrails Inc ${suffix}`,
+        industry: 'Software',
+        size: '1-10',
+        initialDepartments: ['Operations']
+      }
+    });
+    assert.equal(compRes.status, 201);
+    const companyId = compRes.data.company.id;
+    const deptId = compRes.data.departments[0].id;
+
+    // 2. Self-invite MUST fail with 400 SELF_INVITE_NOT_ALLOWED
+    const selfInvite = await api(`/api/companies/${companyId}/invites`, {
+      method: 'POST',
+      token: ownerToken,
+      companyId,
+      body: { email: ownerEmail, departmentId: deptId, role: 'department_head', designation: 'head Operations' }
+    });
+    assert.equal(selfInvite.status, 400);
+    assert.equal(selfInvite.data.code, 'SELF_INVITE_NOT_ALLOWED');
+
+    // Company Owner primary role badge cannot be overwritten via member PATCH
+    const patchOwnerDesig = await api(
+      `/api/companies/${companyId}/departments/${deptId}/members/${ownerUserId}`,
+      {
+        method: 'PATCH',
+        token: ownerToken,
+        companyId,
+        body: { designation: 'head Operations' }
+      }
+    );
+    assert.equal(patchOwnerDesig.status, 403);
+
+    // 3. First invite to newTeammateEmail succeeds
+    const inv1 = await api(`/api/companies/${companyId}/invites`, {
+      method: 'POST',
+      token: ownerToken,
+      companyId,
+      body: { email: newTeammateEmail, departmentId: deptId, role: 'employee' }
+    });
+    assert.equal(inv1.status, 201);
+    const newInviteToken = inv1.data.invite.token;
+
+    // Duplicate pending invite MUST fail with 400 DUPLICATE_PENDING_INVITE
+    const dupInv = await api(`/api/companies/${companyId}/invites`, {
+      method: 'POST',
+      token: ownerToken,
+      companyId,
+      body: { email: newTeammateEmail.toUpperCase(), departmentId: deptId, role: 'department_head' }
+    });
+    assert.equal(dupInv.status, 400);
+    assert.equal(dupInv.data.code, 'DUPLICATE_PENDING_INVITE');
+
+    // 4. GET /api/invites/:token returns clean top-level metadata with userExists: false (Case C)
+    const metaNew = await api(`/api/invites/${newInviteToken}`);
+    assert.equal(metaNew.status, 200);
+    assert.equal(metaNew.data.valid, true);
+    assert.equal(metaNew.data.companyName, `Guardrails Inc ${suffix}`);
+    assert.equal(metaNew.data.departmentName, 'Operations');
+    assert.equal(metaNew.data.role, 'employee');
+    assert.equal(metaNew.data.email, newTeammateEmail);
+    assert.equal(metaNew.data.userExists, false);
+
+    // Case C: Brand new teammate sets up account with ONLY fullName + password (no phone required)
+    const oneStepJoin = await api(`/api/invites/${newInviteToken}/complete-onboarding`, {
+      method: 'POST',
+      body: { fullName: 'Sana Newcomer', password: 'Password123!' }
+    });
+    assert.equal(oneStepJoin.status, 200);
+    assert.ok(oneStepJoin.data.token);
+    assert.equal(oneStepJoin.data.departmentId, deptId);
+    assert.equal(oneStepJoin.data.companies[0].myRole, 'employee');
+
+    // Re-inviting an already-active member MUST fail with 400 SELF_INVITE_NOT_ALLOWED
+    const inviteActiveMember = await api(`/api/companies/${companyId}/invites`, {
+      method: 'POST',
+      token: ownerToken,
+      companyId,
+      body: { email: newTeammateEmail, departmentId: deptId, role: 'employee' }
+    });
+    assert.equal(inviteActiveMember.status, 400);
+    assert.equal(inviteActiveMember.data.code, 'SELF_INVITE_NOT_ALLOWED');
+
+    // 5. Invite existing registered user -> GET /api/invites/:token reports userExists: true (Case B)
+    const invExisting = await api(`/api/companies/${companyId}/invites`, {
+      method: 'POST',
+      token: ownerToken,
+      companyId,
+      body: { email: existingUserEmail, departmentId: deptId, role: 'department_head' }
+    });
+    assert.equal(invExisting.status, 201);
+    const metaExisting = await api(`/api/invites/${invExisting.data.invite.token}`);
+    assert.equal(metaExisting.status, 200);
+    assert.equal(metaExisting.data.valid, true);
+    assert.equal(metaExisting.data.userExists, true);
+    assert.equal(metaExisting.data.role, 'department_head');
+  });
 });
