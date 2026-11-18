@@ -5,6 +5,7 @@ import {
   CompanyRole,
   AvailabilityStatus,
   Department,
+  DepartmentModuleKey,
   PendingInvitePreview,
   SupportedLanguage,
   SupportedCurrency,
@@ -38,9 +39,11 @@ import { offlineSyncService } from '../services/offlineSyncService';
 import { googleSheetsService } from '../services/googleSheetsService';
 import { localDatabase } from '../services/localDatabaseFallback';
 import { clearOutreachTelemetryCache } from '../hooks/useOutreachTelemetry';
-import { canAccessEmailModules } from '../utils/departmentAccess';
+import { DEFAULT_DEPARTMENT_MODULES, hasModuleAccess } from '../utils/departmentAccess';
 
 export type AppNavTab =
+  | 'overview'
+  | 'departments'
   | 'sop'
   | 'pipeline'
   | 'outreach'
@@ -105,9 +108,27 @@ interface AppContextType {
     description?: string;
     initialDepartments?: string[];
   }) => Promise<{ success: boolean; message?: string; company?: Tenant }>;
+  updateCompanySettings: (
+    companyId: string,
+    settings: {
+      enableEmailOutreach?: boolean;
+      enableClientInbox?: boolean;
+      enableFinancials?: boolean;
+      enableDealsPipeline?: boolean;
+    }
+  ) => Promise<{ success: boolean; message?: string; company?: Tenant }>;
   createDepartment: (
     name: string,
-    description?: string
+    description?: string,
+    allowedModules?: DepartmentModuleKey[]
+  ) => Promise<{ success: boolean; message?: string; department?: Department }>;
+  updateDepartmentPermissions: (
+    deptId: string,
+    payload: {
+      name?: string;
+      description?: string;
+      allowed_modules: DepartmentModuleKey[];
+    }
   ) => Promise<{ success: boolean; message?: string; department?: Department }>;
   deleteDepartment: (deptId: string) => Promise<{ success: boolean; message?: string }>;
   pendingInvites: PendingInvitePreview[];
@@ -263,7 +284,7 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 function getDefaultTabForCompanyRole(companyRole: CompanyRole | null | undefined): AppNavTab {
-  if (companyRole === 'company_admin') return 'pipeline';
+  if (companyRole === 'company_admin') return 'overview';
   if (companyRole === 'department_head' || companyRole === 'employee') return 'departmental';
   return 'departmental';
 }
@@ -383,6 +404,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (
         tabParam &&
         [
+          'overview',
+          'departments',
           'sop',
           'pipeline',
           'outreach',
@@ -404,7 +427,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         return tabParam as AppNavTab;
       }
     }
-    return 'pipeline';
+    return 'overview';
   });
 
   // Multi-Company & Department State
@@ -526,32 +549,57 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }, 4200);
   }, []);
 
+  const getTabRequiredModule = (tab: AppNavTab): DepartmentModuleKey | null => {
+    if (tab === 'departmental') return 'operations';
+    if (tab === 'chat') return 'chat';
+    if (tab === 'outreach' || tab === 'outreach_suite') return 'email_hub';
+    if (tab === 'inbox') return 'client_inbox';
+    if (tab === 'commissions' || tab === 'analytics') return 'financials';
+    return null;
+  };
+
+  const getFallbackTabForMember = (
+    cRole: CompanyRole | null,
+    activeDeptObj: Department | null,
+    deptList: Department[]
+  ): AppNavTab => {
+    if (cRole === 'company_admin') return 'overview';
+    const candidates: Array<{ tab: AppNavTab; mod: DepartmentModuleKey }> = [
+      { tab: 'departmental', mod: 'operations' },
+      { tab: 'chat', mod: 'chat' },
+      { tab: 'outreach_suite', mod: 'email_hub' },
+      { tab: 'inbox', mod: 'client_inbox' },
+      { tab: 'commissions', mod: 'financials' }
+    ];
+    const match = candidates.find((c) => hasModuleAccess(cRole, c.mod, activeDeptObj, deptList));
+    return match ? match.tab : 'profile';
+  };
+
   const setActiveTab = (tab: AppNavTab) => {
     if (role === 'client_guest' && tab !== 'portal') {
       showToast('Restricted: Guest client access is isolated to the Client Portal.', 'warning');
       return;
     }
-    if (companyRole === 'employee' && !['departmental', 'chat', 'profile'].includes(tab)) {
-      showToast('Restricted: Employees only have access to their Department workspace, Chat, and Profile.', 'warning');
-      return;
-    }
     if (
-      companyRole === 'department_head' &&
-      ['pipeline', 'sop', 'vault', 'gmail', 'portal', 'commissions', 'analytics', 'integrations'].includes(tab)
+      companyRole !== 'company_admin' &&
+      ['overview', 'departments', 'pipeline', 'sop', 'vault', 'gmail', 'portal', 'integrations'].includes(tab)
     ) {
-      showToast('Restricted: Company-wide operations, financials, and settings require Company Owner access.', 'warning');
+      showToast('Restricted: Company-wide settings and admin tools require Company Owner access.', 'warning');
       return;
     }
-    if (['outreach', 'outreach_suite', 'inbox'].includes(tab)) {
-      const activeDept =
-        departments.find((d) => d.id === selectedDepartmentId) ||
-        (departments.length === 1 ? departments[0] : null);
-      if (!canAccessEmailModules(companyRole, activeDept, departments)) {
-        showToast(
-          'Restricted: Email Hub & Client Inbox are only enabled for Sales, Marketing, and Client Success departments.',
-          'warning'
-        );
-        return;
+    if (companyRole !== 'company_admin') {
+      const requiredMod = getTabRequiredModule(tab);
+      if (requiredMod) {
+        const activeDept =
+          departments.find((d) => d.id === selectedDepartmentId) ||
+          (departments.length === 1 ? departments[0] : null);
+        if (!hasModuleAccess(companyRole, requiredMod, activeDept, departments)) {
+          showToast(
+            'Restricted: This module is not enabled for your department. Contact your Company Owner to enable it.',
+            'warning'
+          );
+          return;
+        }
       }
     }
     setActiveTabState(tab);
@@ -559,24 +607,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Auto-redirect if active role/department no longer authorizes current tab
   useEffect(() => {
-    if (!currentUser || !currentTenant || role === 'client_guest') return;
-    if (companyRole === 'employee' && !['departmental', 'chat', 'profile'].includes(activeTab)) {
-      setActiveTabState('departmental');
+    if (!currentUser || !currentTenant || role === 'client_guest' || !companyRole) return;
+    if (companyRole === 'company_admin') return;
+
+    const activeDept =
+      departments.find((d) => d.id === selectedDepartmentId) ||
+      (departments.length === 1 ? departments[0] : null);
+
+    if (['overview', 'departments', 'pipeline', 'sop', 'vault', 'gmail', 'portal', 'integrations'].includes(activeTab)) {
+      setActiveTabState(getFallbackTabForMember(companyRole, activeDept, departments));
       return;
     }
-    if (companyRole === 'department_head') {
-      if (['pipeline', 'sop', 'vault', 'gmail', 'portal', 'commissions', 'analytics', 'integrations'].includes(activeTab)) {
-        setActiveTabState('departmental');
-        return;
-      }
-      if (departments.length > 0 && ['outreach', 'outreach_suite', 'inbox'].includes(activeTab)) {
-        const activeDept =
-          departments.find((d) => d.id === selectedDepartmentId) ||
-          (departments.length === 1 ? departments[0] : null);
-        if (!canAccessEmailModules(companyRole, activeDept, departments)) {
-          setActiveTabState('departmental');
-        }
-      }
+
+    const requiredMod = getTabRequiredModule(activeTab);
+    if (requiredMod && departments.length > 0 && !hasModuleAccess(companyRole, requiredMod, activeDept, departments)) {
+      setActiveTabState(getFallbackTabForMember(companyRole, activeDept, departments));
     }
   }, [currentUser, currentTenant, companyRole, role, departments, selectedDepartmentId, activeTab]);
 
@@ -1030,7 +1075,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setTenants(nextCompanies);
         setSelectedDepartmentId(data.departments?.[0]?.id || null);
         applyActiveCompany(data.company, currentUser?.role);
-        setActiveTabState('pipeline');
+        setActiveTabState('overview');
         if (typeof window !== 'undefined') {
           localStorage.setItem('clientops_setup_checklist', 'true');
         }
@@ -1044,9 +1089,52 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
+  const updateCompanySettings = async (
+    companyId: string,
+    settings: {
+      enableEmailOutreach?: boolean;
+      enableClientInbox?: boolean;
+      enableFinancials?: boolean;
+      enableDealsPipeline?: boolean;
+    }
+  ): Promise<{ success: boolean; message?: string; company?: Tenant }> => {
+    const token =
+      authToken || (typeof window !== 'undefined' ? localStorage.getItem('alm_nexus_token') : null);
+    if (!token || !companyId) {
+      return { success: false, message: 'No active company session.' };
+    }
+    try {
+      const res = await fetch(`/api/companies/${encodeURIComponent(companyId)}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          'X-Tenant-Id': companyId
+        },
+        body: JSON.stringify({ settings })
+      });
+      const data = await res.json();
+      if (res.ok && data.success && data.company) {
+        if (Array.isArray(data.companies)) {
+          setTenants(data.companies);
+        } else {
+          setTenants((prev) => prev.map((t) => (t.id === companyId ? { ...t, ...data.company } : t)));
+        }
+        if (currentTenant?.id === companyId) {
+          applyActiveCompany(data.company, currentUser?.role);
+        }
+        return { success: true, company: data.company };
+      }
+      return { success: false, message: data.message || 'Could not update company settings.' };
+    } catch (err: any) {
+      return { success: false, message: err?.message || 'Network error updating settings.' };
+    }
+  };
+
   const createDepartment = async (
     name: string,
-    description?: string
+    description?: string,
+    allowedModules?: DepartmentModuleKey[]
   ): Promise<{ success: boolean; message?: string; department?: Department }> => {
     if (!authToken || !currentTenant?.id) {
       return { success: false, message: 'Select a company first.' };
@@ -1059,7 +1147,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           Authorization: `Bearer ${authToken}`,
           'X-Tenant-Id': currentTenant.id
         },
-        body: JSON.stringify({ name, description })
+        body: JSON.stringify({
+          name,
+          description,
+          allowed_modules: allowedModules ?? DEFAULT_DEPARTMENT_MODULES
+        })
       });
       const data = await res.json();
       if (res.ok && data.success && data.department) {
@@ -1071,6 +1163,44 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return { success: false, message: data.message || data.error || 'Could not create department.' };
     } catch (err: any) {
       return { success: false, message: err?.message || 'Network error while creating department.' };
+    }
+  };
+
+  const updateDepartmentPermissions = async (
+    deptId: string,
+    payload: {
+      name?: string;
+      description?: string;
+      allowed_modules: DepartmentModuleKey[];
+    }
+  ): Promise<{ success: boolean; message?: string; department?: Department }> => {
+    if (!authToken || !currentTenant?.id) {
+      return { success: false, message: 'Select a company first.' };
+    }
+    try {
+      const res = await fetch(
+        `/api/companies/${encodeURIComponent(currentTenant.id)}/departments/${encodeURIComponent(deptId)}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${authToken}`,
+            'X-Tenant-Id': currentTenant.id
+          },
+          body: JSON.stringify(payload)
+        }
+      );
+      const data = await res.json();
+      if (res.ok && data.success && data.department) {
+        setDepartments((prev) =>
+          prev.map((d) => (d.id === deptId ? { ...d, ...data.department } : d))
+        );
+        showToast(data.message || 'Department permissions updated.', 'success');
+        return { success: true, department: data.department };
+      }
+      return { success: false, message: data.message || data.error || 'Could not update department permissions.' };
+    } catch (err: any) {
+      return { success: false, message: err?.message || 'Network error while updating department.' };
     }
   };
 
@@ -1479,13 +1609,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             if (foundCompany) {
               if (data.user.role === 'client_guest') {
                 setActiveTabState('portal');
-              } else if (foundCompany.myRole === 'employee') {
+              } else if (foundCompany.myRole === 'company_admin') {
+                setActiveTabState((prev) => (prev === 'pipeline' || !prev ? 'overview' : prev));
+              } else {
                 setActiveTabState((prev) =>
-                  ['departmental', 'chat', 'profile'].includes(prev) ? prev : 'departmental'
-                );
-              } else if (foundCompany.myRole === 'department_head') {
-                setActiveTabState((prev) =>
-                  ['pipeline', 'sop', 'vault', 'gmail', 'portal', 'commissions', 'analytics', 'integrations'].includes(prev)
+                  ['overview', 'departments', 'pipeline', 'sop', 'vault', 'gmail', 'portal', 'integrations'].includes(prev)
                     ? 'departmental'
                     : prev
                 );
@@ -1664,7 +1792,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setDepartmentalProgress([]);
     setDatabaseStatus(null);
     setRoleState('team_member');
-    setActiveTabState('pipeline');
+    setActiveTabState('overview');
 
     if (typeof window !== 'undefined') {
       localStorage.removeItem('alm_nexus_token');
@@ -1911,7 +2039,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         switchTenant,
         refreshTenants,
         createCompany,
+        updateCompanySettings,
         createDepartment,
+        updateDepartmentPermissions,
         deleteDepartment,
         pendingInvites,
         inviteToken,

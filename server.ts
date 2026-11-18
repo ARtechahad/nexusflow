@@ -63,6 +63,7 @@ import { offlineSyncRouter } from './server/routes/offlineSyncRoutes';
 import { emailRouter } from './server/services/emailEngine';
 import { gtmToolsRouter } from './server/routes/gtmToolsRoutes';
 import { checkoutRouter } from './server/routes/checkoutRoutes';
+import { emailOutreachRouter } from './server/routes/emailOutreachRoutes';
 
 // Outreach Suite Module
 import { outreachSystemRouter } from './server/routes/outreach/systemRoutes';
@@ -171,6 +172,7 @@ app.use('/api/offline', offlineSyncRouter);
 // Transactional Email & Notifications Engine
 app.use('/api/email', emailRouter);
 app.use('/api/emails', emailRouter);
+app.use('/api/email-outreach', emailOutreachRouter);
 
 // Universal Webhooks Subscription Engine
 app.use('/api/webhooks/v2', universalWebhookRouter);

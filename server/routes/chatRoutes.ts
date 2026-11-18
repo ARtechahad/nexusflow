@@ -3,8 +3,10 @@ import crypto from 'crypto';
 import { readDB, writeDB } from '../db';
 import {
   AuthenticatedRequest,
+  getDepartmentAllowedModules,
   hasDepartmentAccess,
-  requireCompanyAccess
+  hasDepartmentModuleAccess,
+  requireDepartmentModule
 } from '../middlewares/auth';
 import { realtimeEngine } from '../services/realtimeEngine';
 
@@ -29,6 +31,14 @@ function handleGetMessages(req: AuthenticatedRequest, res: Response) {
         error: 'Forbidden: Private department chat is strictly restricted to department members.'
       });
     }
+    if (!hasDepartmentModuleAccess(req, 'chat', departmentId)) {
+      return res.status(403).json({
+        success: false,
+        code: 'MODULE_ACCESS_DENIED',
+        module: 'chat',
+        error: 'Forbidden: The "Department Chat" module is not enabled for your department.'
+      });
+    }
   }
 
   let messages = (db.chatMessages || []).filter(
@@ -38,7 +48,10 @@ function handleGetMessages(req: AuthenticatedRequest, res: Response) {
   if (departmentId) {
     messages = messages.filter((m: any) => m.departmentId === departmentId);
   } else if (req.companyRole !== 'company_admin') {
-    const allowedDepts = req.membership?.departmentIds || [];
+    const allowedDepts = (req.membership?.departmentIds || []).filter((id: string) => {
+      const dept = (db.departments || []).find((d: any) => d.id === id && d.companyId === companyId);
+      return dept && getDepartmentAllowedModules(dept).includes('chat');
+    });
     messages = messages.filter((m: any) => m.departmentId && allowedDepts.includes(m.departmentId));
   }
 
@@ -71,6 +84,14 @@ const handleCreateChatMessage = (req: AuthenticatedRequest, res: Response) => {
       return res.status(403).json({
         success: false,
         error: 'Forbidden: You cannot post messages to another department chat.'
+      });
+    }
+    if (!hasDepartmentModuleAccess(req, 'chat', targetDeptId)) {
+      return res.status(403).json({
+        success: false,
+        code: 'MODULE_ACCESS_DENIED',
+        module: 'chat',
+        error: 'Forbidden: The "Department Chat" module is not enabled for your department.'
       });
     }
   } else if (req.companyRole !== 'company_admin') {
@@ -112,9 +133,9 @@ const handleCreateChatMessage = (req: AuthenticatedRequest, res: Response) => {
   return res.status(201).json({ success: true, message: newMessage });
 };
 
-router.get('/', requireCompanyAccess, handleGetMessages);
-router.get('/messages', requireCompanyAccess, handleGetMessages);
-router.post('/', requireCompanyAccess, handleCreateChatMessage);
-router.post('/messages', requireCompanyAccess, handleCreateChatMessage);
+router.get('/', requireDepartmentModule('chat'), handleGetMessages);
+router.get('/messages', requireDepartmentModule('chat'), handleGetMessages);
+router.post('/', requireDepartmentModule('chat'), handleCreateChatMessage);
+router.post('/messages', requireDepartmentModule('chat'), handleCreateChatMessage);
 
 export default router;

@@ -429,7 +429,7 @@ class GoogleSheetsService {
           ? rawStatus as ProjectStatus
           : advPaidAmount > 0 ? 'advance_paid' : 'lead';
 
-        const assignedSalesperson = row[11]?.trim() || 'Tariq Mehmood';
+        const assignedSalesperson = row[11]?.trim() || 'Operations Lead';
         const commissionRate = Number(row[12]) || 30;
         const stagingUrl = row[14]?.trim() || '';
         const purpose = row[15]?.trim() || `${websiteType.toUpperCase()} website project for ${clientCompany || clientName}`;

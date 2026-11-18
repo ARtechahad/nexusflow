@@ -69,6 +69,12 @@ export interface TenantRoleConfig {
 
 export type CompanyRole = 'company_admin' | 'department_head' | 'employee';
 export type AvailabilityStatus = 'Available' | 'In a Meeting' | 'Busy' | 'Offline';
+export type DepartmentModuleKey =
+  | 'operations'
+  | 'chat'
+  | 'email_hub'
+  | 'client_inbox'
+  | 'financials';
 
 export interface Department {
   id: string;
@@ -76,12 +82,14 @@ export interface Department {
   name: string;
   slug?: string;
   description?: string;
+  allowed_modules?: DepartmentModuleKey[];
   headUserId?: string;
   headNames?: string[];
   memberCount?: number;
   tasksTotal?: number;
   tasksCompleted?: number;
   tasksInProgress?: number;
+  tasksOpen?: number;
   taskStats?: {
     total: number;
     completed: number;
@@ -181,6 +189,64 @@ export interface DepartmentTask {
   updatedAt: string;
 }
 
+export interface TenantSettings {
+  enableEmailOutreach?: boolean;
+  enableClientInbox?: boolean;
+  enableFinancials?: boolean;
+  enableDealsPipeline?: boolean;
+}
+
+export interface ConnectedEmailAccount {
+  id: string;
+  companyId: string;
+  provider: 'smtp' | 'resend';
+  senderName: string;
+  email: string;
+  smtpHost?: string;
+  smtpPort?: number;
+  secure?: boolean;
+  username?: string;
+  status: 'verified';
+  verifiedAt: string;
+  createdByUserId: string;
+  createdByName: string;
+  createdAt: string;
+}
+
+export interface EmailDeliveryLog {
+  id: string;
+  campaignId: string;
+  companyId: string;
+  accountId: string;
+  provider: 'smtp' | 'resend';
+  recipientEmail: string;
+  recipientName: string;
+  subject: string;
+  status: 'sent' | 'failed';
+  messageId?: string;
+  errorReason?: string;
+  sentAt: string;
+}
+
+export interface EmailCampaignRecord {
+  id: string;
+  companyId: string;
+  accountId: string;
+  accountEmail: string;
+  senderName: string;
+  provider: 'smtp' | 'resend';
+  subject: string;
+  body: string;
+  totalRecipients: number;
+  sentCount: number;
+  failedCount: number;
+  invalidSkipped?: string[];
+  createdByUserId: string;
+  createdByName: string;
+  createdAt: string;
+  logs?: EmailDeliveryLog[];
+}
+
 export interface Tenant {
   id: string;
   name: string;
@@ -193,6 +259,7 @@ export interface Tenant {
   myDepartmentIds?: string[];
   myDesignation?: string;
   departmentsCount?: number;
+  settings?: TenantSettings;
   branding: TenantBranding;
   businessInfo: TenantBusinessInfo;
   integrations: TenantIntegrations;

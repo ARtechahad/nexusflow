@@ -128,6 +128,12 @@ router.post('/onboard', requireAuth, (req: AuthenticatedRequest, res: Response) 
         permissions: ['all']
       }
     },
+    settings: {
+      enableEmailOutreach: false,
+      enableClientInbox: false,
+      enableFinancials: false,
+      enableDealsPipeline: false
+    },
     activeMembersCount: 1,
     createdAt: now,
     updatedAt: now
@@ -354,7 +360,7 @@ router.get('/:id/wiki', requireAuth, (req: AuthenticatedRequest, res: Response) 
     return res.status(403).json({ success: false, error: 'Forbidden: Cross-tenant access denied.' });
   }
 
-  const docs = db.wikiDocs || DEFAULT_WIKI_DOCS;
+  const docs = Array.isArray(db.wikiDocs) ? db.wikiDocs : [];
   const filtered = docs.filter((d: any) => d.companyId === id || d.tenantId === id);
 
   return res.json({

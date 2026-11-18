@@ -316,8 +316,22 @@ CREATE TABLE IF NOT EXISTS email_verification_otps (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- 7c. Company Departments & Dynamic Module Permissions
+CREATE TABLE IF NOT EXISTS departments (
+  id VARCHAR(64) PRIMARY KEY,
+  company_id VARCHAR(64) NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  slug VARCHAR(128),
+  description TEXT,
+  allowed_modules JSONB NOT NULL DEFAULT '["operations", "chat"]'::jsonb,
+  created_by VARCHAR(64),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- 8. Ensure All Columns Exist on Pre-existing Tables Before Indexing
 ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS clerk_user_id VARCHAR(128);
+ALTER TABLE IF EXISTS departments ADD COLUMN IF NOT EXISTS allowed_modules JSONB NOT NULL DEFAULT '["operations", "chat"]'::jsonb;
 ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS tenant_id VARCHAR(64) DEFAULT 'tenant-alm-nexus';
 ALTER TABLE IF EXISTS projects ADD COLUMN IF NOT EXISTS tenant_id VARCHAR(64) DEFAULT 'tenant-alm-nexus';
 ALTER TABLE IF EXISTS invoices ADD COLUMN IF NOT EXISTS tenant_id VARCHAR(64) DEFAULT 'tenant-alm-nexus';

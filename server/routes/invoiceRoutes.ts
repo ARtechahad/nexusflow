@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import { readDB, writeDB } from '../db';
-import { AuthenticatedRequest, requireCompanyRole } from '../middlewares/auth';
+import { AuthenticatedRequest, requireCompanyRole, requireDepartmentModule } from '../middlewares/auth';
 
 export const invoiceRouter = Router();
 export const commissionRouter = Router();
@@ -18,7 +18,7 @@ function isSameCompany(record: any, companyId: string): boolean {
 // 1. Automated PDF Invoices & Receipts (/api/invoices) - Company Admin Only
 // ==========================================
 
-invoiceRouter.get('/', requireCompanyRole(['company_admin']), (req: AuthenticatedRequest, res: Response) => {
+invoiceRouter.get('/', requireDepartmentModule('financials'), (req: AuthenticatedRequest, res: Response) => {
   const db = readDB();
   const companyId = req.companyId!;
   const { projectId, status } = req.query;
@@ -30,7 +30,7 @@ invoiceRouter.get('/', requireCompanyRole(['company_admin']), (req: Authenticate
   return res.json({ success: true, count: list.length, invoices: list });
 });
 
-invoiceRouter.get('/:id', requireCompanyRole(['company_admin']), (req: AuthenticatedRequest, res: Response) => {
+invoiceRouter.get('/:id', requireDepartmentModule('financials'), (req: AuthenticatedRequest, res: Response) => {
   const db = readDB();
   const inv = (db.invoices || []).find(
     (i: any) => i.id === req.params.id && isSameCompany(i, req.companyId!)
@@ -41,7 +41,7 @@ invoiceRouter.get('/:id', requireCompanyRole(['company_admin']), (req: Authentic
   return res.json({ success: true, invoice: inv });
 });
 
-invoiceRouter.get('/project/:projectId', requireCompanyRole(['company_admin']), (req: AuthenticatedRequest, res: Response) => {
+invoiceRouter.get('/project/:projectId', requireDepartmentModule('financials'), (req: AuthenticatedRequest, res: Response) => {
   const db = readDB();
   const companyId = req.companyId!;
   const { projectId } = req.params;
@@ -257,10 +257,10 @@ invoiceRouter.post('/dispatch-email/:id', requireCompanyRole(['company_admin']),
 });
 
 // ==========================================
-// 2. Commission Ledger (/api/commissions) - Strictly Company Owner/Admin ONLY
+// 2. Commission Ledger (/api/commissions) - Financials Module / Company Owner
 // ==========================================
 
-commissionRouter.get('/', requireCompanyRole(['company_admin']), (req: AuthenticatedRequest, res: Response) => {
+commissionRouter.get('/', requireDepartmentModule('financials'), (req: AuthenticatedRequest, res: Response) => {
   const db = readDB();
   const companyId = req.companyId!;
   const projects = (Array.isArray(db.projects) ? [...db.projects] : []).filter((p: any) =>
@@ -325,7 +325,7 @@ commissionRouter.post('/:projectId/payout', requireCompanyRole(['company_admin']
   return res.json({ success: true, project });
 });
 
-commissionRouter.get('/payouts', requireCompanyRole(['company_admin']), (req: AuthenticatedRequest, res: Response) => {
+commissionRouter.get('/payouts', requireDepartmentModule('financials'), (req: AuthenticatedRequest, res: Response) => {
   const db = readDB();
   const companyId = req.companyId!;
   const { status, salesperson } = req.query;
@@ -444,23 +444,23 @@ commissionRouter.post('/tier-boost', requireCompanyRole(['company_admin']), (req
   return res.json({ success: true, message: `${salesperson} boosted to ${profile.effectiveRate}%.`, profile });
 });
 
-commissionRouter.get('/audit-logs', requireCompanyRole(['company_admin']), (req: AuthenticatedRequest, res: Response) => {
+commissionRouter.get('/audit-logs', requireDepartmentModule('financials'), (req: AuthenticatedRequest, res: Response) => {
   const db = readDB();
   const logs = (db.commissionAuditLogs || []).filter((l: any) => isSameCompany(l, req.companyId!));
   return res.json({ success: true, logs });
 });
 
-commissionRouter.get('/sales-profiles', requireCompanyRole(['company_admin']), (req: AuthenticatedRequest, res: Response) => {
+commissionRouter.get('/sales-profiles', requireDepartmentModule('financials'), (req: AuthenticatedRequest, res: Response) => {
   const db = readDB();
   const profiles = (db.salespersonProfiles || []).filter((p: any) => isSameCompany(p, req.companyId!));
   return res.json({ success: true, profiles });
 });
 
 // ==========================================
-// 3. Executive Revenue Analytics (/api/analytics) - Strictly Company Owner/Admin ONLY
+// 3. Executive Revenue Analytics (/api/analytics) - Financials Module / Company Owner
 // ==========================================
 
-analyticsRouter.get('/advanced', requireCompanyRole(['company_admin']), (req: AuthenticatedRequest, res: Response) => {
+analyticsRouter.get('/advanced', requireDepartmentModule('financials'), (req: AuthenticatedRequest, res: Response) => {
   const db = readDB();
   const companyId = req.companyId!;
   const dateRange = typeof req.query.dateRange === 'string' ? req.query.dateRange : 'all';

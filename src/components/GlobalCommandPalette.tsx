@@ -4,7 +4,7 @@ import {
   Command,
   Kanban,
   Layers,
-  Mail,
+  LayoutDashboard,
   Inbox,
   Send,
   BookOpen,
@@ -15,18 +15,21 @@ import {
   ExternalLink,
   Globe,
   Plus,
-  Play,
   RefreshCw,
   Building2,
   User,
   Sun,
   Moon,
   X,
-  Activity,
   CheckCircle2
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { offlineSyncService } from '../services/offlineSyncService';
+import {
+  getDepartmentAllowedModules,
+  hasModuleAccess,
+  isEmailOutreachVisible
+} from '../utils/departmentAccess';
 
 interface GlobalCommandPaletteProps {
   isOpen: boolean;
@@ -35,12 +38,15 @@ interface GlobalCommandPaletteProps {
 
 export const GlobalCommandPalette: React.FC<GlobalCommandPaletteProps> = ({ isOpen, onClose }) => {
   const {
+    currentUser,
+    currentTenant,
+    companyRole,
+    departments,
+    selectedDepartmentId,
     setActiveTab,
     projects,
     setIsNewLeadModalOpen,
-    setIsTestModalOpen,
     setIsOnboardingModalOpen,
-    setIsPlatformHealthModalOpen,
     setIsWikiModalOpen,
     toggleTheme,
     isDark,
@@ -77,40 +83,56 @@ export const GlobalCommandPalette: React.FC<GlobalCommandPaletteProps> = ({ isOp
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
-  if (!isOpen) return null;
+  if (!isOpen || !currentUser) return null;
 
-  const navigationItems = [
-    { id: 'nav-pipeline', label: 'Executive Dashboard & Deals Pipeline', group: 'Navigation', icon: Kanban, action: () => setActiveTab('pipeline'), shortcut: 'G P' },
-    { id: 'nav-outreach', label: 'Email Hub (Mailboxes & Campaigns)', group: 'Navigation', icon: Send, action: () => setActiveTab('outreach_suite'), shortcut: 'G E' },
-    { id: 'nav-inbox', label: 'Unified Client Inbox', group: 'Navigation', icon: Inbox, action: () => setActiveTab('inbox'), shortcut: 'G I' },
-    { id: 'nav-gmail', label: 'Google Mailbox Sync', group: 'Navigation', icon: Mail, action: () => setActiveTab('gmail'), shortcut: 'G M' },
-    { id: 'nav-dept', label: 'Team Tasks & Department Velocity', group: 'Navigation', icon: Layers, action: () => setActiveTab('departmental'), shortcut: 'G D' },
-    { id: 'nav-sop', label: 'SOP Stage Gates', group: 'Navigation', icon: BookOpen, action: () => setActiveTab('sop'), shortcut: 'G S' },
-    { id: 'nav-commissions', label: 'Commission & Payout Ledger', group: 'Navigation', icon: Coins, action: () => setActiveTab('commissions'), shortcut: 'G C' },
-    { id: 'nav-analytics', label: 'Revenue Analytics', group: 'Navigation', icon: BarChart3, action: () => setActiveTab('analytics'), shortcut: 'G A' },
-    { id: 'nav-chat', label: 'Team Channels', group: 'Navigation', icon: MessageSquare, action: () => setActiveTab('chat'), shortcut: 'G T' },
-    { id: 'nav-vault', label: 'Secure File Vault', group: 'Navigation', icon: FolderLock, action: () => setActiveTab('vault'), shortcut: 'G V' },
-    { id: 'nav-portal', label: 'Client Portal', group: 'Navigation', icon: ExternalLink, action: () => setActiveTab('portal'), shortcut: 'G K' },
-    { id: 'nav-integrations', label: 'Webhooks & API', group: 'Navigation', icon: Globe, action: () => setActiveTab('integrations'), shortcut: 'G X' },
-    { id: 'nav-profile', label: 'Workspace & Team', group: 'Navigation', icon: User, action: () => setActiveTab('profile'), shortcut: 'G U' }
+  const isAdmin = companyRole === 'company_admin';
+  const isDeptHead = companyRole === 'department_head';
+  const activeDept =
+    departments.find((d) => d.id === selectedDepartmentId) ||
+    (departments.length === 1 ? departments[0] : null);
+
+  const settings = currentTenant?.settings;
+  const canOps = isAdmin || hasModuleAccess(companyRole, 'operations', activeDept, departments);
+  const canChat = isAdmin || hasModuleAccess(companyRole, 'chat', activeDept, departments);
+  const canEmailHub = isEmailOutreachVisible(companyRole, settings, activeDept, departments);
+  const canClientInbox = isAdmin
+    ? Boolean(settings?.enableClientInbox) ||
+      departments.some((d) => getDepartmentAllowedModules(d).includes('client_inbox'))
+    : hasModuleAccess(companyRole, 'client_inbox', activeDept, departments);
+  const canFinancials = isAdmin
+    ? Boolean(settings?.enableFinancials) ||
+      departments.some((d) => getDepartmentAllowedModules(d).includes('financials'))
+    : hasModuleAccess(companyRole, 'financials', activeDept, departments);
+  const canDeals = isAdmin && Boolean(settings?.enableDealsPipeline);
+
+  const allNavigationItems = [
+    { id: 'nav-overview', label: 'Company Overview', group: 'Workspace', icon: LayoutDashboard, action: () => setActiveTab('overview'), shortcut: 'G O', allowed: isAdmin },
+    { id: 'nav-departments', label: 'Departments & Team', group: 'Workspace', icon: Building2, action: () => setActiveTab('departments'), shortcut: 'G T', allowed: isAdmin },
+    { id: 'nav-dept', label: isAdmin ? 'Operations & Tasks' : 'Department Operations', group: 'Workspace', icon: Layers, action: () => setActiveTab('departmental'), shortcut: 'G D', allowed: canOps },
+    { id: 'nav-chat', label: 'Department Chat', group: 'Workspace', icon: MessageSquare, action: () => setActiveTab('chat'), shortcut: 'G M', allowed: canChat },
+    { id: 'nav-outreach', label: 'Email Outreach (SMTP / Resend Campaigns)', group: 'Optional Modules', icon: Send, action: () => setActiveTab('outreach_suite'), shortcut: 'G E', allowed: canEmailHub },
+    { id: 'nav-inbox', label: 'Unified Client Inbox', group: 'Optional Modules', icon: Inbox, action: () => setActiveTab('inbox'), shortcut: 'G I', allowed: canClientInbox },
+    { id: 'nav-commissions', label: 'Commission & Payout Ledger', group: 'Optional Modules', icon: Coins, action: () => setActiveTab('commissions'), shortcut: 'G C', allowed: canFinancials },
+    { id: 'nav-analytics', label: 'Revenue Analytics', group: 'Optional Modules', icon: BarChart3, action: () => setActiveTab('analytics'), shortcut: 'G A', allowed: canFinancials },
+    { id: 'nav-pipeline', label: 'Executive Dashboard & Deals Pipeline', group: 'Optional Modules', icon: Kanban, action: () => setActiveTab('pipeline'), shortcut: 'G P', allowed: canDeals },
+    { id: 'nav-sop', label: 'SOP Stage Gates', group: 'Optional Modules', icon: BookOpen, action: () => setActiveTab('sop'), shortcut: 'G S', allowed: canDeals },
+    { id: 'nav-vault', label: 'Secure File Vault', group: 'Optional Modules', icon: FolderLock, action: () => setActiveTab('vault'), shortcut: 'G V', allowed: canDeals },
+    { id: 'nav-portal', label: 'Client Portal', group: 'Optional Modules', icon: ExternalLink, action: () => setActiveTab('portal'), shortcut: 'G K', allowed: canDeals },
+    { id: 'nav-integrations', label: 'Webhooks & API', group: 'Optional Modules', icon: Globe, action: () => setActiveTab('integrations'), shortcut: 'G X', allowed: canDeals },
+    { id: 'nav-profile', label: isAdmin ? 'Account & Settings' : 'My Profile', group: 'My Account', icon: User, action: () => setActiveTab('profile'), shortcut: 'G U', allowed: true }
   ];
 
-  const actionItems = [
+  const navigationItems = allNavigationItems.filter((item) => item.allowed);
+
+  const allActionItems = [
     {
       id: 'act-new-deal',
       label: 'Create New Client Deal',
       group: 'Quick Actions',
       icon: Plus,
       action: () => setIsNewLeadModalOpen(true),
-      shortcut: 'N'
-    },
-    {
-      id: 'act-test-gate',
-      label: 'Run Automated SOP 1–11 Test Suite',
-      group: 'Quick Actions',
-      icon: Play,
-      action: () => setIsTestModalOpen(true),
-      shortcut: 'T'
+      shortcut: 'N',
+      allowed: canDeals
     },
     {
       id: 'act-sync-cache',
@@ -120,10 +142,13 @@ export const GlobalCommandPalette: React.FC<GlobalCommandPaletteProps> = ({ isOp
       action: async () => {
         showToast('Initiating sync queue flush...', 'info');
         await offlineSyncService.processQueue();
-        await refreshProjects();
+        if (isAdmin || isDeptHead) {
+          await refreshProjects();
+        }
         showToast('Workspace synchronized with cloud database.', 'success');
       },
-      shortcut: 'S'
+      shortcut: 'S',
+      allowed: isAdmin
     },
     {
       id: 'act-tenant-onboard',
@@ -131,15 +156,8 @@ export const GlobalCommandPalette: React.FC<GlobalCommandPaletteProps> = ({ isOp
       group: 'Quick Actions',
       icon: Building2,
       action: () => setIsOnboardingModalOpen(true),
-      shortcut: 'O'
-    },
-    {
-      id: 'act-platform-health',
-      label: 'Inspect API Platform Health',
-      group: 'Quick Actions',
-      icon: Activity,
-      action: () => setIsPlatformHealthModalOpen(true),
-      shortcut: 'H'
+      shortcut: 'O',
+      allowed: isAdmin
     },
     {
       id: 'act-company-wiki',
@@ -147,7 +165,8 @@ export const GlobalCommandPalette: React.FC<GlobalCommandPaletteProps> = ({ isOp
       group: 'Quick Actions',
       icon: BookOpen,
       action: () => setIsWikiModalOpen(true),
-      shortcut: 'W'
+      shortcut: 'W',
+      allowed: isAdmin
     },
     {
       id: 'act-toggle-theme',
@@ -155,21 +174,26 @@ export const GlobalCommandPalette: React.FC<GlobalCommandPaletteProps> = ({ isOp
       group: 'Quick Actions',
       icon: isDark ? Sun : Moon,
       action: () => toggleTheme(),
-      shortcut: 'M'
+      shortcut: 'M',
+      allowed: true
     }
   ];
 
-  const projectItems = projects.slice(0, 8).map(p => ({
-    id: `proj-${p.id}`,
-    label: `${p.clientName} (${p.clientCompany || p.websiteType}) - $${p.finalPrice || p.estimatedPrice}`,
-    group: 'Active Deals',
-    icon: CheckCircle2,
-    action: () => {
-      setActiveTab('pipeline');
-      showToast(`Viewing deal for ${p.clientName}`, 'info');
-    },
-    shortcut: p.status.toUpperCase()
-  }));
+  const actionItems = allActionItems.filter((item) => item.allowed);
+
+  const projectItems = isAdmin
+    ? projects.slice(0, 8).map(p => ({
+        id: `proj-${p.id}`,
+        label: `${p.clientName} (${p.clientCompany || p.websiteType}) - $${p.finalPrice || p.estimatedPrice}`,
+        group: 'Active Deals',
+        icon: CheckCircle2,
+        action: () => {
+          setActiveTab('pipeline');
+          showToast(`Viewing deal for ${p.clientName}`, 'info');
+        },
+        shortcut: p.status.toUpperCase()
+      }))
+    : [];
 
   const allItems = [...navigationItems, ...actionItems, ...projectItems];
 

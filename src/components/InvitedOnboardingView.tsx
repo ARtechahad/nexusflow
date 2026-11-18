@@ -47,12 +47,12 @@ export const InvitedOnboardingView: React.FC = () => {
     if (invitePreview) {
       setTitle((prev) => prev || invitePreview.designation || '');
     }
-    if (currentUser) {
+    if (currentUser && isSameSignedInUser) {
       setFullName((prev) => prev || currentUser.name || '');
       setPhone((prev) => prev || currentUser.phone || '');
       setBio((prev) => prev || currentUser.bio || '');
     }
-  }, [invitePreview, currentUser]);
+  }, [invitePreview, currentUser, isSameSignedInUser]);
 
   const clearInviteAndReturnHome = () => {
     setInviteToken(null);

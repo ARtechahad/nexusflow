@@ -32,7 +32,7 @@ import {
 } from 'lucide-react';
 
 export const UnifiedInboxView: React.FC = () => {
-  const { t, showToast, projects, openClientPortal, aiSettings, setIsAISettingsModalOpen, setActiveTab, updateProject, refreshProjects, currentTenant, authToken } = useApp();
+  const { t, showToast, projects, openClientPortal, aiSettings, setIsAISettingsModalOpen, setActiveTab, updateProject, refreshProjects, currentUser, currentTenant, authToken } = useApp();
 
   const [messages, setMessages] = useState<ClientCommunicationMessage[]>([]);
   const [selectedMessage, setSelectedMessage] = useState<ClientCommunicationMessage | null>(null);
@@ -206,7 +206,7 @@ export const UnifiedInboxView: React.FC = () => {
         headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           replyText,
-          senderName: 'Tariq Mehmood (Senior Sales Partner)',
+          senderName: currentUser?.name || 'Operations Team',
           channel: selectedMessage.channel
         })
       });

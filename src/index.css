@@ -23,29 +23,33 @@
   html.light body {
     background-color: #F8FAFC;
     color: #0F172A;
-    background-image: radial-gradient(rgba(15, 23, 42, 0.055) 1px, transparent 1px);
-    background-size: 16px 16px;
   }
 
   html.dark body {
     background-color: #090D16;
     color: #F1F5F9;
-    background-image: radial-gradient(rgba(148, 163, 184, 0.08) 1px, transparent 1px);
-    background-size: 16px 16px;
   }
 }
 
-/* Subtle micro-dot surface texture utility for explicit canvas sections */
+/* Elevated SaaS canvas & single-elevation card primitives (Linear / Stripe / Vercel aesthetic) */
 html.light .bg-canvas-textured {
   background-color: #F8FAFC;
-  background-image: radial-gradient(rgba(15, 23, 42, 0.055) 1px, transparent 1px);
-  background-size: 16px 16px;
 }
 
 html.dark .bg-canvas-textured {
   background-color: #090D16;
-  background-image: radial-gradient(rgba(148, 163, 184, 0.08) 1px, transparent 1px);
-  background-size: 16px 16px;
+}
+
+html.light .card-elevated {
+  background-color: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+}
+
+html.dark .card-elevated {
+  background-color: #111827;
+  border: 1px solid #1E293B;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
 }
 
 /* Tactile 3D Enterprise Action Buttons (Refined top highlight + layered depth + active press) */

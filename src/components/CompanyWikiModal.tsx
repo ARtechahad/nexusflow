@@ -30,64 +30,7 @@ export const CompanyWikiModal: React.FC<CompanyWikiModalProps> = ({ isOpen, onCl
 
   if (!isOpen) return null;
 
-  const docs = wikiDocs.length > 0 ? wikiDocs : [
-    {
-      id: 'wiki-1',
-      title: 'LinkedIn Outreach Master Script (High-Converting <300 Chars)',
-      category: 'outreach_scripts' as const,
-      description: 'Word-for-word connection pitch yielding 42% acceptance with international founders.',
-      content: `Hi {{name}}, saw your recent post regarding {{companyName}}'s web development roadmap.
-
-We build modern, fast Next.js & Tailwind web applications with guaranteed 10-day sprint delivery and strict 50% escrow milestones.
-
-Would love to share our live interactive preview deck if you're open to a 2-minute look. Best, Tariq`,
-      author: 'Tariq Mehmood (CEO)',
-      updatedAt: '2026-09-25T12:00:00Z',
-      tags: ['linkedin', 'cold_outreach', 'conversion']
-    },
-    {
-      id: 'wiki-2',
-      title: 'SOP 50% Advance Payment & Staging Isolation Gate',
-      category: 'sop_checklists' as const,
-      description: 'Non-negotiable rule: Never provision live production domain without 100% balance clearance.',
-      content: `### Mandatory Payment Gatekeeper Protocol:
-1. Always secure 50% deposit before creating Git repositories or allocating engineering hours.
-2. Develop strictly on internal staging subdomains (e.g., https://staging-client.agencyops.dev).
-3. Client inspects and signs off on staging.
-4. Issue final 50% balance invoice via Stripe or PayPal.
-5. Only upon transaction ID verification: trigger DNS A-record cutover and transfer administrative credentials.`,
-      author: 'Fatima Noor (QA Lead)',
-      updatedAt: '2026-09-24T10:00:00Z',
-      tags: ['sop', 'security', 'escrow', 'payments']
-    },
-    {
-      id: 'wiki-3',
-      title: 'ALM Nexus Dark-Mode & Geometric Brand Design Principles',
-      category: 'brand_guidelines' as const,
-      description: 'Aesthetic guidelines: Anti-AI slop, geometric accents, zero-pill discipline, high information density.',
-      content: `### Design System Guidelines:
-- **Color Palette:** Deep slate (#070a12, #0d1322), Indigo accents (#6366f1), Cyan telemetry (#06b6d4).
-- **Typography:** Plus Jakarta Sans for UI headers, JetBrains Mono for financial figures and status badges.
-- **Glassmorphism:** Subtle backdrops with 16px blur and 1px white/10 borders.
-- **Data Clarity:** Never hide operational metrics behind ambiguous tooltips; show real numbers.`,
-      author: 'Sara Jenkins (Design Lead)',
-      updatedAt: '2026-09-22T08:00:00Z',
-      tags: ['design', 'ui_ux', 'brand', 'tailwind']
-    },
-    {
-      id: 'wiki-4',
-      title: 'Cold Email Follow-Up Drip 4-Stage Cadence',
-      category: 'email_templates' as const,
-      description: 'Sequenced email follow-ups for non-responsive client proposals to reactivate discussions.',
-      content: `Stage 1 (+24h): Sprint Slot Reservation Confirmation
-Stage 2 (+72h): Dedicated Staging Server Pre-Allocation Hold
-Stage 3 (+120h): Complimentary Performance & Core Web Vitals Audit
-Stage 4 (+168h): Graceful File Archival (Break-Up Email)`,
-      author: 'Hamza Farooq (Senior BD)',
-      updatedAt: '2026-09-26T14:00:00Z',
-      tags: ['drip', 'sales', 'follow_up']
-    }
-  ];
+  const docs = wikiDocs;
 
   const filteredDocs = docs.filter(doc => {
     const matchesCat = selectedCategory === 'all' || doc.category === selectedCategory;
@@ -98,7 +41,7 @@ Stage 4 (+168h): Graceful File Archival (Break-Up Email)`,
     return matchesCat && matchesSearch;
   });
 
-  const selectedDoc = activeDoc || filteredDocs[0] || docs[0];
+  const selectedDoc = activeDoc || filteredDocs[0] || docs[0] || null;
 
   const handleCopy = (doc: WikiDocument) => {
     navigator.clipboard.writeText(doc.content);
@@ -181,44 +124,50 @@ Stage 4 (+168h): Graceful File Archival (Break-Up Email)`,
           
           {/* Left Column: Docs List */}
           <div className="md:col-span-5 border-r border-slate-200 dark:border-white/10 overflow-y-auto p-4 space-y-2 bg-slate-50/50 dark:bg-slate-900/20">
-            {filteredDocs.map(doc => {
-              const isSelected = selectedDoc?.id === doc.id;
-              return (
-                <div
-                  key={doc.id}
-                  onClick={() => setActiveDoc(doc)}
-                  className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
-                    isSelected
-                      ? 'bg-indigo-50/70 dark:bg-indigo-950/40 border-indigo-500 shadow-sm ring-1 ring-indigo-500/20'
-                      : 'bg-white dark:bg-slate-900/60 border-slate-200/80 dark:border-white/5 hover:border-slate-300 dark:hover:border-white/15'
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-bold">
-                      {doc.category.replace(/_/g, ' ')}
-                    </span>
-                    <span className="text-[10px] text-slate-400 font-mono">
-                      {new Date(doc.updatedAt).toLocaleDateString()}
-                    </span>
-                  </div>
-
-                  <h4 className="text-xs font-bold text-slate-900 dark:text-white leading-snug">
-                    {doc.title}
-                  </h4>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 line-clamp-2">
-                    {doc.description}
-                  </p>
-
-                  <div className="flex flex-wrap gap-1 mt-2.5">
-                    {doc.tags.map(t => (
-                      <span key={t} className="text-[9px] px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-mono">
-                        #{t}
+            {filteredDocs.length === 0 ? (
+              <div className="py-12 px-4 text-center text-xs text-slate-500 dark:text-slate-400">
+                No SOP or knowledge base articles added for this company yet.
+              </div>
+            ) : (
+              filteredDocs.map(doc => {
+                const isSelected = selectedDoc?.id === doc.id;
+                return (
+                  <div
+                    key={doc.id}
+                    onClick={() => setActiveDoc(doc)}
+                    className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
+                      isSelected
+                        ? 'bg-indigo-50/70 dark:bg-indigo-950/40 border-indigo-500 shadow-sm ring-1 ring-indigo-500/20'
+                        : 'bg-white dark:bg-slate-900/60 border-slate-200/80 dark:border-white/5 hover:border-slate-300 dark:hover:border-white/15'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-bold">
+                        {doc.category.replace(/_/g, ' ')}
                       </span>
-                    ))}
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        {new Date(doc.updatedAt).toLocaleDateString()}
+                      </span>
+                    </div>
+
+                    <h4 className="text-xs font-bold text-slate-900 dark:text-white leading-snug">
+                      {doc.title}
+                    </h4>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 line-clamp-2">
+                      {doc.description}
+                    </p>
+
+                    <div className="flex flex-wrap gap-1 mt-2.5">
+                      {doc.tags.map(t => (
+                        <span key={t} className="text-[9px] px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-mono">
+                          #{t}
+                        </span>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })
+            )}
           </div>
 
           {/* Right Column: Doc Reader & Action */}

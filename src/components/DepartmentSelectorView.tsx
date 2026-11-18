@@ -3,6 +3,7 @@ import { Layers, Users, CheckSquare, ArrowRight, LogOut } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { TenantSwitcher } from './TenantSwitcher';
 import { ThemeToggle } from './ThemeToggle';
+import { DEPARTMENT_MODULE_DEFINITIONS, getDepartmentAllowedModules } from '../utils/departmentAccess';
 
 export const DepartmentSelectorView: React.FC = () => {
   const {
@@ -16,8 +17,15 @@ export const DepartmentSelectorView: React.FC = () => {
   } = useApp();
 
   const handleSelectDepartment = (deptId: string) => {
+    const dept = departments.find((d) => d.id === deptId);
+    const mods = getDepartmentAllowedModules(dept);
     setSelectedDepartmentId(deptId);
-    setActiveTab('departmental');
+    if (mods.includes('operations')) setActiveTab('departmental');
+    else if (mods.includes('chat')) setActiveTab('chat');
+    else if (mods.includes('email_hub')) setActiveTab('outreach_suite');
+    else if (mods.includes('client_inbox')) setActiveTab('inbox');
+    else if (mods.includes('financials')) setActiveTab('commissions');
+    else setActiveTab('profile');
   };
 
   return (
@@ -57,7 +65,7 @@ export const DepartmentSelectorView: React.FC = () => {
               Select a Department Workspace
             </h1>
             <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400">
-              You belong to {departments.length} departments in {currentTenant?.name}. Choose one to inspect team availability, tasks, and private department chat.
+              You belong to {departments.length} departments in {currentTenant?.name}. Choose one to open its enabled modules and team workspace.
             </p>
           </div>
 
@@ -66,6 +74,12 @@ export const DepartmentSelectorView: React.FC = () => {
               const totalTasks = dept.tasksTotal ?? 0;
               const completedTasks = dept.tasksCompleted ?? 0;
               const openTasks = Math.max(0, totalTasks - completedTasks);
+              const enabledModules = getDepartmentAllowedModules(dept);
+              const moduleSummary = DEPARTMENT_MODULE_DEFINITIONS
+                .filter((m) => enabledModules.includes(m.key))
+                .map((m) => m.label)
+                .join(' · ');
+
               return (
                 <div
                   key={dept.id}
@@ -94,6 +108,10 @@ export const DepartmentSelectorView: React.FC = () => {
                         <CheckSquare className="w-3.5 h-3.5 text-slate-400" />
                         <span>{openTasks} open</span>
                       </span>
+                    </div>
+
+                    <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400 truncate">
+                      {moduleSummary || 'No modules enabled'}
                     </div>
                   </div>
 

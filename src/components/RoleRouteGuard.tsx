@@ -1,12 +1,13 @@
 import React from 'react';
 import { ShieldAlert, ArrowLeft, Lock } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { CompanyRole, UserRole } from '../types';
-import { canAccessEmailModules } from '../utils/departmentAccess';
+import { CompanyRole, DepartmentModuleKey, UserRole } from '../types';
+import { canAccessEmailModules, hasModuleAccess } from '../utils/departmentAccess';
 
 interface RoleRouteGuardProps {
   allowedRoles?: UserRole[];
   allowedCompanyRoles?: CompanyRole[];
+  requiredModule?: DepartmentModuleKey;
   requireEmailHubAccess?: boolean;
   moduleName: string;
   children: React.ReactNode;
@@ -15,6 +16,7 @@ interface RoleRouteGuardProps {
 export const RoleRouteGuard: React.FC<RoleRouteGuardProps> = ({
   allowedRoles = [],
   allowedCompanyRoles,
+  requiredModule,
   requireEmailHubAccess = false,
   moduleName,
   children
@@ -29,7 +31,9 @@ export const RoleRouteGuard: React.FC<RoleRouteGuardProps> = ({
     isAllowed = role === 'admin' || role === 'ceo' || role === 'bd_head' || allowedRoles.includes(role);
   }
 
-  if (isAllowed && requireEmailHubAccess) {
+  if (isAllowed && requiredModule) {
+    isAllowed = hasModuleAccess(companyRole, requiredModule, activeDept, departments);
+  } else if (isAllowed && requireEmailHubAccess) {
     isAllowed = canAccessEmailModules(companyRole, activeDept, departments);
   }
 
@@ -38,8 +42,12 @@ export const RoleRouteGuard: React.FC<RoleRouteGuardProps> = ({
       role === 'client_guest'
         ? 'portal'
         : companyRole === 'company_admin'
-        ? 'pipeline'
-        : 'departmental';
+        ? 'overview'
+        : hasModuleAccess(companyRole, 'operations', activeDept, departments)
+        ? 'departmental'
+        : hasModuleAccess(companyRole, 'chat', activeDept, departments)
+        ? 'chat'
+        : 'profile';
 
     const displayRole = companyRole
       ? companyRole.replace('_', ' ').toUpperCase()

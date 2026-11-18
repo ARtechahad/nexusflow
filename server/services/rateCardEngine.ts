@@ -118,7 +118,7 @@ rateCardRouter.post('/update-tier', (req: Request, res: Response) => {
   AuditLogService.log({
     tenantId,
     actorId: (req as any).user?.id || 'admin',
-    actorName: (req as any).user?.name || 'Tariq Mehmood',
+    actorName: (req as any).user?.name || 'Operations Director',
     actorRole: (req as any).user?.role || 'admin',
     action: 'RATE_CARD_TIER_UPDATED',
     entityType: 'rate_card',

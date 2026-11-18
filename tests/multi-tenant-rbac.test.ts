@@ -13,6 +13,8 @@ import chatRouter from '../server/routes/chatRoutes';
 import { projectRouter } from '../server/routes/projectRoutes';
 import { fileRouter } from '../server/routes/fileRoutes';
 import { invoiceRouter, commissionRouter, analyticsRouter } from '../server/routes/invoiceRoutes';
+import { inboxRouter } from '../server/routes/aiRoutes';
+import { dripRouter } from '../server/routes/dripRoutes';
 
 const DB_FILE = path.join(process.cwd(), 'data', 'db.json');
 
@@ -66,6 +68,8 @@ describe('Enterprise Multi-Tenant, Multi-Company & Department RBAC Integration',
     app.use('/api/invoices', invoiceRouter);
     app.use('/api/commissions', commissionRouter);
     app.use('/api/analytics', analyticsRouter);
+    app.use('/api/inbox', inboxRouter);
+    app.use('/api/drip', dripRouter);
 
     await new Promise<void>((resolve) => {
       server = app.listen(0, '127.0.0.1', () => {
@@ -449,5 +453,385 @@ describe('Enterprise Multi-Tenant, Multi-Company & Department RBAC Integration',
 
     // Sanity verify Owner still sees own user id cleanly
     assert.ok(userAId);
+  });
+
+  test('Invited onboarding profile setup, profile edit, department-specific Email Hub & employee task isolation', async () => {
+    const suffix = `${Date.now().toString(36)}2`;
+    const ownerEmail = `owner2.${suffix}@example.com`;
+    const salesHeadEmail = `saleshead.${suffix}@example.com`;
+    const opsHeadEmail = `opshead.${suffix}@example.com`;
+    const opsEmpEmail = `opsemp.${suffix}@example.com`;
+    const salesEmpEmail = `salesemp.${suffix}@example.com`;
+
+    // 1. Register Company Owner & create company with Sales + Engineering departments
+    const regOwner = await api('/api/auth/register', {
+      method: 'POST',
+      body: { fullName: 'Tariq Owner', email: ownerEmail, password: 'Password123!' }
+    });
+    assert.equal(regOwner.status, 200);
+    const ownerToken = regOwner.data.token;
+
+    const compRes = await api('/api/companies', {
+      method: 'POST',
+      token: ownerToken,
+      body: {
+        name: `Nexus Ops ${suffix}`,
+        industry: 'Technology',
+        size: '11-50',
+        initialDepartments: ['Sales', 'Engineering']
+      }
+    });
+    assert.equal(compRes.status, 201);
+    const companyId = compRes.data.company.id;
+    const salesDept = compRes.data.departments.find((d: any) => d.name === 'Sales');
+    const engDept = compRes.data.departments.find((d: any) => d.name === 'Engineering');
+    assert.deepEqual(salesDept.allowed_modules, ['operations', 'chat']);
+    assert.deepEqual(engDept.allowed_modules, ['operations', 'chat']);
+    const salesDeptId = salesDept.id;
+    const engDeptId = engDept.id;
+
+    // 2. Owner invites Sales Head, Engineering Head, Engineering Employee, and Sales Employee
+    const invSalesHead = await api(`/api/companies/${companyId}/invites`, {
+      method: 'POST',
+      token: ownerToken,
+      companyId,
+      body: { email: salesHeadEmail, departmentId: salesDeptId, role: 'department_head', designation: 'VP of Sales' }
+    });
+    const invEngHead = await api(`/api/companies/${companyId}/invites`, {
+      method: 'POST',
+      token: ownerToken,
+      companyId,
+      body: { email: opsHeadEmail, departmentId: engDeptId, role: 'department_head', designation: 'Head of Engineering' }
+    });
+    const invEngEmp = await api(`/api/companies/${companyId}/invites`, {
+      method: 'POST',
+      token: ownerToken,
+      companyId,
+      body: { email: opsEmpEmail, departmentId: engDeptId, role: 'employee', designation: 'Platform Engineer' }
+    });
+    const invSalesEmp = await api(`/api/companies/${companyId}/invites`, {
+      method: 'POST',
+      token: ownerToken,
+      companyId,
+      body: { email: salesEmpEmail, departmentId: salesDeptId, role: 'employee', designation: 'SDR' }
+    });
+    assert.equal(invSalesHead.status, 201);
+    assert.equal(invEngHead.status, 201);
+    assert.equal(invEngEmp.status, 201);
+    assert.equal(invSalesEmp.status, 201);
+
+    const salesHeadInviteToken = invSalesHead.data.invite.token;
+    const engHeadInviteToken = invEngHead.data.invite.token;
+    const engEmpInviteToken = invEngEmp.data.invite.token;
+    const salesEmpInviteToken = invSalesEmp.data.invite.token;
+
+    // 3. Public preview shows userExists: false before onboarding
+    const previewRes = await api(`/api/invites/${salesHeadInviteToken}`);
+    assert.equal(previewRes.status, 200);
+    assert.equal(previewRes.data.invite.userExists, false);
+
+    // 4. Invited users complete profile onboarding directly via /api/invites/:token/complete-onboarding
+    const onboardSalesHead = await api(`/api/invites/${salesHeadInviteToken}/complete-onboarding`, {
+      method: 'POST',
+      body: {
+        fullName: 'Zainab Sales',
+        password: 'Password123!',
+        phone: '+1-555-0101',
+        title: 'VP of Sales',
+        bio: 'Leading enterprise outbound and client expansion.'
+      }
+    });
+    assert.equal(onboardSalesHead.status, 200);
+    assert.ok(onboardSalesHead.data.token);
+    assert.equal(onboardSalesHead.data.user.phone, '+1-555-0101');
+    assert.equal(onboardSalesHead.data.user.bio, 'Leading enterprise outbound and client expansion.');
+    assert.equal(onboardSalesHead.data.departmentId, salesDeptId);
+    assert.equal(onboardSalesHead.data.companies[0].myRole, 'department_head');
+    const salesHeadToken = onboardSalesHead.data.token;
+
+    const onboardEngHead = await api(`/api/invites/${engHeadInviteToken}/complete-onboarding`, {
+      method: 'POST',
+      body: {
+        fullName: 'Omar Engineering',
+        password: 'Password123!',
+        phone: '+1-555-0102',
+        title: 'Head of Engineering',
+        bio: 'Managing core infrastructure and sprint delivery.'
+      }
+    });
+    assert.equal(onboardEngHead.status, 200);
+    const engHeadToken = onboardEngHead.data.token;
+
+    const onboardEngEmp = await api(`/api/invites/${engEmpInviteToken}/complete-onboarding`, {
+      method: 'POST',
+      body: {
+        fullName: 'Ayesha Dev',
+        password: 'Password123!',
+        phone: '+1-555-0103',
+        title: 'Platform Engineer',
+        bio: 'Backend reliability engineer.'
+      }
+    });
+    assert.equal(onboardEngEmp.status, 200);
+    const engEmpToken = onboardEngEmp.data.token;
+    const engEmpId = onboardEngEmp.data.user.id;
+
+    const onboardSalesEmp = await api(`/api/invites/${salesEmpInviteToken}/complete-onboarding`, {
+      method: 'POST',
+      body: {
+        fullName: 'Kamran SDR',
+        password: 'Password123!',
+        phone: '+1-555-0104',
+        title: 'SDR'
+      }
+    });
+    assert.equal(onboardSalesEmp.status, 200);
+    const salesEmpToken = onboardSalesEmp.data.token;
+
+    // 5. Personal profile update endpoint works for invited staff
+    const profPatch = await api('/api/auth/me/profile', {
+      method: 'PATCH',
+      token: engEmpToken,
+      body: {
+        fullName: 'Ayesha Khan',
+        phone: '+1-555-9999',
+        title: 'Senior Platform Engineer',
+        bio: 'Updated reliability bio'
+      }
+    });
+    assert.equal(profPatch.status, 200);
+    assert.equal(profPatch.data.user.name, 'Ayesha Khan');
+    assert.equal(profPatch.data.user.phone, '+1-555-9999');
+    assert.equal(profPatch.data.user.bio, 'Updated reliability bio');
+
+    // 6. Dynamic Department Module Access Control (`allowed_modules`)
+    // Owner always has full access across every module
+    assert.equal((await api('/api/inbox/messages', { token: ownerToken, companyId })).status, 200, 'Owner can access Inbox');
+    assert.equal((await api('/api/drip/campaigns', { token: ownerToken, companyId })).status, 200, 'Owner can access Email Hub');
+
+    // Before Owner enables email_hub / client_inbox on Sales, Sales Head & Employee get 403 too
+    assert.equal((await api('/api/inbox/messages', { token: salesHeadToken, companyId })).status, 403, 'Sales Head blocked before client_inbox enabled');
+    assert.equal((await api('/api/inbox/messages', { token: salesEmpToken, companyId })).status, 403, 'Sales Employee blocked before client_inbox enabled');
+    assert.equal((await api('/api/drip/campaigns', { token: salesHeadToken, companyId })).status, 403, 'Sales Head blocked before email_hub enabled');
+
+    // Non-owner cannot edit department permissions
+    const forbiddenPermPatch = await api(`/api/companies/${companyId}/departments/${salesDeptId}`, {
+      method: 'PATCH',
+      token: salesHeadToken,
+      companyId,
+      body: { allowed_modules: ['operations', 'chat', 'email_hub', 'client_inbox'] }
+    });
+    assert.equal(forbiddenPermPatch.status, 403, 'Only Company Owner can modify department allowed_modules');
+
+    // Owner enables email_hub + client_inbox for Sales department
+    const enableSalesModules = await api(`/api/companies/${companyId}/departments/${salesDeptId}`, {
+      method: 'PATCH',
+      token: ownerToken,
+      companyId,
+      body: { allowed_modules: ['operations', 'chat', 'email_hub', 'client_inbox'] }
+    });
+    assert.equal(enableSalesModules.status, 200);
+    assert.deepEqual(
+      enableSalesModules.data.department.allowed_modules,
+      ['operations', 'chat', 'email_hub', 'client_inbox']
+    );
+
+    assert.equal((await api('/api/inbox/messages', { token: salesHeadToken, companyId })).status, 200, 'Sales Head can access Inbox once enabled');
+    assert.equal((await api('/api/inbox/messages', { token: salesEmpToken, companyId })).status, 200, 'Sales Employee can access Inbox once enabled');
+    assert.equal((await api('/api/drip/campaigns', { token: salesHeadToken, companyId })).status, 200, 'Sales Head can access Email Hub once enabled');
+    assert.equal((await api('/api/drip/campaigns', { token: salesEmpToken, companyId })).status, 200, 'Sales Employee can access Email Hub once enabled');
+    assert.equal((await api('/api/inbox/messages', { token: engHeadToken, companyId })).status, 403, 'Engineering Head must NOT access Inbox');
+    assert.equal((await api('/api/inbox/messages', { token: engEmpToken, companyId })).status, 403, 'Engineering Employee must NOT access Inbox');
+
+    // 7. Employee Task Isolation (only sees own assigned tasks, cannot create or delete tasks)
+    const empTaskCreate = await api(`/api/companies/${companyId}/departments/${engDeptId}/tasks`, {
+      method: 'POST',
+      token: engHeadToken,
+      companyId,
+      body: { title: 'Task for Ayesha', priority: 'high', assigneeUserId: engEmpId }
+    });
+    assert.equal(empTaskCreate.status, 201);
+    const ayeshaTaskId = empTaskCreate.data.task.id;
+
+    const headTaskCreate = await api(`/api/companies/${companyId}/departments/${engDeptId}/tasks`, {
+      method: 'POST',
+      token: engHeadToken,
+      companyId,
+      body: { title: 'Private Lead Architecture Review', priority: 'medium', assigneeUserId: onboardEngHead.data.user.id }
+    });
+    assert.equal(headTaskCreate.status, 201);
+
+    const headTasksList = await api(`/api/companies/${companyId}/departments/${engDeptId}/tasks`, {
+      token: engHeadToken,
+      companyId
+    });
+    assert.equal(headTasksList.status, 200);
+    assert.equal(headTasksList.data.tasks.length, 2);
+
+    const empTasksList = await api(`/api/companies/${companyId}/departments/${engDeptId}/tasks`, {
+      token: engEmpToken,
+      companyId
+    });
+    assert.equal(empTasksList.status, 200);
+    assert.equal(empTasksList.data.tasks.length, 1, 'Employee must ONLY see tasks assigned to themselves');
+    assert.equal(empTasksList.data.tasks[0].id, ayeshaTaskId);
+
+    const empPostTask = await api(`/api/companies/${companyId}/departments/${engDeptId}/tasks`, {
+      method: 'POST',
+      token: engEmpToken,
+      companyId,
+      body: { title: 'Unauthorized employee task' }
+    });
+    assert.equal(empPostTask.status, 403);
+
+    const empDeleteTask = await api(`/api/companies/${companyId}/departments/${engDeptId}/tasks/${ayeshaTaskId}`, {
+      method: 'DELETE',
+      token: engEmpToken,
+      companyId
+    });
+    assert.equal(empDeleteTask.status, 403);
+  });
+
+  test('Customizable allowed_modules: create department with custom modules & toggle financials/chat/operations dynamically', async () => {
+    const suffix = `${Date.now().toString(36)}3`;
+    const ownerEmail = `owner3.${suffix}@example.com`;
+    const finHeadEmail = `finhead.${suffix}@example.com`;
+    const finEmpEmail = `finemp.${suffix}@example.com`;
+
+    const regOwner = await api('/api/auth/register', {
+      method: 'POST',
+      body: { fullName: 'Hina Owner', email: ownerEmail, password: 'Password123!' }
+    });
+    assert.equal(regOwner.status, 200);
+    const ownerToken = regOwner.data.token;
+
+    const compRes = await api('/api/companies', {
+      method: 'POST',
+      token: ownerToken,
+      body: {
+        name: `FinOps Holdings ${suffix}`,
+        industry: 'Finance',
+        size: '11-50',
+        initialDepartments: ['Operations']
+      }
+    });
+    assert.equal(compRes.status, 201);
+    const companyId = compRes.data.company.id;
+
+    // 1. Owner creates Finance department with custom allowed_modules including 'financials'
+    const createFinDept = await api(`/api/companies/${companyId}/departments`, {
+      method: 'POST',
+      token: ownerToken,
+      companyId,
+      body: {
+        name: 'Finance & RevOps',
+        description: 'Revenue tracking & commission ledgers',
+        allowed_modules: ['operations', 'chat', 'financials']
+      }
+    });
+    assert.equal(createFinDept.status, 201);
+    const finDeptId = createFinDept.data.department.id;
+    assert.deepEqual(createFinDept.data.department.allowed_modules, ['operations', 'chat', 'financials']);
+
+    // Invite + onboard Finance Head and Finance Employee
+    const invHead = await api(`/api/companies/${companyId}/invites`, {
+      method: 'POST',
+      token: ownerToken,
+      companyId,
+      body: { email: finHeadEmail, departmentId: finDeptId, role: 'department_head', designation: 'Finance Lead' }
+    });
+    const invEmp = await api(`/api/companies/${companyId}/invites`, {
+      method: 'POST',
+      token: ownerToken,
+      companyId,
+      body: { email: finEmpEmail, departmentId: finDeptId, role: 'employee', designation: 'Billing Analyst' }
+    });
+    assert.equal(invHead.status, 201);
+    assert.equal(invEmp.status, 201);
+
+    const onboardHead = await api(`/api/invites/${invHead.data.invite.token}/complete-onboarding`, {
+      method: 'POST',
+      body: { fullName: 'Bilal Finance', password: 'Password123!', phone: '+1-555-0201', title: 'Finance Lead' }
+    });
+    const onboardEmp = await api(`/api/invites/${invEmp.data.invite.token}/complete-onboarding`, {
+      method: 'POST',
+      body: { fullName: 'Sana Analyst', password: 'Password123!', phone: '+1-555-0202', title: 'Billing Analyst' }
+    });
+    assert.equal(onboardHead.status, 200);
+    assert.equal(onboardEmp.status, 200);
+    const finHeadToken = onboardHead.data.token;
+    const finEmpToken = onboardEmp.data.token;
+
+    // 2. Financials allowed for Finance members, Email Hub / Client Inbox still blocked
+    assert.equal((await api('/api/commissions', { token: finHeadToken, companyId })).status, 200);
+    assert.equal((await api('/api/commissions', { token: finEmpToken, companyId })).status, 200);
+    assert.equal((await api('/api/analytics/advanced', { token: finHeadToken, companyId })).status, 200);
+    assert.equal((await api('/api/analytics/advanced', { token: finEmpToken, companyId })).status, 200);
+    assert.equal((await api('/api/drip/campaigns', { token: finHeadToken, companyId })).status, 403);
+    assert.equal((await api('/api/inbox/messages', { token: finEmpToken, companyId })).status, 403);
+
+    // Financial payout/admin mutations remain strictly company_admin only
+    const headBoostAttempt = await api('/api/commissions/tier-boost', {
+      method: 'POST',
+      token: finHeadToken,
+      companyId,
+      body: { salespersonName: 'Bilal', targetTier: 'tier3' }
+    });
+    assert.equal(headBoostAttempt.status, 403, 'Non-owners cannot trigger commission tier-boost mutation');
+
+    // 3. Owner revokes 'financials' -> Finance members immediately get 403 MODULE_ACCESS_DENIED
+    const disableFin = await api(`/api/companies/${companyId}/departments/${finDeptId}`, {
+      method: 'PATCH',
+      token: ownerToken,
+      companyId,
+      body: { allowed_modules: ['operations', 'chat'] }
+    });
+    assert.equal(disableFin.status, 200);
+
+    const blockedComm = await api('/api/commissions', { token: finHeadToken, companyId });
+    assert.equal(blockedComm.status, 403);
+    assert.equal(blockedComm.data.code, 'MODULE_ACCESS_DENIED');
+    assert.equal((await api('/api/analytics/advanced', { token: finEmpToken, companyId })).status, 403);
+    // Owner keeps full access regardless
+    assert.equal((await api('/api/commissions', { token: ownerToken, companyId })).status, 200);
+
+    // 4. Owner disables 'chat' & 'operations' (leaving only ['financials']) -> chat & tasks blocked with 403
+    const onlyFinancials = await api(`/api/companies/${companyId}/departments/${finDeptId}`, {
+      method: 'PATCH',
+      token: ownerToken,
+      companyId,
+      body: { allowed_modules: ['financials'] }
+    });
+    assert.equal(onlyFinancials.status, 200);
+
+    const blockedChatGet = await api(`/api/chat?departmentId=${finDeptId}`, { token: finEmpToken, companyId });
+    assert.equal(blockedChatGet.status, 403);
+    assert.equal(blockedChatGet.data.code, 'MODULE_ACCESS_DENIED');
+
+    const blockedChatPost = await api('/api/chat', {
+      method: 'POST',
+      token: finHeadToken,
+      companyId,
+      body: { departmentId: finDeptId, content: 'Should fail when chat disabled' }
+    });
+    assert.equal(blockedChatPost.status, 403);
+
+    const blockedTasks = await api(`/api/companies/${companyId}/departments/${finDeptId}/tasks`, {
+      token: finHeadToken,
+      companyId
+    });
+    assert.equal(blockedTasks.status, 403);
+
+    // 5. Owner restores ['operations', 'chat', 'financials'] -> all three modules work again
+    const restoreModules = await api(`/api/companies/${companyId}/departments/${finDeptId}`, {
+      method: 'PATCH',
+      token: ownerToken,
+      companyId,
+      body: { allowed_modules: ['operations', 'chat', 'financials'] }
+    });
+    assert.equal(restoreModules.status, 200);
+    assert.equal((await api(`/api/chat?departmentId=${finDeptId}`, { token: finEmpToken, companyId })).status, 200);
+    assert.equal((await api(`/api/companies/${companyId}/departments/${finDeptId}/tasks`, { token: finHeadToken, companyId })).status, 200);
+    assert.equal((await api('/api/commissions', { token: finEmpToken, companyId })).status, 200);
   });
 });

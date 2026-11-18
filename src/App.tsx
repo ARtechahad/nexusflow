@@ -4,7 +4,8 @@ import { Sidebar } from './components/Sidebar';
 import { TopHeader } from './components/TopHeader';
 import { ProjectsPipeline } from './components/ProjectsPipeline';
 import { SOPGuideView } from './components/SOPGuideView';
-import { OutreachSuiteView } from './components/outreach-suite/OutreachSuiteView';
+import { EmailOutreachView } from './components/EmailOutreachView';
+import { CompanyOverviewView } from './components/CompanyOverviewView';
 import { UnifiedInboxView } from './components/UnifiedInboxView';
 import { DashboardAnalytics } from './components/DashboardAnalytics';
 import { IntegrationsView } from './components/IntegrationsView';
@@ -19,9 +20,10 @@ import { UserProfileDashboard } from './components/UserProfileDashboard';
 import { ActivityFeedDrawer } from './components/ActivityFeedDrawer';
 import { CompanyWikiModal } from './components/CompanyWikiModal';
 import { PlatformHealthModal } from './components/PlatformHealthModal';
-import { ExecutiveOperationsRibbon } from './components/ExecutiveOperationsRibbon';
 import { CompanyOnboardingView } from './components/CompanyOnboardingView';
 import { DepartmentSelectorView } from './components/DepartmentSelectorView';
+import { InvitedOnboardingView } from './components/InvitedOnboardingView';
+import { isEmailOutreachVisible } from './utils/departmentAccess';
 
 // Modals
 import { NewClientLeadModal } from './components/NewClientLeadModal';
@@ -67,21 +69,14 @@ const AppContent: React.FC = () => {
     setIsCommandPaletteOpen,
     toasts,
     dismissToast,
-    automatedTestsPassedCount,
     sidebarCollapsed
   } = useApp();
 
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const [authModalState, setAuthModalState] = useState<{ open: boolean; mode: 'signin' | 'signup' }>(() => ({
-    open: Boolean(typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('invite')),
+  const [authModalState, setAuthModalState] = useState<{ open: boolean; mode: 'signin' | 'signup' }>({
+    open: false,
     mode: 'signin'
-  }));
-
-  useEffect(() => {
-    if (!currentUser && inviteToken) {
-      setAuthModalState((prev) => ({ ...prev, open: true }));
-    }
-  }, [currentUser, inviteToken]);
+  });
 
   // Global Keyboard Navigation (⌘K / Ctrl+K Command Palette)
   useEffect(() => {
@@ -115,9 +110,19 @@ const AppContent: React.FC = () => {
             window.history.pushState({}, '', '/');
           }
           setIsDocsRoute(false);
-          setActiveTab(currentUser ? (companyRole === 'company_admin' ? 'pipeline' : 'departmental') : 'leadflow');
+          setActiveTab(currentUser ? (companyRole === 'company_admin' ? 'overview' : 'departmental') : 'leadflow');
         }}
       />
+    );
+  }
+
+  // 0. Dedicated Invited User "Complete Your Profile" Onboarding Gateway (?invite=<token>)
+  if (inviteToken && !currentUser) {
+    return (
+      <>
+        <InvitedOnboardingView />
+        <ToastNotification toasts={toasts} onDismiss={dismissToast} />
+      </>
     );
   }
 
@@ -163,6 +168,16 @@ const AppContent: React.FC = () => {
     );
   }
 
+  // 1b. Signed-in user visiting a pending invite link who hasn't joined yet or needs profile completion
+  if (currentUser && inviteToken && (tenants.length === 0 || !currentUser.phone)) {
+    return (
+      <>
+        <InvitedOnboardingView />
+        <ToastNotification toasts={toasts} onDismiss={dismissToast} />
+      </>
+    );
+  }
+
   // 2. Authenticated Personal User with 0 Companies -> "Create Your First Company" / Accept Invite Screen
   if (tenants.length === 0 || !currentTenant) {
     return (
@@ -178,17 +193,39 @@ const AppContent: React.FC = () => {
     return (
       <>
         <DepartmentSelectorView />
-        <TenantOnboardingModal
-          isOpen={isOnboardingModalOpen}
-          onClose={() => setIsOnboardingModalOpen(false)}
-        />
         <ToastNotification toasts={toasts} onDismiss={dismissToast} />
       </>
     );
   }
 
+  const activeDept = departments.find((d) => d.id === selectedDepartmentId) || departments[0] || null;
+  const emailOutreachEnabled = isEmailOutreachVisible(
+    companyRole,
+    currentTenant?.settings,
+    activeDept,
+    departments
+  );
+
   const renderActiveView = () => {
     switch (activeTab) {
+      case 'overview':
+        return (
+          <RoleRouteGuard
+            allowedCompanyRoles={['company_admin']}
+            moduleName="Company Overview"
+          >
+            <CompanyOverviewView />
+          </RoleRouteGuard>
+        );
+      case 'departments':
+        return (
+          <RoleRouteGuard
+            allowedCompanyRoles={['company_admin']}
+            moduleName="Departments & Team"
+          >
+            <DepartmentalTrackingView mode="departments_team" />
+          </RoleRouteGuard>
+        );
       case 'pipeline':
         return (
           <RoleRouteGuard
@@ -202,9 +239,10 @@ const AppContent: React.FC = () => {
         return (
           <RoleRouteGuard
             allowedCompanyRoles={['company_admin', 'department_head', 'employee']}
-            moduleName="Department Operations & Roster"
+            requiredModule="operations"
+            moduleName="Operations & Tasks"
           >
-            <DepartmentalTrackingView />
+            <DepartmentalTrackingView mode="operations_tasks" />
           </RoleRouteGuard>
         );
       case 'gmail':
@@ -219,7 +257,8 @@ const AppContent: React.FC = () => {
       case 'inbox':
         return (
           <RoleRouteGuard
-            allowedCompanyRoles={['company_admin', 'department_head']}
+            allowedCompanyRoles={['company_admin', 'department_head', 'employee']}
+            requiredModule="client_inbox"
             moduleName="Unified Client Inbox"
           >
             <UnifiedInboxView />
@@ -236,18 +275,27 @@ const AppContent: React.FC = () => {
         );
       case 'outreach':
       case 'outreach_suite':
+        if (companyRole === 'company_admin' && !emailOutreachEnabled) {
+          return (
+            <RoleRouteGuard allowedCompanyRoles={['company_admin']} moduleName="Email Outreach">
+              <EmailOutreachView />
+            </RoleRouteGuard>
+          );
+        }
         return (
           <RoleRouteGuard
-            allowedCompanyRoles={['company_admin', 'department_head']}
-            moduleName="Email Hub (Mailboxes & Campaigns)"
+            allowedCompanyRoles={['company_admin', 'department_head', 'employee']}
+            requiredModule="email_hub"
+            moduleName="Email Outreach"
           >
-            <OutreachSuiteView />
+            <EmailOutreachView />
           </RoleRouteGuard>
         );
       case 'analytics':
         return (
           <RoleRouteGuard
-            allowedCompanyRoles={['company_admin']}
+            allowedCompanyRoles={['company_admin', 'department_head', 'employee']}
+            requiredModule="financials"
             moduleName="Revenue Analytics"
           >
             <DashboardAnalytics />
@@ -265,7 +313,8 @@ const AppContent: React.FC = () => {
       case 'commissions':
         return (
           <RoleRouteGuard
-            allowedCompanyRoles={['company_admin']}
+            allowedCompanyRoles={['company_admin', 'department_head', 'employee']}
+            requiredModule="financials"
             moduleName="Commission & Payout Ledger"
           >
             <CommissionCalculatorView />
@@ -275,6 +324,7 @@ const AppContent: React.FC = () => {
         return (
           <RoleRouteGuard
             allowedCompanyRoles={['company_admin', 'department_head', 'employee']}
+            requiredModule="chat"
             moduleName="Department Chat & Status Updates"
           >
             <TeamChatView />
@@ -307,12 +357,16 @@ const AppContent: React.FC = () => {
               if (typeof window !== 'undefined') {
                 window.history.pushState({}, '', '/');
               }
-              setActiveTab(companyRole === 'company_admin' ? 'outreach_suite' : 'departmental');
+              setActiveTab(companyRole === 'company_admin' ? 'overview' : 'departmental');
             }}
           />
         );
       default:
-        return companyRole === 'company_admin' ? <ProjectsPipeline /> : <DepartmentalTrackingView />;
+        return companyRole === 'company_admin' ? (
+          <CompanyOverviewView />
+        ) : (
+          <DepartmentalTrackingView mode="operations_tasks" />
+        );
     }
   };
 
@@ -326,8 +380,6 @@ const AppContent: React.FC = () => {
       <div className={`${sidebarCollapsed ? 'lg:pl-16' : 'lg:pl-60'} flex flex-col flex-1 min-h-screen w-full transition-all duration-200 ease-in-out`}>
         <TopHeader onOpenMobileSidebar={() => setMobileSidebarOpen(true)} />
 
-        <ExecutiveOperationsRibbon />
-
         <main className="px-4 sm:px-6 lg:px-8 py-6 flex-1 w-full animate-fadeIn max-w-[1440px] mx-auto">
           {renderActiveView()}
         </main>
@@ -340,15 +392,9 @@ const AppContent: React.FC = () => {
               <span>{currentTenant.name}</span>
             </div>
 
-            {companyRole === 'company_admin' && (
-              <div className="flex items-center gap-3 text-[11px] font-mono tabular-nums text-slate-600 dark:text-slate-400">
-                <span className="text-emerald-700 dark:text-emerald-400 font-semibold">
-                  SOP Gate {automatedTestsPassedCount}/17
-                </span>
-                <span>&bull;</span>
-                <span>Multi-Tenant Isolation</span>
-              </div>
-            )}
+            <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+              Multi-Tenant Workspace
+            </span>
           </div>
         </footer>
       </div>
@@ -370,10 +416,12 @@ const AppContent: React.FC = () => {
       <AuthModal />
       <DiscordExportModal />
 
-      <TenantOnboardingModal
-        isOpen={isOnboardingModalOpen}
-        onClose={() => setIsOnboardingModalOpen(false)}
-      />
+      {(companyRole === 'company_admin' || tenants.length === 0) && (
+        <TenantOnboardingModal
+          isOpen={isOnboardingModalOpen}
+          onClose={() => setIsOnboardingModalOpen(false)}
+        />
+      )}
       <ActivityFeedDrawer
         isOpen={isActivityFeedOpen}
         onClose={() => setIsActivityFeedOpen(false)}

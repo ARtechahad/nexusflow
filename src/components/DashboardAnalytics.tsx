@@ -23,9 +23,24 @@ import {
   Timer
 } from 'lucide-react';
 import { AnalyticsFilterState, HeatmapCell } from '../types';
+import { hasModuleAccess } from '../utils/departmentAccess';
 
 export const DashboardAnalytics: React.FC = () => {
-  const { projects, t, formatMoney, scaleMode, setScaleMode, currency, setActiveTab, currentTenant } = useApp();
+  const {
+    projects,
+    t,
+    formatMoney,
+    scaleMode,
+    setScaleMode,
+    setActiveTab,
+    currentTenant,
+    companyRole,
+    departments,
+    selectedDepartmentId
+  } = useApp();
+  const activeDept = departments.find((d) => d.id === selectedDepartmentId) || departments[0] || null;
+  const isCompanyOwner = companyRole === 'company_admin';
+  const canAccessInbox = hasModuleAccess(companyRole, 'client_inbox', activeDept, departments);
 
   const [filters, setFilters] = useState<AnalyticsFilterState>({
     dateRange: 'all',
@@ -69,18 +84,29 @@ export const DashboardAnalytics: React.FC = () => {
     fetchAdvancedAnalytics();
   }, [filters, currentTenant?.id]);
 
-  // Client-side computations from live projects state
+  // Client-side computations from live projects state, falling back to server /api/analytics/advanced KPIs
+  // for non-owner department members who have 'financials' enabled without direct deal-pipeline rows.
   const safeProjects = Array.isArray(projects) ? projects : [];
-  const totalPipeline = safeProjects.reduce((acc, p) => acc + (p.finalPrice || 0), 0);
-  const closedRevenue = safeProjects
+  const apiKpis = analyticsData?.kpis;
+  const rawPipeline = safeProjects.reduce((acc, p) => acc + (p.finalPrice || 0), 0);
+  const totalPipeline = safeProjects.length > 0 ? rawPipeline : (apiKpis?.totalPipeline ?? 0);
+  const rawClosedRevenue = safeProjects
     .filter(p => p.domainTransferred || p.status === 'completed')
     .reduce((acc, p) => acc + (p.finalPrice || 0), 0);
+  const closedRevenue = safeProjects.length > 0 ? rawClosedRevenue : (apiKpis?.closedRevenue ?? 0);
   const advanceCollected = safeProjects.reduce((acc, p) => acc + (p.advancePaid ? (p.advanceAmount || 0) : 0), 0);
   const balanceCollected = safeProjects.reduce((acc, p) => acc + (p.balancePaid ? (p.balanceAmount || 0) : 0), 0);
-  const totalCollectedCash = advanceCollected + balanceCollected;
-  const totalCommissions = safeProjects.reduce((acc, p) => acc + (p.commissionAmount || 0), 0);
-  const avgDealSize = safeProjects.length ? Math.round(totalPipeline / safeProjects.length) : 0;
+  const totalCollectedCash =
+    safeProjects.length > 0 ? advanceCollected + balanceCollected : (apiKpis?.totalCollected ?? 0);
+  const rawCommissions = safeProjects.reduce((acc, p) => acc + (p.commissionAmount || 0), 0);
+  const totalCommissions = rawCommissions > 0 ? rawCommissions : (apiKpis?.totalCommission ?? 0);
+  const avgDealSize =
+    safeProjects.length > 0
+      ? Math.round(totalPipeline / safeProjects.length)
+      : (apiKpis?.avgDealSize ?? 0);
   const activeStaging = safeProjects.filter(p => p.status === 'staging_dev' || p.status === 'client_review').length;
+  const totalDeals = safeProjects.length;
+  const completedDeals = safeProjects.filter(p => p.domainTransferred || p.status === 'completed').length;
 
   // Lead score tiers breakdown
   const leadScoreBreakdown = {
@@ -165,81 +191,91 @@ export const DashboardAnalytics: React.FC = () => {
 
       {/* Enterprise Agency Scale & SLA Compliance Command Bar */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-        {/* Scale Mode Switcher */}
-        <div className="md:col-span-8 p-4 rounded-2xl bg-indigo-950 text-white border border-indigo-900 shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-xs font-bold uppercase tracking-wider text-indigo-300">
-                Agency Scale Mode
-              </span>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-500/30 text-indigo-200 border border-indigo-400/30">
-                {scaleMode.toUpperCase()}
-              </span>
+        {/* Scale Mode Switcher (Company Owner only) */}
+        {isCompanyOwner && (
+          <div className="md:col-span-8 p-4 rounded-2xl bg-indigo-950 text-white border border-indigo-900 shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="text-xs font-bold uppercase tracking-wider text-indigo-300">
+                  Agency Scale Mode
+                </span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-500/30 text-indigo-200 border border-indigo-400/30">
+                  {scaleMode.toUpperCase()}
+                </span>
+              </div>
+              <p className="text-xs text-indigo-200/80">
+                Toggle between datasets to simulate realistic pipeline volumes for enterprise agencies vs. boutique sprints.
+              </p>
             </div>
-            <p className="text-xs text-indigo-200/80">
-              Toggle between datasets to simulate realistic pipeline volumes for enterprise agencies vs. boutique sprints.
-            </p>
-          </div>
 
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              onClick={() => setScaleMode('enterprise')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                scaleMode === 'enterprise'
-                  ? 'bg-white text-indigo-950 shadow-sm'
-                  : 'bg-indigo-900/60 text-indigo-200 hover:bg-indigo-800'
-              }`}
-            >
-              Enterprise ($178k+)
-            </button>
-            <button
-              onClick={() => setScaleMode('boutique')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                scaleMode === 'boutique'
-                  ? 'bg-white text-indigo-950 shadow-sm'
-                  : 'bg-indigo-900/60 text-indigo-200 hover:bg-indigo-800'
-              }`}
-            >
-              Boutique ($24k)
-            </button>
-            <button
-              onClick={() => setScaleMode('sandbox')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                scaleMode === 'sandbox'
-                  ? 'bg-white text-indigo-950 shadow-sm'
-                  : 'bg-indigo-900/60 text-indigo-200 hover:bg-indigo-800'
-              }`}
-            >
-              Sandbox ($3.1k)
-            </button>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => setScaleMode('enterprise')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                  scaleMode === 'enterprise'
+                    ? 'bg-white text-indigo-950 shadow-sm'
+                    : 'bg-indigo-900/60 text-indigo-200 hover:bg-indigo-800'
+                }`}
+              >
+                Enterprise ($178k+)
+              </button>
+              <button
+                onClick={() => setScaleMode('boutique')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                  scaleMode === 'boutique'
+                    ? 'bg-white text-indigo-950 shadow-sm'
+                    : 'bg-indigo-900/60 text-indigo-200 hover:bg-indigo-800'
+                }`}
+              >
+                Boutique ($24k)
+              </button>
+              <button
+                onClick={() => setScaleMode('sandbox')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                  scaleMode === 'sandbox'
+                    ? 'bg-white text-indigo-950 shadow-sm'
+                    : 'bg-indigo-900/60 text-indigo-200 hover:bg-indigo-800'
+                }`}
+              >
+                Sandbox ($3.1k)
+              </button>
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* 15-Minute SLA Compliance Card */}
-        <div className="md:col-span-4 p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xs flex flex-col justify-between">
+        {/* Real Lead Activity Summary Card */}
+        <div
+          className={`${
+            isCompanyOwner ? 'md:col-span-4' : 'md:col-span-12'
+          } p-4 rounded-xl bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 shadow-2xs flex flex-col justify-between`}
+        >
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
               <Timer className="w-3.5 h-3.5 text-indigo-500" />
-              <span>15-Min Lead SLA Compliance</span>
+              <span>Pipeline Conversion</span>
             </span>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400">
-              94.8% SLA
+            <span className="text-[11px] font-mono font-bold text-emerald-700 dark:text-emerald-400 tabular-nums">
+              {totalDeals > 0 ? `${Math.round((completedDeals / totalDeals) * 100)}% Completed` : 'No active deals'}
             </span>
           </div>
           <div className="flex items-baseline justify-between mt-2">
             <div>
-              <div className="text-2xl font-black text-slate-900 dark:text-white font-mono">
-                6.4 min
+              <div className="text-2xl font-bold text-slate-900 dark:text-white font-mono tabular-nums">
+                {totalDeals}
               </div>
-              <span className="text-[11px] text-slate-400">Average First Response Time</span>
+              <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                Total Tracked Deals
+              </span>
             </div>
-            <button
-              onClick={() => setActiveTab('inbox')}
-              className="text-xs text-indigo-600 dark:text-indigo-400 font-bold hover:underline"
-            >
-              View Inbound SLA &rarr;
-            </button>
+            {canAccessInbox && (
+              <button
+                onClick={() => setActiveTab('inbox')}
+                className="text-xs text-indigo-600 dark:text-indigo-400 font-semibold hover:underline cursor-pointer"
+              >
+                Open Inbox &rarr;
+              </button>
+            )}
           </div>
         </div>
       </div>

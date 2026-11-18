@@ -16,13 +16,21 @@ import {
   Mail,
   ListTodo,
   AlertCircle,
-  MessageSquare
+  MessageSquare,
+  SlidersHorizontal
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { buildAuthHeaders } from '../lib/api';
 import {
+  DEPARTMENT_MODULE_DEFINITIONS,
+  DEFAULT_DEPARTMENT_MODULES,
+  getDepartmentAllowedModules,
+  hasModuleAccess
+} from '../utils/departmentAccess';
+import {
   Department,
   DepartmentMember,
+  DepartmentModuleKey,
   DepartmentTask,
   CompanyInvite,
   AvailabilityStatus
@@ -49,7 +57,13 @@ const PRIORITY_TEXT_CLASS: Record<DepartmentTask['priority'], string> = {
   urgent: 'text-rose-600 dark:text-rose-400'
 };
 
-export const DepartmentalTrackingView: React.FC = () => {
+interface DepartmentalTrackingViewProps {
+  mode?: 'departments_team' | 'operations_tasks';
+}
+
+export const DepartmentalTrackingView: React.FC<DepartmentalTrackingViewProps> = ({
+  mode = 'operations_tasks'
+}) => {
   const {
     currentUser,
     currentTenant,
@@ -59,6 +73,7 @@ export const DepartmentalTrackingView: React.FC = () => {
     setSelectedDepartmentId,
     refreshDepartments,
     createDepartment,
+    updateDepartmentPermissions,
     deleteDepartment,
     updateMyAvailability,
     setActiveTab,
@@ -71,6 +86,8 @@ export const DepartmentalTrackingView: React.FC = () => {
 
   const activeDept: Department | null =
     departments.find((d) => d.id === selectedDepartmentId) || departments[0] || null;
+
+  const chatEnabled = hasModuleAccess(companyRole, 'chat', activeDept, departments);
 
   const [members, setMembers] = useState<DepartmentMember[]>([]);
   const [tasks, setTasks] = useState<DepartmentTask[]>([]);
@@ -90,7 +107,15 @@ export const DepartmentalTrackingView: React.FC = () => {
   const [isCreateDeptOpen, setIsCreateDeptOpen] = useState(false);
   const [newDeptName, setNewDeptName] = useState('');
   const [newDeptDesc, setNewDeptDesc] = useState('');
+  const [newDeptModules, setNewDeptModules] = useState<DepartmentModuleKey[]>(DEFAULT_DEPARTMENT_MODULES);
   const [creatingDept, setCreatingDept] = useState(false);
+
+  // Edit Department Permissions modal state (Company Owner only)
+  const [editingPermsDept, setEditingPermsDept] = useState<Department | null>(null);
+  const [editDeptName, setEditDeptName] = useState('');
+  const [editDeptDesc, setEditDeptDesc] = useState('');
+  const [editDeptModules, setEditDeptModules] = useState<DepartmentModuleKey[]>(DEFAULT_DEPARTMENT_MODULES);
+  const [savingDeptPerms, setSavingDeptPerms] = useState(false);
 
   // Confirm Department delete
   const [confirmDeleteDeptId, setConfirmDeleteDeptId] = useState<string | null>(null);
@@ -236,19 +261,52 @@ export const DepartmentalTrackingView: React.FC = () => {
     };
   }, [currentTenant?.id, activeDept?.id, loadDepartmentWorkspace]);
 
+  const toggleModuleSelection = (
+    list: DepartmentModuleKey[],
+    key: DepartmentModuleKey
+  ): DepartmentModuleKey[] => {
+    return list.includes(key) ? list.filter((k) => k !== key) : [...list, key];
+  };
+
   const handleCreateDepartment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newDeptName.trim()) return;
     setCreatingDept(true);
-    const res = await createDepartment(newDeptName.trim(), newDeptDesc.trim());
+    const res = await createDepartment(newDeptName.trim(), newDeptDesc.trim(), newDeptModules);
     setCreatingDept(false);
     if (res.success) {
       setNewDeptName('');
       setNewDeptDesc('');
+      setNewDeptModules(DEFAULT_DEPARTMENT_MODULES);
       setIsCreateDeptOpen(false);
       await refreshDepartments();
     } else {
       showToast(res.message || 'Could not create department.', 'error');
+    }
+  };
+
+  const openEditPermissionsModal = (dept: Department) => {
+    setEditingPermsDept(dept);
+    setEditDeptName(dept.name || '');
+    setEditDeptDesc(dept.description || '');
+    setEditDeptModules(getDepartmentAllowedModules(dept));
+  };
+
+  const handleSaveDepartmentPermissions = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingPermsDept || !editDeptName.trim()) return;
+    setSavingDeptPerms(true);
+    const res = await updateDepartmentPermissions(editingPermsDept.id, {
+      name: editDeptName.trim(),
+      description: editDeptDesc.trim(),
+      allowed_modules: editDeptModules
+    });
+    setSavingDeptPerms(false);
+    if (res.success) {
+      setEditingPermsDept(null);
+      await refreshDepartments();
+    } else {
+      showToast(res.message || 'Could not save department permissions.', 'error');
     }
   };
 
@@ -464,8 +522,12 @@ export const DepartmentalTrackingView: React.FC = () => {
     }
   };
 
+  const scopedTasks = canManageTeam
+    ? tasks
+    : tasks.filter((t) => t.assigneeUserId === currentUser?.id);
+
   const filteredTasks =
-    taskFilter === 'all' ? tasks : tasks.filter((t) => t.status === taskFilter);
+    taskFilter === 'all' ? scopedTasks : scopedTasks.filter((t) => t.status === taskFilter);
 
   const onlineMembersCount = members.filter((m) => m.availabilityStatus !== 'Offline').length;
 
@@ -490,23 +552,58 @@ export const DepartmentalTrackingView: React.FC = () => {
               </span>
             </div>
             <h1 className="text-xl sm:text-2xl font-bold text-slate-950 dark:text-white tracking-tight">
-              {activeDept ? `${activeDept.name} Operations` : 'Department Operations'}
+              {mode === 'departments_team'
+                ? 'Departments & Team'
+                : activeDept
+                ? `${activeDept.name} Operations`
+                : 'Department Operations'}
             </h1>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              {activeDept?.description ||
-                'Manage department members, live availability status, task completion metrics, and team workflow.'}
+              {mode === 'departments_team'
+                ? 'Create departments, configure per-department module permissions (including Email Outreach), and invite heads or team members.'
+                : activeDept?.description ||
+                  'Manage department members, live availability status, task completion metrics, and team workflow.'}
             </p>
+            {activeDept && mode !== 'departments_team' && (
+              <p className="text-[11px] font-mono text-slate-500 dark:text-slate-400 pt-0.5">
+                Enabled Modules:{' '}
+                <span className="text-slate-700 dark:text-slate-300 font-semibold">
+                  {DEPARTMENT_MODULE_DEFINITIONS
+                    .filter((m) => getDepartmentAllowedModules(activeDept).includes(m.key))
+                    .map((m) => m.label)
+                    .join(' · ') || 'None'}
+                </span>
+              </p>
+            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-            <button
-              type="button"
-              onClick={() => setActiveTab('chat')}
-              className="btn-tactile-secondary inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer whitespace-nowrap"
-            >
-              <MessageSquare className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-              <span>Department Chat</span>
-            </button>
+            {isAdmin && mode === 'departments_team' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setNewDeptName('');
+                  setNewDeptDesc('');
+                  setNewDeptModules(DEFAULT_DEPARTMENT_MODULES);
+                  setIsCreateDeptOpen(true);
+                }}
+                className="btn-tactile-primary inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold cursor-pointer whitespace-nowrap"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>New Department</span>
+              </button>
+            )}
+
+            {chatEnabled && mode !== 'departments_team' && (
+              <button
+                type="button"
+                onClick={() => setActiveTab('chat')}
+                className="btn-tactile-secondary inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer whitespace-nowrap"
+              >
+                <MessageSquare className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                <span>Department Chat</span>
+              </button>
+            )}
 
             {canManageTeam && activeDept && (
               <button
@@ -519,7 +616,7 @@ export const DepartmentalTrackingView: React.FC = () => {
               </button>
             )}
 
-            {activeDept && (
+            {canManageTeam && activeDept && mode !== 'departments_team' && (
               <button
                 type="button"
                 onClick={() => {
@@ -535,7 +632,7 @@ export const DepartmentalTrackingView: React.FC = () => {
           </div>
         </div>
 
-        {/* Department Switcher Tabs + Admin Create/Delete Department Controls */}
+        {/* Department Switcher Tabs + Admin Create/Edit/Delete Department Controls */}
         <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2 overflow-x-auto pb-1">
             {departments.map((dept) => {
@@ -562,7 +659,13 @@ export const DepartmentalTrackingView: React.FC = () => {
             {isAdmin && (
               <button
                 type="button"
-                onClick={() => setIsCreateDeptOpen(true)}
+                id="btn-new-department"
+                onClick={() => {
+                  setNewDeptName('');
+                  setNewDeptDesc('');
+                  setNewDeptModules(DEFAULT_DEPARTMENT_MODULES);
+                  setIsCreateDeptOpen(true);
+                }}
                 className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-dashed border-slate-300 dark:border-slate-700 text-indigo-600 dark:text-indigo-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition cursor-pointer whitespace-nowrap inline-flex items-center gap-1"
               >
                 <Plus className="w-3.5 h-3.5" />
@@ -572,6 +675,18 @@ export const DepartmentalTrackingView: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2">
+            {isAdmin && activeDept && (
+              <button
+                type="button"
+                id="btn-edit-department-permissions"
+                onClick={() => openEditPermissionsModal(activeDept)}
+                className="btn-tactile-secondary inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer whitespace-nowrap"
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                <span>Edit Permissions</span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={loadDepartmentWorkspace}
@@ -611,7 +726,7 @@ export const DepartmentalTrackingView: React.FC = () => {
           </div>
           <div>
             <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block">
-              Department Tasks
+              {canManageTeam ? 'Department Tasks' : 'My Assigned Tasks'}
             </span>
             <span className="text-xl font-bold text-slate-950 dark:text-white font-mono tabular-nums mt-0.5 block">
               {taskSummary.total}
@@ -635,6 +750,98 @@ export const DepartmentalTrackingView: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Company Departments Directory Grid (Departments & Team mode) */}
+      {isAdmin && mode === 'departments_team' && departments.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {departments.map((dept) => {
+            const isSelected = activeDept?.id === dept.id;
+            const enabledModules = getDepartmentAllowedModules(dept);
+            const moduleNames = DEPARTMENT_MODULE_DEFINITIONS
+              .filter((m) => enabledModules.includes(m.key))
+              .map((m) => m.label);
+
+            return (
+              <div
+                key={dept.id}
+                onClick={() => setSelectedDepartmentId(dept.id)}
+                className={`rounded-xl border p-5 bg-[#FFFFFF] dark:bg-[#111827] transition cursor-pointer flex flex-col justify-between gap-4 ${
+                  isSelected
+                    ? 'border-indigo-500 ring-1 ring-indigo-500/20'
+                    : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
+                }`}
+              >
+                <div className="space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <h3 className="text-sm font-bold text-slate-950 dark:text-white truncate">
+                        {dept.name}
+                      </h3>
+                      <p className="text-[11px] font-mono tabular-nums text-slate-500 dark:text-slate-400">
+                        {dept.memberCount ?? 0} Members &middot; {dept.tasksCompleted ?? 0}/{dept.tasksTotal ?? 0} Tasks
+                      </p>
+                    </div>
+                    {isSelected && (
+                      <span className="text-[10px] font-mono font-semibold text-indigo-600 dark:text-indigo-400 shrink-0">
+                        SELECTED
+                      </span>
+                    )}
+                  </div>
+
+                  {dept.description && (
+                    <p className="text-xs text-slate-600 dark:text-slate-400 line-clamp-2">
+                      {dept.description}
+                    </p>
+                  )}
+
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed pt-1">
+                    <span className="font-semibold text-slate-700 dark:text-slate-300">Modules: </span>
+                    {moduleNames.length > 0 ? moduleNames.join(' · ') : 'None enabled'}
+                  </p>
+                </div>
+
+                <div
+                  className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => openEditPermissionsModal(dept)}
+                      className="btn-tactile-secondary px-2.5 py-1.5 rounded-lg text-[11px] font-semibold inline-flex items-center gap-1 cursor-pointer"
+                    >
+                      <SlidersHorizontal className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
+                      <span>Permissions</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedDepartmentId(dept.id);
+                        setActiveTab('departmental');
+                      }}
+                      className="btn-tactile-secondary px-2.5 py-1.5 rounded-lg text-[11px] font-semibold cursor-pointer"
+                    >
+                      Tasks
+                    </button>
+                  </div>
+
+                  {departments.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDeleteDeptId(dept.id)}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 cursor-pointer"
+                      title={`Delete ${dept.name}`}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Empty state if admin deleted all or none exist */}
       {!activeDept ? (
@@ -660,9 +867,9 @@ export const DepartmentalTrackingView: React.FC = () => {
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* LEFT: Live Member Roster & Availability (5 cols) */}
-          <div className="lg:col-span-5 space-y-4">
+        <div className={`grid grid-cols-1 ${mode === 'departments_team' ? 'lg:grid-cols-1' : 'lg:grid-cols-12'} gap-6`}>
+          {/* LEFT: Live Member Roster & Availability */}
+          <div className={`${mode === 'departments_team' ? 'space-y-4' : 'lg:col-span-5 space-y-4'}`}>
             <div className="bg-[#FFFFFF] dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-2xs space-y-4">
               <div className="flex items-center justify-between">
                 <div>
@@ -875,17 +1082,20 @@ export const DepartmentalTrackingView: React.FC = () => {
             )}
           </div>
 
-          {/* RIGHT: Department Work & Progress Board (7 cols) */}
+          {/* RIGHT: Department Work & Progress Board (7 cols - Operations & Tasks view) */}
+          {mode !== 'departments_team' && (
           <div className="lg:col-span-7">
             <div className="bg-[#FFFFFF] dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-2xs space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <h2 className="text-sm font-bold text-slate-950 dark:text-white flex items-center gap-2">
                     <ListTodo className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                    <span>Department Work &amp; Task Progress</span>
+                    <span>{canManageTeam ? 'Department Work & Task Progress' : 'My Assigned Tasks'}</span>
                   </h2>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                    Scoped strictly to {activeDept.name}
+                    {canManageTeam
+                      ? `Scoped strictly to ${activeDept.name}`
+                      : `Tasks assigned to you in ${activeDept.name}`}
                   </p>
                 </div>
 
@@ -901,7 +1111,7 @@ export const DepartmentalTrackingView: React.FC = () => {
                           : 'bg-[#F8FAFC] dark:bg-[#090D16] text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800'
                       }`}
                     >
-                      {st === 'all' ? `All (${tasks.length})` : TASK_STATUS_LABEL[st]}
+                      {st === 'all' ? `All (${scopedTasks.length})` : TASK_STATUS_LABEL[st]}
                     </button>
                   ))}
                 </div>
@@ -914,16 +1124,15 @@ export const DepartmentalTrackingView: React.FC = () => {
                     No tasks in this view
                   </p>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                    Click &ldquo;Assign Task&rdquo; to create work items for {activeDept.name}.
+                    {canManageTeam
+                      ? `Click “Assign Task” to create work items for ${activeDept.name}.`
+                      : `No tasks have been assigned to you in ${activeDept.name} yet.`}
                   </p>
                 </div>
               ) : (
                 <div className="space-y-2.5">
                   {filteredTasks.map((task) => {
-                    const canDelete =
-                      canManageTeam ||
-                      task.createdByUserId === currentUser?.id ||
-                      task.assigneeUserId === currentUser?.id;
+                    const canDelete = canManageTeam;
 
                     return (
                       <div
@@ -990,13 +1199,14 @@ export const DepartmentalTrackingView: React.FC = () => {
               )}
             </div>
           </div>
+          )}
         </div>
       )}
 
       {/* Modal: Create Department (Company Owner) */}
-      {isCreateDeptOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
-          <div className="w-full max-w-md bg-[#FFFFFF] dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl p-6 space-y-4">
+      {isAdmin && isCreateDeptOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs overflow-y-auto">
+          <div className="w-full max-w-lg bg-[#FFFFFF] dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl p-6 space-y-4 my-auto">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-bold text-slate-950 dark:text-white">
                 Create New Department
@@ -1009,7 +1219,7 @@ export const DepartmentalTrackingView: React.FC = () => {
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <form onSubmit={handleCreateDepartment} className="space-y-3">
+            <form onSubmit={handleCreateDepartment} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                   Department Name
@@ -1019,7 +1229,7 @@ export const DepartmentalTrackingView: React.FC = () => {
                   required
                   value={newDeptName}
                   onChange={(e) => setNewDeptName(e.target.value)}
-                  placeholder="e.g. Engineering, Design, Growth"
+                  placeholder="e.g. Engineering, Sales, Design"
                   className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-[#F8FAFC] dark:bg-[#090D16] text-xs text-slate-950 dark:text-white"
                 />
               </div>
@@ -1035,6 +1245,48 @@ export const DepartmentalTrackingView: React.FC = () => {
                   className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-[#F8FAFC] dark:bg-[#090D16] text-xs text-slate-950 dark:text-white"
                 />
               </div>
+
+              <div className="space-y-2 pt-1">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Module Access Permissions
+                  </label>
+                  <span className="text-[11px] font-mono text-slate-400">
+                    {newDeptModules.length}/{DEPARTMENT_MODULE_DEFINITIONS.length} enabled
+                  </span>
+                </div>
+                <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                  {DEPARTMENT_MODULE_DEFINITIONS.map((mod) => {
+                    const checked = newDeptModules.includes(mod.key);
+                    return (
+                      <label
+                        key={mod.key}
+                        className={`flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition ${
+                          checked
+                            ? 'border-indigo-500/60 bg-indigo-50/40 dark:bg-indigo-950/20'
+                            : 'border-slate-200 dark:border-slate-800 bg-[#F8FAFC] dark:bg-[#090D16]'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => setNewDeptModules((prev) => toggleModuleSelection(prev, mod.key))}
+                          className="mt-0.5 w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                        />
+                        <div className="min-w-0">
+                          <span className="block text-xs font-semibold text-slate-900 dark:text-white">
+                            {mod.label}
+                          </span>
+                          <span className="block text-[11px] text-slate-500 dark:text-slate-400">
+                            {mod.description}
+                          </span>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
               <div className="flex justify-end gap-2 pt-2">
                 <button
                   type="button"
@@ -1056,8 +1308,119 @@ export const DepartmentalTrackingView: React.FC = () => {
         </div>
       )}
 
+      {/* Modal: Edit Department Module Permissions (Company Owner) */}
+      {isAdmin && editingPermsDept && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs overflow-y-auto">
+          <div className="w-full max-w-lg bg-[#FFFFFF] dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl p-6 space-y-4 my-auto">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-bold text-slate-950 dark:text-white">
+                  Edit Department Permissions
+                </h3>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Control which modules Department Heads and Employees in this department can access.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingPermsDept(null)}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveDepartmentPermissions} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Department Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editDeptName}
+                  onChange={(e) => setEditDeptName(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-[#F8FAFC] dark:bg-[#090D16] text-xs text-slate-950 dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Description
+                </label>
+                <input
+                  type="text"
+                  value={editDeptDesc}
+                  onChange={(e) => setEditDeptDesc(e.target.value)}
+                  placeholder="Scope of work for this department"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-[#F8FAFC] dark:bg-[#090D16] text-xs text-slate-950 dark:text-white"
+                />
+              </div>
+
+              <div className="space-y-2 pt-1">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Enabled Modules for {editDeptName || editingPermsDept.name}
+                  </label>
+                  <span className="text-[11px] font-mono text-slate-400">
+                    {editDeptModules.length}/{DEPARTMENT_MODULE_DEFINITIONS.length} enabled
+                  </span>
+                </div>
+                <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                  {DEPARTMENT_MODULE_DEFINITIONS.map((mod) => {
+                    const checked = editDeptModules.includes(mod.key);
+                    return (
+                      <label
+                        key={mod.key}
+                        className={`flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition ${
+                          checked
+                            ? 'border-indigo-500/60 bg-indigo-50/40 dark:bg-indigo-950/20'
+                            : 'border-slate-200 dark:border-slate-800 bg-[#F8FAFC] dark:bg-[#090D16]'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => setEditDeptModules((prev) => toggleModuleSelection(prev, mod.key))}
+                          className="mt-0.5 w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                        />
+                        <div className="min-w-0">
+                          <span className="block text-xs font-semibold text-slate-900 dark:text-white">
+                            {mod.label}
+                          </span>
+                          <span className="block text-[11px] text-slate-500 dark:text-slate-400">
+                            {mod.description}
+                          </span>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingPermsDept(null)}
+                  className="btn-tactile-secondary px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingDeptPerms || !editDeptName.trim()}
+                  className="btn-tactile-primary px-4 py-1.5 rounded-lg text-xs font-semibold cursor-pointer"
+                >
+                  {savingDeptPerms ? 'Saving...' : 'Save Permissions'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Modal: Confirm Delete Department */}
-      {confirmDeleteDeptId && (
+      {isAdmin && confirmDeleteDeptId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
           <div className="w-full max-w-md bg-[#FFFFFF] dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl p-6 space-y-4">
             <div className="flex items-start gap-3">
@@ -1093,7 +1456,7 @@ export const DepartmentalTrackingView: React.FC = () => {
       )}
 
       {/* Modal: Invite Team Member */}
-      {isInviteModalOpen && (
+      {canManageTeam && isInviteModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
           <div className="w-full max-w-md bg-[#FFFFFF] dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl p-6 space-y-4">
             <div className="flex items-center justify-between">
@@ -1223,7 +1586,7 @@ export const DepartmentalTrackingView: React.FC = () => {
       )}
 
       {/* Modal: Create Department Task */}
-      {isTaskModalOpen && (
+      {canManageTeam && isTaskModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
           <div className="w-full max-w-md bg-[#FFFFFF] dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl p-6 space-y-4">
             <div className="flex items-center justify-between">

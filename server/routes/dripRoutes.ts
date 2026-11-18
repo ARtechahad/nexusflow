@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { readDB, writeDB } from '../db';
 import { resendService } from '../services/resendService';
-import { AuthenticatedRequest, requireCompanyRole } from '../middlewares/auth';
+import { AuthenticatedRequest, requireDepartmentModule } from '../middlewares/auth';
 
 export const dripRouter = Router();
 export const nudgeRouter = Router();
@@ -14,7 +14,7 @@ function isSameCompany(record: any, companyId: string): boolean {
 // 1. Smart Follow-Up Scheduler & Drip Campaign Engine (/api/drip)
 // ==========================================
 
-dripRouter.get('/campaigns', requireCompanyRole(['company_admin', 'department_head']), (req: AuthenticatedRequest, res: Response) => {
+dripRouter.get('/campaigns', requireDepartmentModule('email_hub'), (req: AuthenticatedRequest, res: Response) => {
   const db = readDB();
   const companyId = req.companyId!;
   const pendingAdvanceProjects = (db.projects as any[]).filter(
@@ -58,12 +58,12 @@ dripRouter.get('/campaigns', requireCompanyRole(['company_admin', 'department_he
   });
 });
 
-dripRouter.get('/templates', requireCompanyRole(['company_admin', 'department_head']), (_req: AuthenticatedRequest, res: Response) => {
+dripRouter.get('/templates', requireDepartmentModule('email_hub'), (_req: AuthenticatedRequest, res: Response) => {
   const db = readDB();
   res.json({ success: true, templates: db.dripTemplates || [] });
 });
 
-dripRouter.post('/trigger', requireCompanyRole(['company_admin', 'department_head']), (req: AuthenticatedRequest, res: Response) => {
+dripRouter.post('/trigger', requireDepartmentModule('email_hub'), (req: AuthenticatedRequest, res: Response) => {
   const db = readDB();
   const companyId = req.companyId!;
   const pendingProjects = (db.projects as any[]).filter(
@@ -175,7 +175,7 @@ dripRouter.post('/trigger', requireCompanyRole(['company_admin', 'department_hea
   });
 });
 
-dripRouter.post('/send-now/:projectId', requireCompanyRole(['company_admin', 'department_head']), (req: AuthenticatedRequest, res: Response) => {
+dripRouter.post('/send-now/:projectId', requireDepartmentModule('email_hub'), (req: AuthenticatedRequest, res: Response) => {
   const db = readDB();
   const p: any = (db.projects || []).find((proj: any) => proj.id === req.params.projectId && isSameCompany(proj, req.companyId!));
 
@@ -250,11 +250,12 @@ dripRouter.post('/send-now/:projectId', requireCompanyRole(['company_admin', 'de
   if (!Array.isArray(db.chatMessages)) db.chatMessages = [];
   db.chatMessages.push({
     id: `msg-drip-manual-${Date.now()}`,
-    senderId: 'user-sales-1',
-    senderName: 'Tariq Mehmood',
-    senderRole: 'sales',
-    channel: 'sales-leads',
-    content: `📬 **Manual Drip Follow-up Dispatched (Stage ${currentStage})** to ${p.clientName} for $${advanceAmount} advance payment.\nSubject: "${formattedSubject}"`,
+    companyId: req.companyId,
+    senderId: req.user?.id || 'system',
+    senderName: req.user?.name || 'Operations Desk',
+    senderRole: req.companyRole || 'department_head',
+    channel: 'general',
+    content: `Manual Drip Follow-up Dispatched (Stage ${currentStage}) to ${p.clientName} for $${advanceAmount} advance payment.\nSubject: "${formattedSubject}"`,
     timestamp: new Date().toISOString(),
     reactions: { '🔥': 0, '👏': 0 }
   });
@@ -269,7 +270,7 @@ dripRouter.post('/send-now/:projectId', requireCompanyRole(['company_admin', 'de
   });
 });
 
-dripRouter.put('/toggle/:projectId', requireCompanyRole(['company_admin', 'department_head']), (req: AuthenticatedRequest, res: Response) => {
+dripRouter.put('/toggle/:projectId', requireDepartmentModule('email_hub'), (req: AuthenticatedRequest, res: Response) => {
   const db = readDB();
   const p: any = (db.projects || []).find((proj: any) => proj.id === req.params.projectId && isSameCompany(proj, req.companyId!));
 
@@ -304,12 +305,12 @@ dripRouter.put('/toggle/:projectId', requireCompanyRole(['company_admin', 'depar
 // 2. Automated Nudges Engine (/api/nudges)
 // ==========================================
 
-nudgeRouter.get('/templates', requireCompanyRole(['company_admin', 'department_head']), (_req: AuthenticatedRequest, res: Response) => {
+nudgeRouter.get('/templates', requireDepartmentModule('email_hub'), (_req: AuthenticatedRequest, res: Response) => {
   const db = readDB();
   res.json({ success: true, templates: db.nudgeTemplates || [] });
 });
 
-nudgeRouter.get('/pending', requireCompanyRole(['company_admin', 'department_head']), (req: AuthenticatedRequest, res: Response) => {
+nudgeRouter.get('/pending', requireDepartmentModule('email_hub'), (req: AuthenticatedRequest, res: Response) => {
   const db = readDB();
   const companyId = req.companyId!;
   const pendingNudges: any[] = [];
@@ -367,7 +368,7 @@ nudgeRouter.get('/pending', requireCompanyRole(['company_admin', 'department_hea
   res.json({ success: true, count: pendingNudges.length, pendingNudges });
 });
 
-nudgeRouter.post('/dispatch', requireCompanyRole(['company_admin', 'department_head']), (req: AuthenticatedRequest, res: Response) => {
+nudgeRouter.post('/dispatch', requireDepartmentModule('email_hub'), (req: AuthenticatedRequest, res: Response) => {
   const db = readDB();
   const companyId = req.companyId!;
   const { projectId, triggerType, channel, dispatchedBy } = req.body;
@@ -444,7 +445,7 @@ nudgeRouter.post('/dispatch', requireCompanyRole(['company_admin', 'department_h
   });
 });
 
-nudgeRouter.get('/logs', requireCompanyRole(['company_admin', 'department_head']), (req: AuthenticatedRequest, res: Response) => {
+nudgeRouter.get('/logs', requireDepartmentModule('email_hub'), (req: AuthenticatedRequest, res: Response) => {
   const db = readDB();
   const logs = (db.nudgeLogs || []).filter((l: any) => isSameCompany(l, req.companyId!));
   res.json({ success: true, logs });

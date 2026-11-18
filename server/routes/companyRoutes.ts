@@ -5,11 +5,15 @@ import {
   AuthenticatedRequest,
   AvailabilityStatus,
   CompanyRole,
+  DEFAULT_DEPARTMENT_MODULES,
+  getDepartmentAllowedModules,
   getUserCompaniesSummary,
   hasDepartmentAccess,
+  hasDepartmentModuleAccess,
   requireAuth,
   requireCompanyAccess,
   requireCompanyRole,
+  sanitizeAllowedModules,
   signToken
 } from '../middlewares/auth';
 import { resendService, DEFAULT_EMAIL_FROM } from '../services/resendService';
@@ -40,7 +44,13 @@ function getBaseOrigin(req: Request): string {
   return `${proto}://${host}`;
 }
 
-function ensureDeptAccess(req: AuthenticatedRequest, res: Response, companyId: string, deptId: string): any | null {
+function ensureDeptAccess(
+  req: AuthenticatedRequest,
+  res: Response,
+  companyId: string,
+  deptId: string,
+  requiredModule?: 'operations'
+): any | null {
   const db = getDB();
   const dept = (db.departments || []).find((d: any) => d.id === deptId && d.companyId === companyId);
   if (!dept) {
@@ -54,7 +64,46 @@ function ensureDeptAccess(req: AuthenticatedRequest, res: Response, companyId: s
     });
     return null;
   }
+  if (requiredModule && !hasDepartmentModuleAccess(req, requiredModule, deptId)) {
+    res.status(403).json({
+      success: false,
+      code: 'MODULE_ACCESS_DENIED',
+      module: requiredModule,
+      error: 'Forbidden: The "Department Operations" module is not enabled for your department.'
+    });
+    return null;
+  }
   return dept;
+}
+
+function pushCompanyActivity(
+  db: any,
+  entry: {
+    companyId: string;
+    type: string;
+    title: string;
+    description: string;
+    actorName: string;
+    actorRole: string;
+  }
+) {
+  if (!Array.isArray(db.activityFeed)) db.activityFeed = [];
+  db.activityFeed.unshift({
+    id: `act-${Date.now()}-${crypto.randomBytes(2).toString('hex')}`,
+    tenantId: entry.companyId,
+    companyId: entry.companyId,
+    type: entry.type,
+    title: entry.title,
+    description: entry.description,
+    actorName: entry.actorName,
+    actorRole: entry.actorRole,
+    sourceChannel: 'workspace',
+    timestamp: new Date().toISOString(),
+    isRead: false
+  });
+  if (db.activityFeed.length > 500) {
+    db.activityFeed = db.activityFeed.slice(0, 500);
+  }
 }
 
 // ==========================================
@@ -153,25 +202,44 @@ companyRouter.post('/', requireAuth, (req: AuthenticatedRequest, res: Response) 
         permissions: ['all']
       }
     },
+    settings: {
+      enableEmailOutreach: false,
+      enableClientInbox: false,
+      enableFinancials: false,
+      enableDealsPipeline: false
+    },
     activeMembersCount: 1,
     createdAt: now,
     updatedAt: now
   };
 
-  // Create starter departments (only if requested, or sensible default Operations/General department)
-  const deptNames: string[] = Array.isArray(initialDepartments)
-    ? initialDepartments.map((d: any) => String(d || '').trim()).filter(Boolean)
+  // Create starter departments (defaulting allowed_modules to ['operations', 'chat'])
+  const rawDeptEntries: any[] = Array.isArray(initialDepartments) && initialDepartments.length > 0
+    ? initialDepartments
     : ['Operations', 'Engineering'];
 
-  const createdDepts = deptNames.map((deptName, idx) => ({
-    id: `dept-${slugify(deptName)}-${suffix}-${idx + 1}`,
-    companyId,
-    name: deptName,
-    slug: slugify(deptName),
-    description: `${deptName} department workspace for ${companyName}.`,
-    createdBy: req.user!.id,
-    createdAt: now
-  }));
+  const createdDepts = rawDeptEntries
+    .map((entry: any, idx: number) => {
+      const deptName = typeof entry === 'string' ? entry.trim() : String(entry?.name || '').trim();
+      if (!deptName) return null;
+      const customModules =
+        typeof entry === 'object' && entry !== null
+          ? entry.allowed_modules ?? entry.allowedModules
+          : undefined;
+      return {
+        id: `dept-${slugify(deptName)}-${suffix}-${idx + 1}`,
+        companyId,
+        name: deptName,
+        slug: slugify(deptName),
+        description:
+          (typeof entry === 'object' && entry?.description) ||
+          `${deptName} department workspace for ${companyName}.`,
+        allowed_modules: sanitizeAllowedModules(customModules, DEFAULT_DEPARTMENT_MODULES),
+        createdBy: req.user!.id,
+        createdAt: now
+      };
+    })
+    .filter(Boolean) as any[];
 
   const ownerMembership = {
     id: `mem-${companyId}-${req.user!.id}`,
@@ -263,6 +331,14 @@ companyRouter.put('/:companyId', requireCompanyRole(['company_admin']), (req: Au
     ownerUserId: current.ownerUserId,
     branding: { ...current.branding, ...(updates.branding || {}) },
     businessInfo: { ...current.businessInfo, ...(updates.businessInfo || {}) },
+    settings: {
+      enableEmailOutreach: false,
+      enableClientInbox: false,
+      enableFinancials: false,
+      enableDealsPipeline: false,
+      ...(current.settings || {}),
+      ...(updates.settings || {})
+    },
     integrations: {
       ...current.integrations,
       ...(updates.integrations || {}),
@@ -274,7 +350,145 @@ companyRouter.put('/:companyId', requireCompanyRole(['company_admin']), (req: Au
   };
   db.tenants[idx] = updated;
   saveDB(db);
-  return res.json({ success: true, company: updated, tenant: updated });
+  const summary = getUserCompaniesSummary(req.user!.id, req.user!.email);
+  const enrichedCompany =
+    summary.companies.find((c: any) => c.id === updated.id) || {
+      ...updated,
+      myRole: req.membership?.role,
+      myDepartmentIds: req.membership?.departmentIds || [],
+      myDesignation: req.membership?.designation || ''
+    };
+  return res.json({ success: true, company: enrichedCompany, tenant: enrichedCompany, companies: summary.companies });
+});
+
+companyRouter.get('/:companyId/overview', requireCompanyAccess, (req: AuthenticatedRequest, res: Response) => {
+  const db = getDB();
+  const companyId = req.companyId!;
+  const company = (db.tenants || []).find((t: any) => t.id === companyId);
+  if (!company) {
+    return res.status(404).json({ success: false, message: 'Company not found.' });
+  }
+
+  const allDepts = (db.departments || []).filter((d: any) => d.companyId === companyId);
+  const visibleDepts =
+    req.companyRole === 'company_admin'
+      ? allDepts
+      : allDepts.filter((d: any) => (req.membership?.departmentIds || []).includes(d.id));
+
+  const memberships = (db.companyMemberships || []).filter((m: any) => m.companyId === companyId);
+  const users = Array.isArray(db.users) ? db.users : [];
+  const tasks = (db.departmentTasks || []).filter((t: any) => t.companyId === companyId);
+  const invites = (db.companyInvites || []).filter(
+    (inv: any) =>
+      inv.companyId === companyId &&
+      inv.status === 'pending' &&
+      (!inv.expiresAt || new Date(inv.expiresAt).getTime() > Date.now())
+  );
+
+  const availableMembersCount = memberships.filter((m: any) => {
+    const u = users.find((user: any) => user.id === m.userId);
+    return (u?.availabilityStatus || 'Available') === 'Available';
+  }).length;
+
+  const tasksOpen = tasks.filter((t: any) => t.status !== 'completed').length;
+  const tasksTodo = tasks.filter((t: any) => t.status === 'todo').length;
+  const tasksInProgress = tasks.filter((t: any) => t.status === 'in_progress' || t.status === 'review').length;
+  const tasksCompleted = tasks.filter((t: any) => t.status === 'completed').length;
+  const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const tasksCompletedThisWeek = tasks.filter((t: any) => {
+    if (t.status !== 'completed') return false;
+    const ts = new Date(t.completedAt || t.updatedAt || t.createdAt || 0).getTime();
+    return Number.isFinite(ts) && ts >= sevenDaysAgo;
+  }).length;
+
+  const emailAccounts = (db.emailAccounts || []).filter((a: any) => a.companyId === companyId);
+  const emailCampaigns = (db.emailCampaigns || []).filter((c: any) => c.companyId === companyId);
+  const emailLogs = (db.emailDeliveryLogs || []).filter((l: any) => l.companyId === companyId);
+
+  const emailOutreachEnabled =
+    Boolean(company.settings?.enableEmailOutreach) ||
+    allDepts.some((d: any) => getDepartmentAllowedModules(d).includes('email_hub'));
+
+  const enrichedDepts = visibleDepts.map((dept: any) => {
+    const deptMembers = memberships.filter(
+      (m: any) => Array.isArray(m.departmentIds) && m.departmentIds.includes(dept.id)
+    );
+    const deptTasks = tasks.filter((t: any) => t.departmentId === dept.id);
+    const completed = deptTasks.filter((t: any) => t.status === 'completed').length;
+    const openCount = deptTasks.filter((t: any) => t.status !== 'completed').length;
+    return {
+      ...dept,
+      allowed_modules: getDepartmentAllowedModules(dept),
+      memberCount: deptMembers.length,
+      tasksTotal: deptTasks.length,
+      tasksOpen: openCount,
+      tasksCompleted: completed,
+      tasksInProgress: deptTasks.filter((t: any) => t.status === 'in_progress' || t.status === 'review').length
+    };
+  });
+
+  const membersSummary = memberships
+    .map((m: any) => {
+      const u = users.find((user: any) => user.id === m.userId);
+      if (!u) return null;
+      return {
+        userId: u.id,
+        name: u.name,
+        email: u.email,
+        role: m.role,
+        designation: m.designation || 'Team Member',
+        departmentIds: m.departmentIds || [],
+        availabilityStatus: u.availabilityStatus || 'Available'
+      };
+    })
+    .filter(Boolean);
+
+  const recentActivity = (Array.isArray(db.activityFeed) ? db.activityFeed : [])
+    .filter((item: any) => item && (item.companyId === companyId || item.tenantId === companyId))
+    .sort((a: any, b: any) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime())
+    .slice(0, 8);
+
+  return res.json({
+    success: true,
+    company: {
+      id: company.id,
+      name: company.name,
+      industry: company.businessInfo?.industry || '',
+      companySize: company.businessInfo?.companySize || '',
+      settings: {
+        enableEmailOutreach: false,
+        enableClientInbox: false,
+        enableFinancials: false,
+        enableDealsPipeline: false,
+        ...(company.settings || {})
+      },
+      createdAt: company.createdAt
+    },
+    counts: {
+      departments: allDepts.length,
+      members: memberships.length,
+      availableMembers: availableMembersCount,
+      pendingInvites: invites.length,
+      tasksTotal: tasks.length,
+      tasksOpen,
+      tasksTodo,
+      tasksInProgress,
+      tasksCompleted,
+      tasksCompletedThisWeek,
+      emailAccounts: emailAccounts.length,
+      campaignsSent: emailCampaigns.length,
+      emailsDelivered: emailLogs.filter((l: any) => l.status === 'sent').length
+    },
+    onboardingSteps: {
+      hasDepartments: allDepts.length > 0,
+      hasTeamMembers: memberships.length > 1 || invites.length > 0,
+      hasTasks: tasks.length > 0
+    },
+    emailOutreachEnabled,
+    departments: enrichedDepts,
+    members: membersSummary,
+    recentActivity
+  });
 });
 
 // ==========================================
@@ -306,6 +520,7 @@ companyRouter.get('/:companyId/departments', requireCompanyAccess, (req: Authent
 
     return {
       ...dept,
+      allowed_modules: getDepartmentAllowedModules(dept),
       memberCount: deptMembers.length,
       headNames: heads,
       tasksTotal: deptTasks.length,
@@ -318,7 +533,7 @@ companyRouter.get('/:companyId/departments', requireCompanyAccess, (req: Authent
 });
 
 companyRouter.post('/:companyId/departments', requireCompanyRole(['company_admin']), (req: AuthenticatedRequest, res: Response) => {
-  const { name, description } = req.body || {};
+  const { name, description, allowed_modules, allowedModules } = req.body || {};
   const cleanName = typeof name === 'string' ? name.trim() : '';
   if (!cleanName || cleanName.length < 2) {
     return res.status(400).json({ success: false, message: 'Department name is required.' });
@@ -337,12 +552,18 @@ companyRouter.post('/:companyId/departments', requireCompanyRole(['company_admin
 
   const now = new Date().toISOString();
   const deptId = `dept-${slugify(cleanName)}-${crypto.randomBytes(3).toString('hex')}`;
+  const resolvedModules = sanitizeAllowedModules(
+    allowed_modules !== undefined ? allowed_modules : allowedModules,
+    DEFAULT_DEPARTMENT_MODULES
+  );
+
   const newDept = {
     id: deptId,
     companyId,
     name: cleanName,
     slug: slugify(cleanName),
     description: typeof description === 'string' ? description.trim() : '',
+    allowed_modules: resolvedModules,
     createdBy: req.user!.id,
     createdAt: now
   };
@@ -355,6 +576,15 @@ companyRouter.post('/:companyId/departments', requireCompanyRole(['company_admin
       if (!Array.isArray(m.departmentIds)) m.departmentIds = [];
       if (!m.departmentIds.includes(deptId)) m.departmentIds.push(deptId);
     }
+  });
+
+  pushCompanyActivity(db, {
+    companyId,
+    type: 'department_created',
+    title: `Department "${cleanName}" created`,
+    description: `${req.user!.name} added the ${cleanName} department.`,
+    actorName: req.user!.name,
+    actorRole: 'Company Owner'
   });
 
   saveDB(db);
@@ -371,6 +601,83 @@ companyRouter.post('/:companyId/departments', requireCompanyRole(['company_admin
       tasksCompleted: 0,
       tasksInProgress: 0
     }
+  });
+});
+
+companyRouter.patch('/:companyId/departments/:deptId', requireCompanyRole(['company_admin']), (req: AuthenticatedRequest, res: Response) => {
+  const { deptId } = req.params;
+  const companyId = req.companyId!;
+  const db = getDB();
+
+  const dept = (db.departments || []).find((d: any) => d.id === deptId && d.companyId === companyId);
+  if (!dept) {
+    return res.status(404).json({ success: false, message: 'Department not found.' });
+  }
+
+  const { name, description, allowed_modules, allowedModules } = req.body || {};
+
+  if (name !== undefined) {
+    const cleanName = typeof name === 'string' ? name.trim() : '';
+    if (cleanName.length < 2) {
+      return res.status(400).json({ success: false, message: 'Department name must be at least 2 characters.' });
+    }
+    const duplicate = (db.departments || []).some(
+      (d: any) => d.companyId === companyId && d.id !== deptId && d.name.toLowerCase() === cleanName.toLowerCase()
+    );
+    if (duplicate) {
+      return res.status(409).json({ success: false, message: `Department "${cleanName}" already exists in this company.` });
+    }
+    dept.name = cleanName;
+    dept.slug = slugify(cleanName);
+  }
+
+  if (description !== undefined) {
+    dept.description = typeof description === 'string' ? description.trim() : '';
+  }
+
+  const rawModules = allowed_modules !== undefined ? allowed_modules : allowedModules;
+  if (rawModules !== undefined) {
+    if (!Array.isArray(rawModules)) {
+      return res.status(400).json({ success: false, message: 'allowed_modules must be an array of module keys.' });
+    }
+    dept.allowed_modules = sanitizeAllowedModules(rawModules, []);
+  } else {
+    dept.allowed_modules = getDepartmentAllowedModules(dept);
+  }
+
+  dept.updatedAt = new Date().toISOString();
+  saveDB(db);
+
+  const memberships = (db.companyMemberships || []).filter((m: any) => m.companyId === companyId);
+  const deptMembers = memberships.filter((m: any) => Array.isArray(m.departmentIds) && m.departmentIds.includes(dept.id));
+  const users = db.users || [];
+  const heads = deptMembers
+    .filter((m: any) => m.role === 'department_head' || m.role === 'company_admin')
+    .map((m: any) => users.find((u: any) => u.id === m.userId)?.name)
+    .filter(Boolean);
+  const deptTasks = (db.departmentTasks || []).filter((t: any) => t.companyId === companyId && t.departmentId === dept.id);
+
+  const enrichedDept = {
+    ...dept,
+    allowed_modules: getDepartmentAllowedModules(dept),
+    memberCount: deptMembers.length,
+    headNames: heads,
+    tasksTotal: deptTasks.length,
+    tasksCompleted: deptTasks.filter((t: any) => t.status === 'completed').length,
+    tasksInProgress: deptTasks.filter((t: any) => t.status === 'in_progress').length
+  };
+
+  realtimeEngine.broadcastToCompany(companyId, 'department:updated', {
+    companyId,
+    departmentId: deptId,
+    action: 'permissions_updated',
+    department: enrichedDept
+  });
+
+  return res.json({
+    success: true,
+    message: `Department "${dept.name}" permissions updated.`,
+    department: enrichedDept
   });
 });
 
@@ -772,6 +1079,15 @@ invitePublicRouter.post('/:token/complete-onboarding', (req: AuthenticatedReques
     company.activeMembersCount = db.companyMemberships.filter((m: any) => m.companyId === inv.companyId).length;
   }
 
+  pushCompanyActivity(db, {
+    companyId: inv.companyId,
+    type: 'member_joined',
+    title: `${targetUser.name} joined ${inv.departmentName}`,
+    description: `Accepted ${inv.role === 'department_head' ? 'Department Head' : 'Team Member'} invitation.`,
+    actorName: targetUser.name,
+    actorRole: inv.role === 'department_head' ? 'Department Head' : 'Employee'
+  });
+
   saveDB(db);
   realtimeEngine.updateClientMembership(targetUser.id, inv.companyId, membership.role, membership.departmentIds);
   realtimeEngine.broadcastToDepartment(inv.companyId, inv.departmentId, 'department:updated', {
@@ -901,6 +1217,15 @@ invitePublicRouter.post('/:token/accept', requireAuth, (req: AuthenticatedReques
     company.activeMembersCount = db.companyMemberships.filter((m: any) => m.companyId === inv.companyId).length;
   }
 
+  pushCompanyActivity(db, {
+    companyId: inv.companyId,
+    type: 'member_joined',
+    title: `${req.user!.name || req.user!.email} joined ${inv.departmentName}`,
+    description: `Accepted ${inv.role === 'department_head' ? 'Department Head' : 'Team Member'} invitation.`,
+    actorName: req.user!.name || req.user!.email,
+    actorRole: inv.role === 'department_head' ? 'Department Head' : 'Employee'
+  });
+
   saveDB(db);
   realtimeEngine.updateClientMembership(req.user!.id, inv.companyId, membership.role, membership.departmentIds);
   realtimeEngine.broadcastToDepartment(inv.companyId, inv.departmentId, 'department:updated', {
@@ -932,7 +1257,7 @@ companyRouter.get(
   (req: AuthenticatedRequest, res: Response) => {
     const companyId = req.companyId!;
     const { deptId } = req.params;
-    const dept = ensureDeptAccess(req, res, companyId, deptId);
+    const dept = ensureDeptAccess(req, res, companyId, deptId, 'operations');
     if (!dept) return;
 
     const db = getDB();
@@ -1129,7 +1454,7 @@ companyRouter.get(
   (req: AuthenticatedRequest, res: Response) => {
     const companyId = req.companyId!;
     const { deptId } = req.params;
-    const dept = ensureDeptAccess(req, res, companyId, deptId);
+    const dept = ensureDeptAccess(req, res, companyId, deptId, 'operations');
     if (!dept) return;
 
     const db = getDB();
@@ -1168,7 +1493,7 @@ companyRouter.post(
   (req: AuthenticatedRequest, res: Response) => {
     const companyId = req.companyId!;
     const { deptId } = req.params;
-    const dept = ensureDeptAccess(req, res, companyId, deptId);
+    const dept = ensureDeptAccess(req, res, companyId, deptId, 'operations');
     if (!dept) return;
 
     if (req.companyRole === 'employee') {
@@ -1224,6 +1549,14 @@ companyRouter.post(
     };
 
     db.departmentTasks.unshift(newTask);
+    pushCompanyActivity(db, {
+      companyId,
+      type: 'task_created',
+      title: `Task created: ${cleanTitle}`,
+      description: `Assigned to ${newTask.assigneeName} in ${dept.name}.`,
+      actorName: req.user!.name,
+      actorRole: req.companyRole === 'company_admin' ? 'Company Owner' : 'Department Head'
+    });
     saveDB(db);
 
     realtimeEngine.broadcastToDepartment(companyId, deptId, 'task:updated', {
@@ -1243,7 +1576,7 @@ companyRouter.patch(
   (req: AuthenticatedRequest, res: Response) => {
     const companyId = req.companyId!;
     const { deptId, taskId } = req.params;
-    const dept = ensureDeptAccess(req, res, companyId, deptId);
+    const dept = ensureDeptAccess(req, res, companyId, deptId, 'operations');
     if (!dept) return;
 
     const db = getDB();
@@ -1304,6 +1637,16 @@ companyRouter.patch(
     }
 
     task.updatedAt = new Date().toISOString();
+    if (status === 'completed') {
+      pushCompanyActivity(db, {
+        companyId,
+        type: 'task_completed',
+        title: `Completed: ${task.title}`,
+        description: `Marked complete in ${dept.name}.`,
+        actorName: req.user!.name,
+        actorRole: req.companyRole === 'company_admin' ? 'Company Owner' : 'Department Head'
+      });
+    }
     saveDB(db);
 
     realtimeEngine.broadcastToDepartment(companyId, deptId, 'task:updated', {
@@ -1323,7 +1666,7 @@ companyRouter.delete(
   (req: AuthenticatedRequest, res: Response) => {
     const companyId = req.companyId!;
     const { deptId, taskId } = req.params;
-    const dept = ensureDeptAccess(req, res, companyId, deptId);
+    const dept = ensureDeptAccess(req, res, companyId, deptId, 'operations');
     if (!dept) return;
 
     if (req.companyRole === 'employee') {

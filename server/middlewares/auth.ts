@@ -27,6 +27,22 @@ const JWT_SECRET = getJwtSecret();
 
 export type CompanyRole = 'company_admin' | 'department_head' | 'employee';
 export type AvailabilityStatus = 'Available' | 'In a Meeting' | 'Busy' | 'Offline';
+export type DepartmentModuleKey =
+  | 'operations'
+  | 'chat'
+  | 'email_hub'
+  | 'client_inbox'
+  | 'financials';
+
+export const VALID_DEPARTMENT_MODULES: DepartmentModuleKey[] = [
+  'operations',
+  'chat',
+  'email_hub',
+  'client_inbox',
+  'financials'
+];
+
+export const DEFAULT_DEPARTMENT_MODULES: DepartmentModuleKey[] = ['operations', 'chat'];
 
 export interface CompanyMembership {
   id: string;
@@ -201,23 +217,78 @@ export function hasDepartmentAccess(membership: CompanyMembership | undefined, d
   return Array.isArray(membership.departmentIds) && membership.departmentIds.includes(departmentId);
 }
 
-const SALES_CLIENT_DEPT_PATTERN = /\b(sales|marketing|client[\s_-]*success|business[\s_-]*development|bd|growth|outreach|revenue|account[\s_-]*management|crm|partnerships)\b/i;
+export function sanitizeAllowedModules(
+  raw: unknown,
+  fallback: DepartmentModuleKey[] = DEFAULT_DEPARTMENT_MODULES
+): DepartmentModuleKey[] {
+  if (!Array.isArray(raw)) {
+    return [...fallback];
+  }
+  const seen = new Set<DepartmentModuleKey>();
+  for (const item of raw) {
+    if (typeof item === 'string') {
+      const key = item.trim() as DepartmentModuleKey;
+      if (VALID_DEPARTMENT_MODULES.includes(key)) {
+        seen.add(key);
+      }
+    }
+  }
+  return Array.from(seen);
+}
 
-export function isSalesOrClientDepartmentName(name?: string, slug?: string): boolean {
-  const combined = `${name || ''} ${slug || ''}`.trim();
-  if (!combined) return false;
-  return SALES_CLIENT_DEPT_PATTERN.test(combined);
+export function getDepartmentAllowedModules(dept: any): DepartmentModuleKey[] {
+  if (!dept || !Array.isArray(dept.allowed_modules)) {
+    return [...DEFAULT_DEPARTMENT_MODULES];
+  }
+  return sanitizeAllowedModules(dept.allowed_modules);
+}
+
+export function hasDepartmentModuleAccess(
+  req: AuthenticatedRequest,
+  moduleKey: DepartmentModuleKey,
+  explicitDeptId?: string
+): boolean {
+  if (req.companyRole === 'company_admin') return true;
+  if (!req.membership || !req.companyId) return false;
+
+  const db = getDB();
+  const memberDeptIds = Array.isArray(req.membership.departmentIds) ? req.membership.departmentIds : [];
+
+  const headerDeptId = typeof req.headers['x-department-id'] === 'string' ? req.headers['x-department-id'].trim() : '';
+  const queryDeptId = typeof req.query?.departmentId === 'string' ? req.query.departmentId.trim() : '';
+  const bodyDeptId = typeof req.body?.departmentId === 'string' ? req.body.departmentId.trim() : '';
+  const paramDeptId = typeof req.params?.deptId === 'string' ? req.params.deptId.trim() : '';
+
+  const candidateDeptId =
+    (explicitDeptId && explicitDeptId.trim()) ||
+    paramDeptId ||
+    queryDeptId ||
+    bodyDeptId ||
+    headerDeptId ||
+    '';
+
+  if (candidateDeptId) {
+    if (!memberDeptIds.includes(candidateDeptId)) {
+      return false;
+    }
+    const targetDept = (db.departments || []).find(
+      (d: any) => d.id === candidateDeptId && d.companyId === req.companyId
+    );
+    if (!targetDept) return false;
+    return getDepartmentAllowedModules(targetDept).includes(moduleKey);
+  }
+
+  const companyDepts = (db.departments || []).filter(
+    (d: any) => d.companyId === req.companyId && memberDeptIds.includes(d.id)
+  );
+  return companyDepts.some((d: any) => getDepartmentAllowedModules(d).includes(moduleKey));
 }
 
 export function hasSalesEmailAccess(req: AuthenticatedRequest): boolean {
-  if (req.companyRole === 'company_admin') return true;
-  if (req.companyRole !== 'department_head' || !req.membership || !req.companyId) return false;
-  const db = getDB();
-  const deptIds = Array.isArray(req.membership.departmentIds) ? req.membership.departmentIds : [];
-  const companyDepts = (db.departments || []).filter(
-    (d: any) => d.companyId === req.companyId && deptIds.includes(d.id)
+  return (
+    hasDepartmentModuleAccess(req, 'email_hub') ||
+    hasDepartmentModuleAccess(req, 'client_inbox')
   );
-  return companyDepts.some((d: any) => isSalesOrClientDepartmentName(d.name, d.slug));
 }
 
 /**
@@ -390,24 +461,40 @@ export function requireCompanyRole(allowedCompanyRoles: CompanyRole[]) {
 }
 
 /**
- * Enforce Email Hub / Unified Client Inbox access:
- * Permitted for Company Owners and Department Heads of Sales / Marketing / Client Success departments.
+ * Enforce customizable per-department module access (`allowed_modules`).
+ * Company Owners (`company_admin`) always have full access to every module across the company.
+ * Department Heads and Employees require `moduleKey` in their department's `allowed_modules`.
  */
-export function requireSalesOrAdminEmailAccess() {
+export function requireDepartmentModule(moduleKey: DepartmentModuleKey) {
+  const labels: Record<DepartmentModuleKey, string> = {
+    operations: 'Department Operations',
+    chat: 'Department Chat',
+    email_hub: 'Email Hub',
+    client_inbox: 'Unified Client Inbox',
+    financials: 'Financials & Commission Ledgers'
+  };
   return (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     requireCompanyAccess(req, res, () => {
-      if (req.companyRole === 'company_admin') {
-        return next();
-      }
-      if (req.companyRole === 'department_head' && hasSalesEmailAccess(req)) {
+      if (hasDepartmentModuleAccess(req, moduleKey)) {
         return next();
       }
       return res.status(403).json({
         success: false,
-        error: 'Forbidden: Email Hub and Client Inbox are restricted to Company Owners and Sales, Marketing, or Client Success Department Heads.'
+        code: 'MODULE_ACCESS_DENIED',
+        module: moduleKey,
+        error: `Forbidden: The "${labels[moduleKey]}" module is not enabled for your department.`
       });
     });
   };
+}
+
+/**
+ * Enforce Email Hub / Unified Client Inbox access based on department `allowed_modules`.
+ */
+export function requireSalesOrAdminEmailAccess(
+  moduleKey: 'email_hub' | 'client_inbox' = 'email_hub'
+) {
+  return requireDepartmentModule(moduleKey);
 }
 
 /**

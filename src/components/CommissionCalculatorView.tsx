@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { calculateCommission } from '../data/sopContent';
+import { buildAuthHeaders } from '../lib/api';
 import {
   TrendingUp,
   DollarSign,
@@ -13,16 +14,52 @@ import {
 } from 'lucide-react';
 
 export const CommissionCalculatorView: React.FC = () => {
-  const { projects, updateProject, role, showToast, t } = useApp();
+  const { projects, updateProject, role, companyRole, currentTenant, showToast, t } = useApp();
   const [projectValue, setProjectValue] = useState<number>(650);
   const [highPerformerTier, setHighPerformerTier] = useState<boolean>(false);
+  const [apiLedger, setApiLedger] = useState<any[]>([]);
+
+  const isCompanyOwner = companyRole === 'company_admin' || role === 'admin';
+
+  useEffect(() => {
+    if (!currentTenant?.id) {
+      setApiLedger([]);
+      return;
+    }
+    let active = true;
+    fetch('/api/commissions', { headers: buildAuthHeaders() })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (active && data?.success && Array.isArray(data.ledger)) {
+          setApiLedger(data.ledger);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [currentTenant?.id]);
 
   const calc = calculateCommission(projectValue, highPerformerTier);
   const agencyNet = Number((projectValue - calc.amount).toFixed(2));
 
+  const ledgerRows =
+    isCompanyOwner && projects.length > 0
+      ? projects.map((p) => ({
+          projectId: p.id,
+          clientName: p.clientName,
+          websiteType: p.websiteType,
+          salesperson: p.assignedSalesperson,
+          projectValue: p.finalPrice,
+          commissionRate: p.commissionRate,
+          commissionAmount: p.commissionAmount,
+          commissionStatus: p.commissionStatus
+        }))
+      : apiLedger;
+
   const handleMarkPaid = async (projectId: string) => {
-    if (role !== 'admin') {
-      showToast('Admin role required to approve commission payouts.');
+    if (!isCompanyOwner) {
+      showToast('Company Owner role required to approve commission payouts.');
       return;
     }
     await updateProject(projectId, { commissionStatus: 'paid' });
@@ -243,7 +280,7 @@ export const CommissionCalculatorView: React.FC = () => {
             </p>
           </div>
           <span className="text-xs font-semibold text-slate-500">
-            {role === 'admin' ? '🔑 Admin Mode Active' : '👀 View Only Mode'}
+            {isCompanyOwner ? 'Owner Mode Active' : 'View Only Mode'}
           </span>
         </div>
 
@@ -261,17 +298,19 @@ export const CommissionCalculatorView: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
-              {projects.map(p => (
-                <tr key={p.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
+              {ledgerRows.map(p => (
+                <tr key={p.projectId} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
                   <td className="p-3 font-bold text-slate-900 dark:text-white">
                     {p.clientName}
-                    <span className="block text-[10px] text-slate-500 uppercase">{p.websiteType}</span>
+                    {p.websiteType && (
+                      <span className="block text-[10px] text-slate-500 uppercase">{p.websiteType}</span>
+                    )}
                   </td>
-                  <td className="p-3">{p.assignedSalesperson}</td>
-                  <td className="p-3 font-mono font-bold">${p.finalPrice}</td>
-                  <td className="p-3 font-mono">{p.commissionRate}%</td>
+                  <td className="p-3">{p.salesperson || 'General Team'}</td>
+                  <td className="p-3 font-mono font-bold">${p.projectValue ?? 0}</td>
+                  <td className="p-3 font-mono">{p.commissionRate ?? 0}%</td>
                   <td className="p-3 font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                    ${p.commissionAmount}
+                    ${p.commissionAmount ?? 0}
                   </td>
                   <td className="p-3">
                     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
@@ -284,15 +323,17 @@ export const CommissionCalculatorView: React.FC = () => {
                     </span>
                   </td>
                   <td className="p-3 text-right">
-                    {p.commissionStatus !== 'paid' ? (
+                    {p.commissionStatus !== 'paid' && isCompanyOwner ? (
                       <button
-                        onClick={() => handleMarkPaid(p.id)}
-                        className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-indigo-50 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 transition"
+                        onClick={() => handleMarkPaid(p.projectId)}
+                        className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-indigo-50 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 transition cursor-pointer"
                       >
                         Approve Payout
                       </button>
                     ) : (
-                      <span className="text-[11px] text-slate-400">Completed</span>
+                      <span className="text-[11px] text-slate-400">
+                        {p.commissionStatus === 'paid' ? 'Completed' : 'View Only'}
+                      </span>
                     )}
                   </td>
                 </tr>

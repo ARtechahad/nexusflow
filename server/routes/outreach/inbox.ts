@@ -14,7 +14,7 @@ import { readDB, writeDB } from '../../db';
 
 export const outreachInboxRouter = express.Router();
 
-const requireOutreachInboxRole = requireSalesOrAdminEmailAccess();
+const requireOutreachInboxRole = requireSalesOrAdminEmailAccess('client_inbox');
 
 // ----------------------------------------------------
 // 1. GET /inbox/threads — List threads with filters & search

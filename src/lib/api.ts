@@ -23,8 +23,14 @@ export function getStoredTenantId(): string | null {
   return tid && tid.trim() ? tid.trim() : null;
 }
 
+export function getStoredDepartmentId(): string | null {
+  if (typeof window === 'undefined') return null;
+  const did = localStorage.getItem('alm_nexus_dept_id');
+  return did && did.trim() ? did.trim() : null;
+}
+
 /**
- * Builds request headers with automatic Bearer token and active Company X-Tenant-Id injection
+ * Builds request headers with automatic Bearer token, active Company X-Tenant-Id, and X-Department-Id injection
  */
 export function buildAuthHeaders(
   customHeaders?: HeadersInit,
@@ -40,6 +46,11 @@ export function buildAuthHeaders(
   const tenantId = getStoredTenantId();
   if (tenantId && !headers.has('X-Tenant-Id')) {
     headers.set('X-Tenant-Id', tenantId);
+  }
+
+  const deptId = getStoredDepartmentId();
+  if (deptId && !headers.has('X-Department-Id')) {
+    headers.set('X-Department-Id', deptId);
   }
 
   if (!headers.has('Content-Type') && !headers.has('content-type')) {

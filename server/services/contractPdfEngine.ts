@@ -82,7 +82,7 @@ export function generateContractHTML(req: ContractGenerationRequest): string {
   <div class="signature-grid">
     <div class="sig-box">
       <p><strong>For Agency:</strong></p>
-      <p>Tariq Mehmood, Lead Director</p>
+      <p>Authorized Representative</p>
       <div class="sig-line"></div>
       <p>Authorized Signature & Date</p>
     </div>

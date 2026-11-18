@@ -48,7 +48,7 @@ export function generateDefaultTasksForProject(project: ProjectLead): ProjectTas
       status: project.internalQAPassed ? 'completed' : 'todo',
       priority: 'high',
       category: 'qa',
-      assignedDeveloper: 'Tariq Mehmood',
+      assignedDeveloper: 'QA Lead',
       estimatedHours: 4.0,
       loggedHours: project.internalQAPassed ? 3.0 : 0.0,
       createdAt: project.createdAt || new Date().toISOString()

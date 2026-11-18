@@ -552,7 +552,7 @@ aiRouter.post('/outreach', async (req: Request, res: Response) => {
 // 5. Unified Communications Inbox (/api/inbox)
 // ==========================================
 
-inboxRouter.get('/messages', requireSalesOrAdminEmailAccess(), (req: AuthenticatedRequest, res: Response) => {
+inboxRouter.get('/messages', requireSalesOrAdminEmailAccess('client_inbox'), (req: AuthenticatedRequest, res: Response) => {
   const db = readDB();
   const channel = typeof req.query.channel === 'string' ? req.query.channel : '';
   const status = typeof req.query.status === 'string' ? req.query.status : '';
@@ -596,7 +596,7 @@ inboxRouter.get('/messages', requireSalesOrAdminEmailAccess(), (req: Authenticat
   });
 });
 
-inboxRouter.post('/messages', requireSalesOrAdminEmailAccess(), (req: AuthenticatedRequest, res: Response) => {
+inboxRouter.post('/messages', requireSalesOrAdminEmailAccess('client_inbox'), (req: AuthenticatedRequest, res: Response) => {
   const db = readDB();
   const body = req.body || {};
   
@@ -633,7 +633,7 @@ inboxRouter.post('/messages', requireSalesOrAdminEmailAccess(), (req: Authentica
   res.json({ success: true, message: 'Message logged to Unified Inbox', data: newMessage });
 });
 
-inboxRouter.put('/status/:id', requireSalesOrAdminEmailAccess(), (req: AuthenticatedRequest, res: Response) => {
+inboxRouter.put('/status/:id', requireSalesOrAdminEmailAccess('client_inbox'), (req: AuthenticatedRequest, res: Response) => {
   const db = readDB();
   const id = req.params.id;
   const { status } = req.body || {};
@@ -651,7 +651,7 @@ inboxRouter.put('/status/:id', requireSalesOrAdminEmailAccess(), (req: Authentic
   res.json({ success: true, message: `Status updated to ${msg.status}`, data: msg });
 });
 
-inboxRouter.post('/reply/:id', requireSalesOrAdminEmailAccess(), (req: AuthenticatedRequest, res: Response) => {
+inboxRouter.post('/reply/:id', requireSalesOrAdminEmailAccess('client_inbox'), (req: AuthenticatedRequest, res: Response) => {
   const db = readDB();
   const id = req.params.id;
   const { replyText, senderName, channel } = req.body || {};
@@ -679,7 +679,7 @@ inboxRouter.post('/reply/:id', requireSalesOrAdminEmailAccess(), (req: Authentic
   res.json({ success: true, message: 'Reply sent successfully and recorded in thread', replyItem });
 });
 
-inboxRouter.post('/ai-reply/:id', requireSalesOrAdminEmailAccess(), async (req: AuthenticatedRequest, res: Response) => {
+inboxRouter.post('/ai-reply/:id', requireSalesOrAdminEmailAccess('client_inbox'), async (req: AuthenticatedRequest, res: Response) => {
   const db = readDB();
   const id = req.params.id;
   const msg = ((db as any).clientInquiries || []).find(
@@ -748,8 +748,8 @@ Respond in JSON format with:
     }
   }
 
-  // Fallback SOP rule response
-  const fallbackDraft = `Hello ${msg.clientName},\n\nThank you for reaching out to us. I would be glad to assist you with your requirements.\n\nTo ensure our team delivers the highest standard of execution, our development process takes place entirely on a dedicated private staging server. This gives you full visibility to test all responsive components and workflows before anything touches your live domain.\n\nRegarding the schedule, our sprint queue requires a standard 50% advance milestone to confirm your start date and allocate our full-stack engineering team.\n\nPlease feel free to let me know if you have any questions, or if you would like to proceed with the milestone invoice.\n\nWarm regards,\nTariq Mehmood\nClient Coordination & Sales Desk`;
+  const senderLabel = (req as any).user?.name || 'Operations Desk';
+  const fallbackDraft = `Hello ${msg.clientName},\n\nThank you for reaching out to us. I would be glad to assist you with your requirements.\n\nTo ensure our team delivers the highest standard of execution, our development process takes place entirely on a dedicated private staging server. This gives you full visibility to test all responsive components and workflows before anything touches your live domain.\n\nRegarding the schedule, our sprint queue requires a standard 50% advance milestone to confirm your start date and allocate our full-stack engineering team.\n\nPlease feel free to let me know if you have any questions, or if you would like to proceed with the milestone invoice.\n\nWarm regards,\n${senderLabel}\nClient Operations Team`;
 
   const suggestedReply = {
     subject: `Re: ${msg.subject}`,

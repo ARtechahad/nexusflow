@@ -233,7 +233,12 @@ export const INITIAL_DB = {
   departments: [] as any[],
   companyMemberships: [] as any[],
   companyInvites: [] as any[],
-  departmentTasks: [] as any[]
+  departmentTasks: [] as any[],
+
+  // PHASE 8: REAL BUSINESS EMAIL OUTREACH (SMTP & RESEND)
+  emailAccounts: [] as any[],
+  emailCampaigns: [] as any[],
+  emailDeliveryLogs: [] as any[]
 };
 
 // Database read/write helpers with PostgreSQL & atomic fallback
@@ -253,14 +258,21 @@ export function readDB(): any {
   if (!Array.isArray(parsed.nudgeTemplates)) parsed.nudgeTemplates = INITIAL_DB.nudgeTemplates || [];
   if (!Array.isArray(parsed.nudgeLogs)) parsed.nudgeLogs = INITIAL_DB.nudgeLogs || [];
   if (!Array.isArray(parsed.emailVerificationOtps)) parsed.emailVerificationOtps = [];
-  if (!Array.isArray(parsed.users)) parsed.users = DEFAULT_USERS;
+  if (!Array.isArray(parsed.users)) parsed.users = [];
   if (!Array.isArray(parsed.connectors)) parsed.connectors = DEFAULT_CONNECTORS;
   if (!Array.isArray(parsed.webhookLogs)) parsed.webhookLogs = [];
-  if (!Array.isArray(parsed.tenants)) parsed.tenants = DEFAULT_TENANTS;
-  if (!Array.isArray(parsed.departments)) parsed.departments = DEFAULT_DEPARTMENTS;
-  if (!Array.isArray(parsed.companyMemberships)) parsed.companyMemberships = DEFAULT_COMPANY_MEMBERSHIPS;
+  if (!Array.isArray(parsed.tenants)) parsed.tenants = [];
+  if (!Array.isArray(parsed.departments)) parsed.departments = [];
+  parsed.departments = parsed.departments.map((d: any) => ({
+    ...d,
+    allowed_modules: Array.isArray(d?.allowed_modules) ? d.allowed_modules : ['operations', 'chat']
+  }));
+  if (!Array.isArray(parsed.companyMemberships)) parsed.companyMemberships = [];
   if (!Array.isArray(parsed.companyInvites)) parsed.companyInvites = [];
   if (!Array.isArray(parsed.departmentTasks)) parsed.departmentTasks = [];
+  if (!Array.isArray(parsed.emailAccounts)) parsed.emailAccounts = [];
+  if (!Array.isArray(parsed.emailCampaigns)) parsed.emailCampaigns = [];
+  if (!Array.isArray(parsed.emailDeliveryLogs)) parsed.emailDeliveryLogs = [];
   return parsed;
 }
 
@@ -329,391 +341,26 @@ export function calculateLeadScore(p: any): any {
   };
 }
 
-// Pre-configured staff and client accounts for production RBAC
-export const DEFAULT_USERS = [
-  {
-    id: 'user-admin-1',
-    name: 'Tariq Mehmood',
-    email: 'admin@agencyops.dev',
-    passwordHash: hashPassword('Admin@12345'),
-    role: 'admin',
-    title: 'Agency Director & BD Head',
-    avatar: '',
-    permissions: [
-      'admin:all',
-      'projects:read',
-      'projects:write',
-      'commissions:approve',
-      'commissions:payout',
-      'database:manage',
-      'webhooks:manage',
-      'vault:manage',
-      'chat:write'
-    ],
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'user-sales-1',
-    name: 'Hamza Farooq',
-    email: 'sales@agencyops.dev',
-    passwordHash: hashPassword('Sales@12345'),
-    role: 'sales',
-    title: 'Senior Business Development & Sales Rep',
-    avatar: '',
-    permissions: [
-      'projects:read',
-      'projects:write',
-      'outreach:generate',
-      'inbox:manage',
-      'commissions:view_own',
-      'chat:write'
-    ],
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'user-coord-1',
-    name: 'Fatima Noor',
-    email: 'coordinator@agencyops.dev',
-    passwordHash: hashPassword('Coord@12345'),
-    role: 'coordinator',
-    title: 'Senior Project Coordinator & QA Lead',
-    avatar: '',
-    permissions: [
-      'projects:read',
-      'projects:write',
-      'sop:verify',
-      'inbox:manage',
-      'discord:handoff',
-      'staging:review',
-      'chat:write'
-    ],
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'user-dev-1',
-    name: 'Zain Ul Abideen',
-    email: 'dev@agencyops.dev',
-    passwordHash: hashPassword('Dev@12345'),
-    role: 'developer',
-    title: 'Lead Full-Stack Systems Engineer',
-    avatar: '',
-    permissions: [
-      'projects:read',
-      'staging:review',
-      'qa:signoff',
-      'discord:handoff',
-      'vault:read',
-      'webhooks:view_logs',
-      'chat:write'
-    ],
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'user-client-1',
-    name: 'Client Portal Account',
-    email: 'client@lumina-health.co.uk',
-    passwordHash: hashPassword('Client@12345'),
-    role: 'client_guest',
-    title: 'Client Stakeholder',
-    avatar: '',
-    permissions: [
-      'portal:access',
-      'milestones:review',
-      'staging:inspect',
-      'invoices:view',
-      'feedback:submit'
-    ],
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'user-collab-1',
-    name: 'Partner Evaluator',
-    email: 'partner@vance-capital.com',
-    passwordHash: hashPassword('Partner@12345'),
-    role: 'collaborator',
-    title: 'External Partner Evaluator',
-    avatar: '',
-    permissions: [
-      'projects:read_assigned',
-      'deals:evaluate',
-      'staging:inspect',
-      'feedback:submit',
-      'chat:write'
-    ],
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'user-design-1',
-    name: 'UI/UX Design Lead',
-    email: 'design@agencyops.dev',
-    passwordHash: hashPassword('Design@12345'),
-    role: 'designer',
-    title: 'Lead UI/UX Designer & Brand Architect',
-    avatar: '',
-    permissions: [
-      'projects:read',
-      'projects:write',
-      'assets:manage',
-      'staging:review',
-      'wiki:write',
-      'chat:write'
-    ],
-    createdAt: new Date().toISOString()
-  }
-];
+// Zero pre-seeded fake users — every account is created by real registration & OTP verification
+export const DEFAULT_USERS: any[] = [];
 
-// Clean Default Workspace Configuration (Zero Fake Telemetry)
-export const DEFAULT_TENANTS = [
-  {
-    id: 'tenant-alm-nexus',
-    name: 'ClientOps Workspace',
-    slug: 'clientops-workspace',
-    logoUrl: '/icon.svg',
-    branding: {
-      primaryColor: '#4f46e5',
-      accentColor: '#06b6d4',
-      theme: 'light' as const,
-      geometricStyle: 'enterprise_clean' as const,
-      logoPreset: 'hexagon_nexus'
-    },
-    businessInfo: {
-      industry: 'B2B Client Operations & Delivery',
-      description: 'Multi-tenant client pipeline, cold outreach, escrow milestones, and SOP delivery operations.',
-      website: '',
-      targetRevenueUSD: 0,
-      coreObjectives: [
-        'SOP 1-11 client delivery governance',
-        'Multi-channel cold outreach & unified inbox',
-        '50/50 escrow milestone and commission tracking'
-      ]
-    },
-    integrations: {
-      linkedIn: {
-        connected: false,
-        accountHandle: '',
-        organizationName: '',
-        syncIntervalMinutes: 15,
-        autoOutreachEnabled: false,
-        messagesSyncedCount: 0
-      },
-      gmail: {
-        connected: false,
-        accountEmail: '',
-        threadTracking: true,
-        autoDraftReplies: false,
-        emailsSyncedCount: 0
-      },
-      stripe: {
-        connected: false,
-        liveMode: false,
-        currency: 'USD',
-        mrrUSD: 0
-      }
-    },
-    rolesConfig: {
-      admin: {
-        role: 'admin',
-        title: 'Chief Executive Officer (CEO)',
-        department: 'executive',
-        dashboardLayout: 'executive_macro',
-        permissions: ['all']
-      },
-      coordinator: {
-        role: 'coordinator',
-        title: 'Project Manager (PM)',
-        department: 'operations',
-        dashboardLayout: 'pm_sprint',
-        permissions: ['projects:manage', 'sprints:manage', 'qa:verify', 'team:track']
-      },
-      sales: {
-        role: 'sales',
-        title: 'Business Development Specialist',
-        department: 'sales',
-        dashboardLayout: 'sales_outreach',
-        permissions: ['leads:generate', 'outreach:execute', 'deals:manage', 'commissions:view']
-      },
-      developer: {
-        role: 'developer',
-        title: 'Full-Stack Software Engineer',
-        department: 'engineering',
-        dashboardLayout: 'dev_tasks',
-        permissions: ['tasks:execute', 'staging:deploy', 'qa:test', 'timelogs:write']
-      },
-      designer: {
-        role: 'designer',
-        title: 'Lead UI/UX Designer',
-        department: 'design',
-        dashboardLayout: 'design_assets',
-        permissions: ['wireframes:manage', 'assets:upload', 'review:signoff']
-      },
-      client_guest: {
-        role: 'client_guest',
-        title: 'Client Stakeholder',
-        department: 'client',
-        dashboardLayout: 'client_portal',
-        permissions: ['portal:access', 'milestones:approve', 'invoices:pay']
-      }
-    },
-    activeMembersCount: 1,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  }
-];
+// Zero pre-seeded fake workspaces
+export const DEFAULT_TENANTS: any[] = [];
 
 // Real-Time Activity Feed Items (populated exclusively by real events)
 export const DEFAULT_ACTIVITY_FEED: any[] = [];
 
-// Production Global Company Wiki / Knowledge Base
-export const DEFAULT_WIKI_DOCS = [
-  {
-    id: 'wiki-1',
-    tenantId: 'tenant-alm-nexus',
-    title: 'LinkedIn Outreach Master Script (High-Converting <300 Chars)',
-    category: 'outreach_scripts',
-    description: 'Word-for-word connection pitch that yields 42% acceptance rate with international founders.',
-    content: `Hi {{name}}, saw your recent post regarding {{companyName}}'s web development roadmap.
-
-We build modern, fast Next.js & Tailwind web applications with guaranteed 10-day sprint delivery and strict 50% escrow milestones.
-
-Would love to share our live interactive preview deck if you're open to a 2-minute look. Best, Tariq`,
-    author: 'Tariq Mehmood (CEO)',
-    updatedAt: new Date(Date.now() - 3600000 * 24 * 3).toISOString(),
-    tags: ['linkedin', 'cold_outreach', 'conversion']
-  },
-  {
-    id: 'wiki-2',
-    tenantId: 'tenant-alm-nexus',
-    title: 'SOP 50% Advance Payment & Staging Isolation Gate',
-    category: 'sop_checklists',
-    description: 'Non-negotiable rule: Never provision live production domain without 100% balance clearance.',
-    content: `### Mandatory Payment Gatekeeper Protocol:
-1. Always secure 50% deposit before creating Git repositories or allocating engineering hours.
-2. Develop strictly on internal staging subdomains (e.g., https://staging-client.agencyops.dev).
-3. Client inspects and signs off on staging.
-4. Issue final 50% balance invoice via Stripe or PayPal.
-5. Only upon transaction ID verification: trigger DNS A-record cutover and transfer administrative credentials.`,
-    author: 'Fatima Noor (QA Lead)',
-    updatedAt: new Date(Date.now() - 3600000 * 24 * 5).toISOString(),
-    tags: ['sop', 'security', 'escrow', 'payments']
-  },
-  {
-    id: 'wiki-3',
-    tenantId: 'tenant-alm-nexus',
-    title: 'ALM Nexus Dark-Mode & Geometric Brand Design Principles',
-    category: 'brand_guidelines',
-    description: 'Aesthetic guidelines: Anti-AI slop, geometric accents, zero-pill discipline, high information density.',
-    content: `### Design System Guidelines:
-- **Color Palette:** Deep slate (#070a12, #0d1322), Indigo accents (#6366f1), Cyan telemetry (#06b6d4).
-- **Typography:** Plus Jakarta Sans for UI headers, JetBrains Mono for financial figures and status badges.
-- **Glassmorphism:** Subtle backdrops with 16px blur and 1px white/10 borders.
-- **Data Clarity:** Never hide operational metrics behind ambiguous tooltips; show real numbers.`,
-    author: 'Sara Jenkins (Design Lead)',
-    updatedAt: new Date(Date.now() - 3600000 * 24 * 7).toISOString(),
-    tags: ['design', 'ui_ux', 'brand', 'tailwind']
-  },
-  {
-    id: 'wiki-4',
-    tenantId: 'tenant-alm-nexus',
-    title: 'Cold Email Follow-Up Drip 4-Stage Cadence',
-    category: 'email_templates',
-    description: 'Sequenced email follow-ups for non-responsive client proposals to reactivate discussions.',
-    content: `Stage 1 (+24h): Sprint Slot Reservation Confirmation
-Stage 2 (+72h): Dedicated Staging Server Pre-Allocation Hold
-Stage 3 (+120h): Complimentary Performance & Core Web Vitals Audit
-Stage 4 (+168h): Graceful File Archival (Break-Up Email)`,
-    author: 'Hamza Farooq (Senior BD)',
-    updatedAt: new Date(Date.now() - 3600000 * 24 * 2).toISOString(),
-    tags: ['drip', 'sales', 'follow_up']
-  }
-];
+// Company Knowledge Base starts empty until real company SOPs are added
+export const DEFAULT_WIKI_DOCS: any[] = [];
 
 // Departmental Tracking Metrics (populated from real tenant activity)
 export const DEFAULT_DEPARTMENTAL_PROGRESS: any[] = [];
 
-// Default Departments for the seeded demo company only (isolated from newly registered companies)
-export const DEFAULT_DEPARTMENTS = [
-  {
-    id: 'dept-engineering-alm',
-    companyId: 'tenant-alm-nexus',
-    name: 'Engineering',
-    slug: 'engineering',
-    description: 'Core software engineering, architecture, QA, and staging delivery.',
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'dept-sales-alm',
-    companyId: 'tenant-alm-nexus',
-    name: 'Sales & Growth',
-    slug: 'sales-growth',
-    description: 'Outbound lead generation, client qualification, and pipeline expansion.',
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'dept-design-alm',
-    companyId: 'tenant-alm-nexus',
-    name: 'Design',
-    slug: 'design',
-    description: 'UI/UX design systems, brand identity, and interactive prototyping.',
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'dept-operations-alm',
-    companyId: 'tenant-alm-nexus',
-    name: 'Operations',
-    slug: 'operations',
-    description: 'SOP delivery governance, sprint coordination, and client onboarding.',
-    createdAt: new Date().toISOString()
-  }
-];
+// Departments start empty until created by a real Company Owner
+export const DEFAULT_DEPARTMENTS: any[] = [];
 
-// Default Memberships apply strictly to the seeded demo accounts (newly registered accounts start with 0 companies)
-export const DEFAULT_COMPANY_MEMBERSHIPS = [
-  {
-    id: 'mem-admin-alm',
-    companyId: 'tenant-alm-nexus',
-    userId: 'user-admin-1',
-    role: 'company_admin',
-    departmentIds: ['dept-engineering-alm', 'dept-sales-alm', 'dept-design-alm', 'dept-operations-alm'],
-    designation: 'Company Owner & Managing Director',
-    joinedAt: new Date().toISOString()
-  },
-  {
-    id: 'mem-sales-alm',
-    companyId: 'tenant-alm-nexus',
-    userId: 'user-sales-1',
-    role: 'department_head',
-    departmentIds: ['dept-sales-alm'],
-    designation: 'Head of Sales & BD',
-    joinedAt: new Date().toISOString()
-  },
-  {
-    id: 'mem-coord-alm',
-    companyId: 'tenant-alm-nexus',
-    userId: 'user-coord-1',
-    role: 'department_head',
-    departmentIds: ['dept-operations-alm'],
-    designation: 'Head of Operations & QA',
-    joinedAt: new Date().toISOString()
-  },
-  {
-    id: 'mem-dev-alm',
-    companyId: 'tenant-alm-nexus',
-    userId: 'user-dev-1',
-    role: 'employee',
-    departmentIds: ['dept-engineering-alm'],
-    designation: 'Lead Full-Stack Developer',
-    joinedAt: new Date().toISOString()
-  },
-  {
-    id: 'mem-design-alm',
-    companyId: 'tenant-alm-nexus',
-    userId: 'user-design-1',
-    role: 'employee',
-    departmentIds: ['dept-design-alm'],
-    designation: 'UI/UX Designer',
-    joinedAt: new Date().toISOString()
-  }
-];
+// Company memberships start empty until users register or join via invite
+export const DEFAULT_COMPANY_MEMBERSHIPS: any[] = [];
 
 // API Tokens for External Automation (created by admins)
 export const DEFAULT_API_TOKENS: any[] = [];
@@ -996,12 +643,15 @@ export function loadLocalDB(initialFallbackData: any): any {
     if (!fs.existsSync(DB_FILE)) {
       const seeded = {
         ...initialFallbackData,
-        users: DEFAULT_USERS,
-        tenants: DEFAULT_TENANTS,
-        departments: DEFAULT_DEPARTMENTS,
-        companyMemberships: DEFAULT_COMPANY_MEMBERSHIPS,
+        users: [],
+        tenants: [],
+        departments: [],
+        companyMemberships: [],
         companyInvites: [],
         departmentTasks: [],
+        emailAccounts: [],
+        emailCampaigns: [],
+        emailDeliveryLogs: [],
         connectors: DEFAULT_CONNECTORS,
         apiTokens: DEFAULT_API_TOKENS,
         auditLogs: DEFAULT_AUDIT_LOGS,
@@ -1032,17 +682,20 @@ export function loadLocalDB(initialFallbackData: any): any {
       salespersonProfiles: Array.isArray(parsed.salespersonProfiles) ? parsed.salespersonProfiles : (initialFallbackData?.salespersonProfiles || []),
       nudgeTemplates: Array.isArray(parsed.nudgeTemplates) && parsed.nudgeTemplates.length > 0 ? parsed.nudgeTemplates : (initialFallbackData?.nudgeTemplates || []),
       nudgeLogs: Array.isArray(parsed.nudgeLogs) ? parsed.nudgeLogs : (initialFallbackData?.nudgeLogs || []),
-      users: Array.isArray(parsed.users) && parsed.users.length > 0 ? parsed.users : DEFAULT_USERS,
+      users: Array.isArray(parsed.users) ? parsed.users : [],
       connectors: Array.isArray(parsed.connectors) && parsed.connectors.length > 0 ? parsed.connectors : DEFAULT_CONNECTORS,
       apiTokens: Array.isArray(parsed.apiTokens) ? parsed.apiTokens : (initialFallbackData?.apiTokens || DEFAULT_API_TOKENS),
       auditLogs: Array.isArray(parsed.auditLogs) ? parsed.auditLogs : (initialFallbackData?.auditLogs || DEFAULT_AUDIT_LOGS),
-      tenants: Array.isArray(parsed.tenants) && parsed.tenants.length > 0 ? parsed.tenants : DEFAULT_TENANTS,
-      departments: Array.isArray(parsed.departments) ? parsed.departments : DEFAULT_DEPARTMENTS,
-      companyMemberships: Array.isArray(parsed.companyMemberships) ? parsed.companyMemberships : DEFAULT_COMPANY_MEMBERSHIPS,
+      tenants: Array.isArray(parsed.tenants) ? parsed.tenants : [],
+      departments: Array.isArray(parsed.departments) ? parsed.departments : [],
+      companyMemberships: Array.isArray(parsed.companyMemberships) ? parsed.companyMemberships : [],
       companyInvites: Array.isArray(parsed.companyInvites) ? parsed.companyInvites : [],
       departmentTasks: Array.isArray(parsed.departmentTasks) ? parsed.departmentTasks : [],
+      emailAccounts: Array.isArray(parsed.emailAccounts) ? parsed.emailAccounts : [],
+      emailCampaigns: Array.isArray(parsed.emailCampaigns) ? parsed.emailCampaigns : [],
+      emailDeliveryLogs: Array.isArray(parsed.emailDeliveryLogs) ? parsed.emailDeliveryLogs : [],
       activityFeed: Array.isArray(parsed.activityFeed) ? parsed.activityFeed : DEFAULT_ACTIVITY_FEED,
-      wikiDocs: Array.isArray(parsed.wikiDocs) && parsed.wikiDocs.length > 0 ? parsed.wikiDocs : DEFAULT_WIKI_DOCS,
+      wikiDocs: Array.isArray(parsed.wikiDocs) ? parsed.wikiDocs : [],
       departmentalProgress: Array.isArray(parsed.departmentalProgress) ? parsed.departmentalProgress : DEFAULT_DEPARTMENTAL_PROGRESS,
       webhookLogs: Array.isArray(parsed.webhookLogs) ? parsed.webhookLogs : [],
       emailVerificationOtps: Array.isArray(parsed.emailVerificationOtps) ? parsed.emailVerificationOtps : []
