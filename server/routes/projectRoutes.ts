@@ -466,7 +466,7 @@ leadScoreRouter.post('/score/:id', requireCompanyRole(['company_admin', 'departm
   return res.json({ success: true, leadScore: score, project: p });
 });
 
-leadScoreRouter.post('/score-all', requireCompanyRole(['company_admin']), (req: AuthenticatedRequest, res: Response) => {
+leadScoreRouter.post('/score-all', requireCompanyRole(['company_admin', 'department_head']), (req: AuthenticatedRequest, res: Response) => {
   const db = readDB();
   const companyId = req.companyId!;
   let scoredCount = 0;

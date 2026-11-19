@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
+import { buildAuthHeaders } from '../lib/api';
 import { ProjectLead, ClientFeedbackItem } from '../types';
 import { SkeletonCard } from './SkeletonLoader';
 import {
@@ -29,6 +30,7 @@ export const ClientPortalView: React.FC = () => {
   );
   const [projectData, setProjectData] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [viewportMode, setViewportMode] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
 
   // Client feedback form state
@@ -36,6 +38,11 @@ export const ClientPortalView: React.FC = () => {
   const [feedbackContent, setFeedbackContent] = useState<string>('');
   const [feedbackCategory, setFeedbackCategory] = useState<'design' | 'bug' | 'content' | 'general'>('design');
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState<boolean>(false);
+
+  const getUrlPortalToken = () => {
+    if (typeof window === 'undefined') return '';
+    return new URLSearchParams(window.location.search).get('token') || '';
+  };
 
   // Sync when activePortalProjectId changes or projects load
   useEffect(() => {
@@ -47,17 +54,30 @@ export const ClientPortalView: React.FC = () => {
   }, [activePortalProjectId, projects, selectedProjectId]);
 
   const loadPortalData = async (projId: string) => {
-    if (!projId) return;
+    if (!projId) {
+      setLoading(false);
+      return;
+    }
     try {
       setLoading(true);
-      const res = await fetch(`/api/portal/project/${projId}`);
+      setLoadError(null);
+      const portalToken = getUrlPortalToken();
+      const query = portalToken ? `?token=${encodeURIComponent(portalToken)}` : '';
+      const res = await fetch(`/api/portal/project/${projId}${query}`, {
+        headers: buildAuthHeaders()
+      });
       const data = await res.json();
-      if (data.success && data.project) {
+      if (res.ok && data.success && data.project) {
         setProjectData(data.project);
         setFeedbackAuthor(data.project.clientName || '');
+      } else {
+        setProjectData(null);
+        setLoadError(data.message || data.error || 'Unable to load client portal project.');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error fetching portal data', err);
+      setProjectData(null);
+      setLoadError(err?.message || 'Unable to load client portal.');
     } finally {
       setLoading(false);
     }
@@ -66,14 +86,36 @@ export const ClientPortalView: React.FC = () => {
   useEffect(() => {
     if (selectedProjectId) {
       loadPortalData(selectedProjectId);
+    } else {
+      setLoading(false);
     }
   }, [selectedProjectId]);
 
-  const handleCopyGuestLink = () => {
+  const handleCopyGuestLink = async () => {
     if (!projectData) return;
-    const url = `${window.location.origin}/?portal=${projectData.id}&token=${projectData.portalToken || 'guest'}`;
-    navigator.clipboard.writeText(url);
-    showToast('Secure Guest Access Link copied to clipboard.');
+    try {
+      const res = await fetch(`/api/portal/generate-link/${projectData.id}`, {
+        method: 'POST',
+        headers: buildAuthHeaders()
+      });
+      const data = await res.json();
+      if (res.ok && data.success && data.guestUrl) {
+        const fullUrl = `${window.location.origin}${data.guestUrl}`;
+        await navigator.clipboard.writeText(fullUrl);
+        showToast('Secure Guest Access Link copied to clipboard.');
+        return;
+      }
+      throw new Error(data.message || data.error || 'Could not generate portal link');
+    } catch (err: any) {
+      const fallbackToken = projectData.clientPortalToken || getUrlPortalToken();
+      if (fallbackToken) {
+        const url = `${window.location.origin}/?portal=${projectData.id}&token=${encodeURIComponent(fallbackToken)}`;
+        await navigator.clipboard.writeText(url);
+        showToast('Secure Guest Access Link copied to clipboard.');
+      } else {
+        showToast(err?.message || 'Failed to generate guest access link.', 'error');
+      }
+    }
   };
 
   const handleSubmitFeedback = async (e: React.FormEvent) => {
@@ -82,27 +124,31 @@ export const ClientPortalView: React.FC = () => {
 
     try {
       setIsSubmittingFeedback(true);
+      const portalToken = getUrlPortalToken();
       const res = await fetch(`/api/portal/feedback/${projectData.id}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           author: feedbackAuthor || projectData.clientName,
           content: feedbackContent,
-          category: feedbackCategory
+          category: feedbackCategory,
+          ...(portalToken ? { token: portalToken } : {})
         })
       });
       const data = await res.json();
-      if (data.success && data.feedbackItem) {
+      if (res.ok && data.success && data.feedbackItem) {
         setProjectData((prev: any) => ({
           ...prev,
           feedback: [data.feedbackItem, ...(prev.feedback || [])]
         }));
         setFeedbackContent('');
-        showToast('Feedback submitted to agency engineering & staging team.');
+        showToast('Feedback submitted to engineering & staging team.');
+      } else {
+        showToast(data.message || data.error || 'Failed to submit feedback.', 'error');
       }
     } catch (err) {
       console.error('Error submitting feedback', err);
-      showToast('Failed to submit feedback.');
+      showToast('Failed to submit feedback.', 'error');
     } finally {
       setIsSubmittingFeedback(false);
     }
@@ -583,7 +629,17 @@ export const ClientPortalView: React.FC = () => {
           </div>
 
         </div>
-      ) : null}
+      ) : (
+        <div className="p-8 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-center space-y-2">
+          <AlertCircle className="w-8 h-8 text-slate-400 mx-auto" />
+          <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+            {loadError ? 'Portal Access Error' : 'No Client Project Selected'}
+          </h3>
+          <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+            {loadError || 'Create a project or deal first to inspect its client-facing milestone portal and staging preview.'}
+          </p>
+        </div>
+      )}
 
     </div>
   );

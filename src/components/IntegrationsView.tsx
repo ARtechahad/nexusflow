@@ -960,11 +960,11 @@ export const IntegrationsView: React.FC = () => {
                         paypalClientId
                       })
                     });
-                    const data = await res.json();
-                    if (data.success) {
-                      showToast('Live production credentials safely encrypted and updated!');
+                    const data = await res.json().catch(() => ({}));
+                    if (res.ok && data.success) {
+                      showToast(data.message || 'Live production credentials safely encrypted and updated!');
                     } else {
-                      showToast('Failed to save credentials.');
+                      showToast(data.message || data.error || 'Failed to save credentials.', 'error');
                     }
                   } catch (e: any) {
                     showToast('Error: ' + e.message);

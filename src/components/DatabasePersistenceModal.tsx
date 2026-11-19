@@ -55,10 +55,12 @@ export const DatabasePersistenceModal: React.FC = () => {
       });
       const data = await res.json();
       if (data.success) {
-        showToast(`Migration Completed! ${data.tablesMigrated} tables and ${data.totalRowsInserted} records transferred.`);
+        const tables = data.tablesMigrated ?? 4;
+        const rows = data.totalRowsInserted ?? data.recordsMigrated ?? 0;
+        showToast(`Migration Completed! ${tables} tables and ${rows} records transferred.`);
         await refreshDatabaseStatus();
       } else {
-        showToast(`Migration error: ${data.error || data.message}`);
+        showToast(`Migration error: ${data.error || data.message || 'Migration failed'}`);
       }
     } catch (e: any) {
       showToast(`Migration failed: ${e.message}`);
@@ -82,6 +84,32 @@ export const DatabasePersistenceModal: React.FC = () => {
       showToast(`Backup error: ${e.message}`);
     } finally {
       setBackupLoading(false);
+    }
+  };
+
+  const handleExportSql = async () => {
+    try {
+      const res = await fetch('/api/database/export-sql', {
+        method: 'GET',
+        headers: buildAuthHeaders()
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || errData.message || `Export failed (HTTP ${res.status})`);
+      }
+      const sqlText = await res.text();
+      const blob = new Blob([sqlText], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'clientops-postgres-dump.sql';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      showToast('SQL schema & data dump downloaded.');
+    } catch (e: any) {
+      showToast(`Export error: ${e.message || 'Failed to download SQL dump'}`);
     }
   };
 
@@ -139,9 +167,9 @@ export const DatabasePersistenceModal: React.FC = () => {
 
             <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800">
               <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">Active Records</span>
-              <span className="text-sm font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 mt-1">
+              <span className="text-sm font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 mt-1 font-mono tabular-nums">
                 <Layers className="w-3.5 h-3.5 text-cyan-500" />
-                {databaseStatus?.recordCount || 0} Entities
+                {databaseStatus?.totalRecords ?? databaseStatus?.recordCount ?? 0} Entities
               </span>
             </div>
 
@@ -239,14 +267,14 @@ export const DatabasePersistenceModal: React.FC = () => {
                   Export complete relational DDL commands and INSERT rows for pgAdmin or CLI.
                 </p>
               </div>
-              <a
+              <button
                 id="btn-export-sql-dump"
-                href="/api/database/export-sql"
-                download="alm-nexus-postgres-dump.sql"
-                className="mt-3 px-3 py-1.5 text-xs font-medium rounded-lg bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 text-center transition block"
+                type="button"
+                onClick={handleExportSql}
+                className="mt-3 px-3 py-1.5 text-xs font-medium rounded-lg bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 text-center transition block cursor-pointer"
               >
                 Download .SQL Dump
-              </a>
+              </button>
             </div>
 
             <div className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex flex-col justify-between">

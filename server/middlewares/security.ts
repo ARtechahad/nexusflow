@@ -34,7 +34,7 @@ export const dynamicCors: RequestHandler = cors({
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-Id', 'Tenant-Id', 'X-API-Key', 'X-Correlation-ID', 'X-Requested-With']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-Id', 'Tenant-Id', 'X-Company-Id', 'X-Department-Id', 'X-API-Key', 'X-Correlation-ID', 'X-Requested-With']
 });
 
 export const globalRateLimiter: RequestHandler = rateLimit({

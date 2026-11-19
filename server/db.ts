@@ -32,6 +32,8 @@ export interface DatabaseStatus {
   latencyMs: number;
   poolSize: number;
   totalRecords: number;
+  recordCount: number;
+  databaseSizeBytes: number;
   host?: string;
   database?: string;
   lastBackupAt: string;
@@ -924,6 +926,12 @@ export async function getDatabaseStatus(): Promise<DatabaseStatus> {
 
   const projectsCount = (db.projects || []).length;
   const usersCount = (db.users || []).length;
+  const tenantsCount = (db.tenants || []).length;
+  const departmentsCount = (db.departments || []).length;
+  const membershipsCount = (db.companyMemberships || []).length;
+  const tasksCount = (db.departmentTasks || []).length;
+  const emailAccountsCount = (db.emailAccounts || []).length;
+  const emailCampaignsCount = (db.emailCampaigns || []).length;
   const inquiriesCount = (db.clientInquiries || []).length;
   const invoicesCount = (db.invoices || []).length;
   const webhookLogsCount = (db.webhookLogs || []).length;
@@ -931,18 +939,50 @@ export async function getDatabaseStatus(): Promise<DatabaseStatus> {
   const apiTokensCount = (db.apiTokens || []).length;
   const auditLogsCount = (db.auditLogs || []).length;
 
+  const totalRecords =
+    projectsCount +
+    usersCount +
+    tenantsCount +
+    departmentsCount +
+    membershipsCount +
+    tasksCount +
+    emailAccountsCount +
+    emailCampaignsCount +
+    inquiriesCount +
+    invoicesCount +
+    webhookLogsCount +
+    apiTokensCount +
+    auditLogsCount;
+
+  let databaseSizeBytes = 0;
+  try {
+    if (fs.existsSync(DB_FILE)) {
+      databaseSizeBytes = fs.statSync(DB_FILE).size;
+    }
+  } catch {
+    databaseSizeBytes = 0;
+  }
+
   return {
     engine: pgConnectedNow ? 'postgresql' : 'local_disk_json',
     connected: pgConnectedNow,
     latencyMs: latency,
     poolSize: pgPool?.totalCount || 0,
-    totalRecords: projectsCount + usersCount + inquiriesCount + invoicesCount + webhookLogsCount + apiTokensCount + auditLogsCount,
+    totalRecords,
+    recordCount: totalRecords,
+    databaseSizeBytes,
     host: pgConnectedNow && connUrl ? maskUrl(connUrl).split('@')[1]?.split('/')[0] : 'local-filesystem',
     database: pgConnectedNow && connUrl ? connUrl.split('/').pop()?.split('?')[0] : 'db.json (atomic write)',
     lastBackupAt: lastBackupTimestamp,
     tables: [
+      { name: 'companies_tenants', count: tenantsCount },
+      { name: 'departments', count: departmentsCount },
+      { name: 'company_memberships', count: membershipsCount },
+      { name: 'department_tasks', count: tasksCount },
       { name: 'agency_projects', count: projectsCount },
       { name: 'agency_users', count: usersCount },
+      { name: 'email_accounts', count: emailAccountsCount },
+      { name: 'email_campaigns', count: emailCampaignsCount },
       { name: 'agency_inbox', count: inquiriesCount },
       { name: 'agency_invoices', count: invoicesCount },
       { name: 'agency_webhook_logs', count: webhookLogsCount },
@@ -999,10 +1039,22 @@ export async function testPostgresConnection(testUrl: string): Promise<{ ok: boo
 /**
  * Migrate all current local data into a target PostgreSQL database in 1 click
  */
-export async function migrateToPostgres(targetUrl: string): Promise<{ success: boolean; message: string; recordsMigrated: number }> {
+export async function migrateToPostgres(targetUrl: string): Promise<{
+  success: boolean;
+  message: string;
+  recordsMigrated: number;
+  tablesMigrated: number;
+  totalRowsInserted: number;
+}> {
   const testRes = await testPostgresConnection(targetUrl);
   if (!testRes.ok) {
-    return { success: false, message: testRes.message, recordsMigrated: 0 };
+    return {
+      success: false,
+      message: testRes.message,
+      recordsMigrated: 0,
+      tablesMigrated: 0,
+      totalRowsInserted: 0
+    };
   }
 
   try {
@@ -1079,10 +1131,18 @@ export async function migrateToPostgres(targetUrl: string): Promise<{ success: b
     return {
       success: true,
       message: `Migration complete! Successfully transferred ${count} records into PostgreSQL tables.`,
-      recordsMigrated: count
+      recordsMigrated: count,
+      tablesMigrated: 4,
+      totalRowsInserted: count
     };
   } catch (err: any) {
-    return { success: false, message: `Migration error: ${err.message}`, recordsMigrated: 0 };
+    return {
+      success: false,
+      message: `Migration error: ${err.message}`,
+      recordsMigrated: 0,
+      tablesMigrated: 0,
+      totalRowsInserted: 0
+    };
   }
 }
 

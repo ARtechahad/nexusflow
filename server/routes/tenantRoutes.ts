@@ -145,6 +145,7 @@ router.post('/onboard', requireAuth, (req: AuthenticatedRequest, res: Response) 
     name: deptName,
     slug: deptName.toLowerCase(),
     description: `${deptName} department for ${cleanName}.`,
+    allowed_modules: ['operations', 'chat'],
     createdBy: req.user!.id,
     createdAt: now
   }));
@@ -241,6 +242,7 @@ router.put('/:id', requireAuth, (req: AuthenticatedRequest, res: Response) => {
     id: tenants[idx].id,
     branding: { ...tenants[idx].branding, ...(updates.branding || {}) },
     businessInfo: { ...tenants[idx].businessInfo, ...(updates.businessInfo || {}) },
+    settings: { ...(tenants[idx].settings || {}), ...(updates.settings || {}) },
     integrations: {
       ...tenants[idx].integrations,
       ...(updates.integrations || {}),
@@ -270,10 +272,45 @@ router.get('/:id/departmental', requireAuth, (req: AuthenticatedRequest, res: Re
   if (!membership) {
     return res.status(403).json({ success: false, error: 'Forbidden: Cross-tenant access denied.' });
   }
-  const departmental = (db.departmentalProgress || DEFAULT_DEPARTMENTAL_PROGRESS).filter(
+  const storedDepartmental = (db.departmentalProgress || DEFAULT_DEPARTMENTAL_PROGRESS).filter(
     (d: any) => d.companyId === id || d.tenantId === id
   );
-  return res.json({ success: true, departments: departmental });
+  if (storedDepartmental.length > 0) {
+    return res.json({ success: true, departments: storedDepartmental });
+  }
+
+  // Compute live departmental progress from the company's real departments, memberships & tasks
+  const companyDepts = (db.departments || []).filter((d: any) => d.companyId === id);
+  const companyTasks = (db.departmentTasks || []).filter((t: any) => t.companyId === id);
+  const companyMembers = (db.companyMemberships || []).filter((m: any) => m.companyId === id);
+
+  const computedDepartmental = companyDepts.map((dept: any) => {
+    const deptTasks = companyTasks.filter((t: any) => t.departmentId === dept.id);
+    const completedCount = deptTasks.filter((t: any) => t.status === 'done' || t.status === 'completed').length;
+    const totalCount = deptTasks.length;
+    const progressPercent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+    const membersInDept = companyMembers.filter(
+      (m: any) => Array.isArray(m.departmentIds) && m.departmentIds.includes(dept.id)
+    ).length;
+
+    return {
+      id: dept.id,
+      companyId: id,
+      department: dept.name,
+      departmentId: dept.id,
+      progressPercent,
+      activeTasks: totalCount - completedCount,
+      completedTasks: completedCount,
+      membersCount: membersInDept,
+      metrics: {
+        tasksCompleted: completedCount,
+        totalTasks: totalCount,
+        membersActive: membersInDept
+      }
+    };
+  });
+
+  return res.json({ success: true, departments: computedDepartmental });
 });
 
 router.put('/:id/departmental/:dept', requireCompanyRole(['company_admin']), (req: AuthenticatedRequest, res: Response) => {

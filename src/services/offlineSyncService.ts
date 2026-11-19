@@ -8,6 +8,8 @@
  * 4. Automatic Batch Sync Dispatcher on network reconnection.
  */
 
+import { buildAuthHeaders, getStoredTenantId } from '../lib/api';
+
 export type EntityType = 'project' | 'invoice' | 'lead' | 'chat' | 'commission';
 export type MutationAction = 'create' | 'update' | 'delete';
 
@@ -191,9 +193,11 @@ class OfflineSyncService {
     localVersion: number = 1
   ): string {
     const id = `mut_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-    const activeTenantId = (typeof window !== 'undefined' ? localStorage.getItem('alm_nexus_tenant_id') : null) || '';
+    const activeCompanyId = getStoredTenantId() || '';
     const enrichedPayload = {
-      ...(activeTenantId ? { tenant_id: activeTenantId, tenantId: activeTenantId } : {}),
+      ...(activeCompanyId
+        ? { companyId: activeCompanyId, tenant_id: activeCompanyId, tenantId: activeCompanyId }
+        : {}),
       ...payload
     };
     
@@ -357,15 +361,7 @@ class OfflineSyncService {
     let errors = 0;
     const remainingQueue: QueuedMutation[] = [];
 
-    const token = typeof window !== 'undefined' ? localStorage.getItem('alm_nexus_token') : null;
-    const activeTenantId = (typeof window !== 'undefined' ? localStorage.getItem('alm_nexus_tenant_id') : null) || '';
-    const authHeaders: Record<string, string> = {
-      'Content-Type': 'application/json',
-      ...(activeTenantId ? { 'X-Tenant-Id': activeTenantId } : {})
-    };
-    if (token) {
-      authHeaders['Authorization'] = `Bearer ${token}`;
-    }
+    const authHeaders = buildAuthHeaders({ 'Content-Type': 'application/json' });
 
     for (const mutation of this.queue) {
       if (mutation.status === 'conflict') {
@@ -384,7 +380,7 @@ class OfflineSyncService {
           endpoint = mutation.action === 'create' ? '/api/projects' : `/api/projects/${mutation.targetId}`;
           method = mutation.action === 'create' ? 'POST' : mutation.action === 'delete' ? 'DELETE' : 'PUT';
         } else if (mutation.entity === 'lead') {
-          endpoint = `/api/v1/leads`;
+          endpoint = `/api/leads`;
           method = 'POST';
         } else if (mutation.entity === 'invoice') {
           endpoint = `/api/invoices`;

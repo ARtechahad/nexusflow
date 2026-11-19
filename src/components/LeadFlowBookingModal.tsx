@@ -19,6 +19,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { buildAuthHeaders } from '../lib/api';
 
 interface LeadFlowBookingModalProps {
   isOpen: boolean;
@@ -110,33 +111,18 @@ export const LeadFlowBookingModal: React.FC<LeadFlowBookingModalProps> = ({
 
       const res = await fetch('/api/leads', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(leadPayload)
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(data.error || 'Failed to save intake to CRM');
-      }
-
-      // 2. Dispatch optional notification webhook
-      try {
-        await fetch('/api/webhook/notify', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            event: 'strategy_call_booked',
-            lead: leadPayload,
-            timestamp: new Date().toISOString()
-          })
-        });
-      } catch {
-        // Notification webhook fallback is non-blocking
+        throw new Error(data.error || data.message || 'Failed to save intake to CRM');
       }
 
       if (refreshProjects) refreshProjects();
       setStep('success');
-      showToast(`Strategy Call secured! Calendar invitation sent to ${email}`, 'success');
+      showToast(`Strategy Call secured! Lead saved for ${email}`, 'success');
     } catch (err: any) {
       showToast(err?.message || 'Error confirming booking', 'error');
     } finally {

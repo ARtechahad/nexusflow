@@ -317,6 +317,14 @@ async function startServer() {
                  (isCompiledBundle && distHtmlExists) ||
                  Boolean(distHtmlExists && process.env.NODE_ENV !== 'development' && !process.env.APPLET_ID);
 
+  // Fallback handler for unmatched API routes in both dev and production
+  app.all('/api/*', (req: Request, res: Response) => {
+    res.status(404).json({
+      success: false,
+      error: `API route not found: ${req.method} ${req.path}`
+    });
+  });
+
   if (!isProd) {
     // Dynamic import of Vite ensures production builds never crash on missing Vite dependencies
     const { createServer: createViteServer } = await import('vite');
@@ -329,16 +337,8 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    console.log(`[AgencyOps] Serving production static assets from: ${distPath}`);
+    console.log(`[ClientOps] Serving production static assets from: ${distPath}`);
     app.use(express.static(distPath, { index: false }));
-
-    // Fallback handler for unmatched API routes in production
-    app.all('/api/*', (req: Request, res: Response) => {
-      res.status(404).json({
-        success: false,
-        error: `API route not found: ${req.method} ${req.path}`
-      });
-    });
 
     // SPA client-side routing fallback
     app.get('*', (req: Request, res: Response) => {

@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
+import { buildAuthHeaders } from '../lib/api';
 import { ProjectLead, WebsiteType, LeadChannel } from '../types';
 import {
   Search,
@@ -76,6 +77,7 @@ export const ProjectsPipeline: React.FC = () => {
     showToast,
     t,
     role,
+    companyRole,
     currentUser,
     showSetupChecklist,
     dismissSetupChecklist
@@ -155,22 +157,20 @@ export const ProjectsPipeline: React.FC = () => {
   const handleScoreAllLeads = async () => {
     try {
       setIsScoringLeads(true);
-      const token = localStorage.getItem('alm_nexus_token');
-      const tenantId = localStorage.getItem('alm_nexus_tenant_id');
       const res = await fetch('/api/leads/score-all', {
         method: 'POST',
-        headers: {
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          ...(tenantId ? { 'X-Tenant-Id': tenantId } : {})
-        }
+        headers: buildAuthHeaders()
       });
-      const data = await res.json();
-      if (data.success) {
-        showToast('All pipeline leads re-evaluated with Smart Scoring.');
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success) {
+        showToast(data.message || 'All pipeline leads re-evaluated with Smart Scoring.');
         await refreshProjects();
+      } else {
+        showToast(data.error || data.message || 'Unable to score leads.', 'error');
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error('Failed to score leads', e);
+      showToast(e?.message || 'Failed to score leads.', 'error');
     } finally {
       setIsScoringLeads(false);
     }
@@ -621,8 +621,8 @@ export const ProjectsPipeline: React.FC = () => {
             </button>
           </div>
 
-          {/* Score All Leads Button - Internal Roles Only */}
-          {role !== 'collaborator' && (
+          {/* Score All Leads Button - Owners & Department Heads */}
+          {(companyRole === 'company_admin' || companyRole === 'department_head') && (
             <button
               id="btn-score-all-leads"
               type="button"

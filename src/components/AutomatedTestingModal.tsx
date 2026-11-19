@@ -25,13 +25,13 @@ export const AutomatedTestingModal: React.FC = () => {
     setRunning(true);
     try {
       const res = await fetch('/api/test-runner', { method: 'POST', headers: buildAuthHeaders() });
-      if (res.ok) {
-        const data = await res.json();
-        setTestResults(data.tests || []);
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success) {
+        setTestResults(data.tests || data.results || []);
         setSummary(data.summary || null);
         showToast('All automated testing assertions passed!');
       } else {
-        showToast('Failed to execute test suite.');
+        showToast(data.error || data.message || 'Failed to execute test suite.');
       }
     } catch (e: any) {
       showToast('Error running tests: ' + e.message);
@@ -107,9 +107,9 @@ export const AutomatedTestingModal: React.FC = () => {
                 <span>Category &amp; Duration</span>
               </div>
               <div className="space-y-1.5">
-                {testResults.map(t => (
+                {testResults.map((t, idx) => (
                   <div
-                    key={t.id}
+                    key={t.id || `${t.name}-${idx}`}
                     className="p-3 rounded-xl bg-white dark:bg-slate-850 border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 text-xs"
                   >
                     <div className="flex items-start gap-2.5">
@@ -123,7 +123,7 @@ export const AutomatedTestingModal: React.FC = () => {
                           {t.name}
                         </span>
                         <span className="text-[11px] text-slate-500">
-                          {t.details}
+                          {t.details || t.message}
                         </span>
                       </div>
                     </div>
@@ -131,8 +131,8 @@ export const AutomatedTestingModal: React.FC = () => {
                       <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
                         {t.category}
                       </span>
-                      <span className="block text-[10px] text-slate-400 font-mono mt-0.5">
-                        {t.durationMs}ms
+                      <span className="block text-[10px] text-slate-400 font-mono tabular-nums mt-0.5">
+                        {t.durationMs ?? t.executionTimeMs ?? 0}ms
                       </span>
                     </div>
                   </div>

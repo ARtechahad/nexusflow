@@ -1,7 +1,8 @@
-import { Router, Request, Response } from 'express';
+import { Router, Response } from 'express';
 import { readDB, writeDB } from '../db';
 import { logger } from '../logger';
 import { AuditLogService } from '../services/auditLogService';
+import { AuthenticatedRequest, requireCompanyAccess } from '../middlewares/auth';
 
 export interface OfflineSyncMutation {
   id: string;
@@ -51,15 +52,19 @@ export function resolveLastWriteWins(clientMutation: OfflineSyncMutation, server
 
 export const offlineSyncRouter = Router();
 
-// POST /api/offline/batch-sync - Conflict-Free Batched Offline Sync Endpoint
-offlineSyncRouter.post('/batch-sync', (req: Request, res: Response) => {
+function isSameCompany(record: any, companyId: string): boolean {
+  return record?.companyId === companyId || record?.tenantId === companyId || record?.tenant_id === companyId;
+}
+
+// POST /api/offline/batch-sync - Conflict-Free Batched Offline Sync Endpoint (Company Isolated)
+offlineSyncRouter.post('/batch-sync', requireCompanyAccess, (req: AuthenticatedRequest, res: Response) => {
   const { mutations } = req.body || {};
   if (!Array.isArray(mutations) || mutations.length === 0) {
     return res.status(400).json({ success: false, error: 'Array of queued mutations is required.' });
   }
 
   const db = readDB();
-  const tenantId = (req as any).tenant_id || 'tenant-alm-nexus';
+  const companyId = req.companyId!;
   let processedCount = 0;
   let conflictCount = 0;
   const results: Array<{ mutationId: string; status: 'synced' | 'conflict_resolved' | 'failed'; strategy?: string }> = [];
@@ -67,17 +72,32 @@ offlineSyncRouter.post('/batch-sync', (req: Request, res: Response) => {
   for (const mut of mutations as OfflineSyncMutation[]) {
     try {
       if (mut.entity === 'project') {
-        const index = db.projects.findIndex((p: any) => p.id === mut.targetId);
-        const serverEntity = index !== -1 ? db.projects[index] : null;
+        const index = (db.projects || []).findIndex(
+          (p: any) => p.id === mut.targetId && isSameCompany(p, companyId)
+        );
+        const existingOtherCompany =
+          index === -1 && (db.projects || []).some((p: any) => p.id === mut.targetId);
+        if (existingOtherCompany) {
+          results.push({ mutationId: mut.id, status: 'failed' });
+          continue;
+        }
 
+        const serverEntity = index !== -1 ? db.projects[index] : null;
         const resolution = resolveLastWriteWins(mut, serverEntity);
+        const scopedPayload = {
+          ...resolution.resolvedPayload,
+          companyId,
+          tenantId: companyId,
+          tenant_id: companyId
+        };
 
         if (mut.action === 'delete' && index !== -1) {
           db.projects.splice(index, 1);
         } else if (index !== -1) {
-          db.projects[index] = resolution.resolvedPayload;
+          db.projects[index] = scopedPayload;
         } else {
-          db.projects.unshift(resolution.resolvedPayload);
+          if (!Array.isArray(db.projects)) db.projects = [];
+          db.projects.unshift(scopedPayload);
         }
 
         if (resolution.hasConflict) conflictCount++;
@@ -101,15 +121,15 @@ offlineSyncRouter.post('/batch-sync', (req: Request, res: Response) => {
   writeDB(db);
 
   AuditLogService.log({
-    tenantId,
-    actorId: (req as any).user?.id || 'offline-sync',
-    actorName: (req as any).user?.name || 'IndexedDB Sync Engine',
-    actorRole: (req as any).user?.role || 'admin',
+    tenantId: companyId,
+    actorId: req.user?.id || 'offline-sync',
+    actorName: req.user?.name || 'IndexedDB Sync Engine',
+    actorRole: req.companyRole || req.user?.role || 'employee',
     action: 'OFFLINE_BATCH_SYNC_EXECUTED',
     entityType: 'project',
     entityId: `batch_${Date.now()}`,
     ipAddress: req.ip || '127.0.0.1',
-    details: { totalMutations: mutations.length, processedCount, conflictCount }
+    details: { companyId, totalMutations: mutations.length, processedCount, conflictCount }
   });
 
   res.json({

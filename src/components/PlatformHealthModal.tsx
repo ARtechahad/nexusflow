@@ -26,12 +26,22 @@ export const PlatformHealthModal: React.FC<PlatformHealthModalProps> = ({ isOpen
 
   if (!isOpen) return null;
 
-  const handleTestPing = (serviceName: string) => {
+  const handleTestPing = async (serviceName: string) => {
     setTestingService(serviceName);
-    setTimeout(() => {
+    const start = performance.now();
+    try {
+      const res = await fetch('/api/health', { cache: 'no-store' });
+      const latencyMs = Math.max(1, Math.round(performance.now() - start));
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      await refreshDatabaseStatus();
+      showToast(`Ping check for ${serviceName} succeeded: ${latencyMs}ms (HTTP ${res.status})`, 'success');
+    } catch (err: any) {
+      showToast(`Ping check for ${serviceName} failed: ${err?.message || 'Unreachable'}`, 'error');
+    } finally {
       setTestingService(null);
-      showToast(`Ping test for ${serviceName} succeeded: Latency 28ms, HTTP 200 OK`, 'success');
-    }, 750);
+    }
   };
 
   const services = [

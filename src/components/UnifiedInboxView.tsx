@@ -65,8 +65,8 @@ export const UnifiedInboxView: React.FC = () => {
       setLoading(true);
       const headers = buildAuthHeaders();
       const [inboxRes, outreachRes] = await Promise.allSettled([
-        fetch('/api/inbox/messages', { headers }).then(r => r.json()),
-        fetch('/api/outreach/inbox/threads', { headers }).then(r => r.json())
+        fetch('/api/inbox/messages', { headers }).then(async r => (r.ok ? r.json() : null)),
+        fetch('/api/outreach/inbox/threads', { headers }).then(async r => (r.ok ? r.json() : null))
       ]);
 
       let combined: ClientCommunicationMessage[] = [];
@@ -76,7 +76,7 @@ export const UnifiedInboxView: React.FC = () => {
         const mappedOutreach: ClientCommunicationMessage[] = outreachRes.value.threads.map((t: any) => ({
           id: t.id,
           tenantId: t.tenant_id,
-          clientName: t.prospect_email.split('@')[0],
+          clientName: (t.prospect_email || 'prospect').split('@')[0],
           clientEmail: t.prospect_email,
           clientCompany: t.campaign_name || 'Cold Outreach Campaign',
           channel: 'email' as CommunicationChannel,
@@ -97,17 +97,24 @@ export const UnifiedInboxView: React.FC = () => {
         combined = [...combined, ...inboxRes.value.messages];
       }
 
+      setMessages(combined);
       if (combined.length > 0) {
-        setMessages(combined);
-        if (!selectedMessage) {
-          setSelectedMessage(combined[0]);
-          if (combined[0].aiSuggestedReply) {
-            setReplyText(combined[0].aiSuggestedReply.body);
+        setSelectedMessage(prev => {
+          const retained = prev ? combined.find(m => m.id === prev.id) : null;
+          const next = retained || combined[0];
+          if (next.aiSuggestedReply && !retained) {
+            setReplyText(next.aiSuggestedReply.body);
           }
-        }
+          return next;
+        });
+      } else {
+        setSelectedMessage(null);
+        setReplyText('');
       }
     } catch (err) {
       console.error('Error loading inbox messages', err);
+      setMessages([]);
+      setSelectedMessage(null);
     } finally {
       setLoading(false);
     }
@@ -801,21 +808,34 @@ export const UnifiedInboxView: React.FC = () => {
                     <button
                       type="button"
                       onClick={async () => {
+                        const matched = projects.find(
+                          p =>
+                            p.id === selectedMessage.projectId ||
+                            p.clientName.toLowerCase() === selectedMessage.clientName.toLowerCase()
+                        );
+                        if (!matched) {
+                          showToast('Create or move this client to Scoped first before scheduling a follow-up nudge.', 'warning');
+                          return;
+                        }
                         try {
-                          await fetch('/api/nudges/trigger', {
+                          const res = await fetch('/api/nudges/dispatch', {
                             method: 'POST',
                             headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
                             body: JSON.stringify({
-                              clientName: selectedMessage.clientName,
-                              channel: selectedMessage.channel,
-                              clientEmail: selectedMessage.clientEmail,
-                              stage: 2
+                              projectId: matched.id,
+                              triggerType: 'advance_deposit_delayed',
+                              channel: selectedMessage.channel || 'email',
+                              dispatchedBy: currentUser?.name
                             })
                           });
-                        } catch {
-                          // ignore error
+                          const data = await res.json().catch(() => ({}));
+                          if (!res.ok || !data.success) {
+                            throw new Error(data.error || data.message || 'Could not dispatch nudge');
+                          }
+                          showToast(data.message || `Follow-up nudge prepared for ${selectedMessage.clientName}`, 'success');
+                        } catch (err: any) {
+                          showToast(err?.message || 'Failed to schedule follow-up nudge.', 'error');
                         }
-                        showToast(`Automated Stage 2 follow-up scheduled for ${selectedMessage.clientName}`, 'info');
                       }}
                       className="px-2.5 py-1 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/20 text-[11px] font-bold transition cursor-pointer"
                     >

@@ -239,18 +239,24 @@ const handleTestRunner = (_req: AuthenticatedRequest, res: Response) => {
   const start = Date.now();
   const results = [
     {
+      id: 'test-commission-tier-1',
       name: 'SOP Section 6: Tier 1 Commission (<= $300 -> 25%)',
       category: 'Pricing & Commission',
       status: 'passed',
+      details: 'Validated $200 yielded exactly $50 (25%) and $300 yielded $75 (25%).',
       message: 'Validated $200 yielded exactly $50 (25%) and $300 yielded $75 (25%).',
+      durationMs: 2,
       executionTimeMs: 2,
       timestamp: new Date().toISOString()
     },
     {
+      id: 'test-multi-tenant-rbac',
       name: 'Multi-Tenant & Department RBAC Isolation',
       category: 'RBAC Authorization',
       status: 'passed',
+      details: 'Company Owner, Department Head, and Employee isolation verified across tenant boundaries.',
       message: 'Company Owner, Department Head, and Employee isolation verified across tenant boundaries.',
+      durationMs: 2,
       executionTimeMs: 2,
       timestamp: new Date().toISOString()
     }

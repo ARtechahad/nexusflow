@@ -69,27 +69,88 @@ integrationRouter.get('/connectors', (req: AuthenticatedRequest, res: Response) 
 
 integrationRouter.post('/credentials', (req: AuthenticatedRequest, res: Response) => {
   const companyId = req.companyId!;
-  const { channel, apiKey, webhookSecret, customWebhookUrl } = req.body || {};
+  const {
+    channel,
+    apiKey,
+    webhookSecret,
+    customWebhookUrl,
+    stripeSecretKey,
+    stripeWebhookSecret,
+    upworkApiKey,
+    paypalClientId
+  } = req.body || {};
   const db = readDB();
   const connectors = getCompanyConnectors(db, companyId);
+  const now = new Date().toISOString();
 
-  const conn = connectors.find((c: any) => c.channel === channel);
-  if (!conn) {
-    return res.status(404).json({ success: false, message: 'Connector not found.' });
+  // Single-channel payload mode
+  if (channel) {
+    const conn = connectors.find((c: any) => c.channel === channel);
+    if (!conn) {
+      return res.status(404).json({ success: false, message: 'Connector not found.' });
+    }
+
+    conn.status = 'connected';
+    conn.lastSyncTime = now;
+    if (customWebhookUrl) conn.webhookEndpoint = customWebhookUrl;
+    if (apiKey) conn.apiKeyConfigured = true;
+    if (webhookSecret) conn.webhookSecretConfigured = true;
+
+    writeDB(db);
+    return res.json({
+      success: true,
+      message: `${conn.name} credentials saved and live connection verified!`,
+      connector: conn
+    });
   }
 
-  conn.status = 'connected';
-  conn.lastSyncTime = new Date().toISOString();
-  if (customWebhookUrl) conn.webhookEndpoint = customWebhookUrl;
-  if (apiKey) conn.apiKeyConfigured = true;
-  if (webhookSecret) conn.webhookSecretConfigured = true;
+  // Bulk credential vault payload mode (IntegrationsView form)
+  const updatedChannels: string[] = [];
+
+  if (stripeSecretKey || stripeWebhookSecret) {
+    const stripeConn = connectors.find((c: any) => c.channel === 'stripe');
+    if (stripeConn) {
+      stripeConn.status = 'connected';
+      stripeConn.lastSyncTime = now;
+      if (stripeSecretKey) stripeConn.apiKeyConfigured = true;
+      if (stripeWebhookSecret) stripeConn.webhookSecretConfigured = true;
+      updatedChannels.push('Stripe');
+    }
+  }
+
+  if (upworkApiKey) {
+    const upworkConn = connectors.find((c: any) => c.channel === 'upwork');
+    if (upworkConn) {
+      upworkConn.status = 'connected';
+      upworkConn.lastSyncTime = now;
+      upworkConn.apiKeyConfigured = true;
+      updatedChannels.push('Upwork');
+    }
+  }
+
+  if (paypalClientId) {
+    const paypalConn = connectors.find((c: any) => c.channel === 'paypal');
+    if (paypalConn) {
+      paypalConn.status = 'connected';
+      paypalConn.lastSyncTime = now;
+      paypalConn.apiKeyConfigured = true;
+      updatedChannels.push('PayPal');
+    }
+  }
+
+  if (updatedChannels.length === 0) {
+    return res.status(400).json({
+      success: false,
+      message: 'Please enter at least one integration API key or webhook secret before saving.'
+    });
+  }
 
   writeDB(db);
-
-  res.json({
+  return res.json({
     success: true,
-    message: `${conn.name} credentials saved and live connection verified!`,
-    connector: conn
+    message: `Updated production credentials for: ${updatedChannels.join(', ')}.`,
+    updatedChannels,
+    connectors
   });
 });
 

@@ -126,7 +126,7 @@ dripRouter.post('/trigger', requireDepartmentModule('email_hub'), (req: Authenti
           <p style="font-size: 12px; color: #64748b;">ALM Nexus Enterprise &bull; Client Operations</p>
         </div>`,
         template: 'drip_followup',
-        tenantId: p.tenantId || 'tenant-alm-nexus',
+        tenantId: p.companyId || p.tenantId || companyId,
         metadata: {
           projectId: p.id,
           stage: currentStage,
@@ -142,9 +142,11 @@ dripRouter.post('/trigger', requireDepartmentModule('email_hub'), (req: Authenti
       p.dripCampaign.status = 'completed';
     }
 
-    // Post notification to Sales channel
+    // Post notification to Sales channel scoped strictly to this company
     db.chatMessages.push({
       id: `msg-drip-cron-${Date.now()}-${p.id}`,
+      companyId,
+      tenantId: companyId,
       senderId: 'bot-drip-scheduler',
       senderName: 'Smart Drip Automation',
       senderRole: 'sales',
@@ -234,7 +236,7 @@ dripRouter.post('/send-now/:projectId', requireDepartmentModule('email_hub'), (r
         <p style="font-size: 12px; color: #64748b;">ALM Nexus Enterprise &bull; Client Operations</p>
       </div>`,
       template: 'drip_followup_manual',
-      tenantId: p.tenantId || 'tenant-alm-nexus',
+      tenantId: p.companyId || p.tenantId || req.companyId!,
       metadata: {
         projectId: p.id,
         stage: currentStage,

@@ -42,7 +42,10 @@ export const OutreachView: React.FC = () => {
     outreachInitialData,
     aiSettings,
     setIsAISettingsModalOpen,
-    currentTenant
+    currentTenant,
+    currentUser,
+    departments,
+    selectedDepartmentId
   } = useApp();
 
   // Sub-tabs: 'scraper' | 'generator' | 'drip' | 'leadflow_engine'
@@ -1022,20 +1025,26 @@ export const OutreachView: React.FC = () => {
                   <button
                     onClick={async () => {
                       try {
-                        await fetch('/api/chat/messages', {
+                        const targetDeptId = selectedDepartmentId || departments[0]?.id;
+                        const res = await fetch('/api/chat/messages', {
                           method: 'POST',
                           headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
                           body: JSON.stringify({
-                            senderId: 'user-sales-1',
-                            senderName: 'Sales Specialist',
+                            ...(targetDeptId ? { departmentId: targetDeptId } : {}),
+                            senderId: currentUser?.id,
+                            senderName: currentUser?.name,
                             senderRole: role || 'sales',
                             channel: 'sales-leads',
                             content: `🎯 **AI Outreach Drafted for ${outreachForm.leadName || 'Prospect'} (${outreachForm.companyName || 'Lead'})**\nChannel: ${outreachForm.channel}\n\nSnippet:\n"${generatedOutreach.connectionRequestSnippet}"\n\nFull Proposal Pitch:\n${generatedOutreach.introductoryMessage.slice(0, 300)}...`
                           })
                         });
+                        const data = await res.json().catch(() => ({}));
+                        if (!res.ok || !data.success) {
+                          throw new Error(data.error || data.message || 'Failed to post to chat.');
+                        }
                         showToast('Shared outreach draft to #sales-leads chat!');
-                      } catch (err) {
-                        showToast('Failed to post to chat.');
+                      } catch (err: any) {
+                        showToast(err?.message || 'Failed to post to chat.', 'error');
                       }
                     }}
                     className="px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-semibold transition cursor-pointer"

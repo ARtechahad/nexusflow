@@ -17,11 +17,11 @@ export default defineConfig(() => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'icon.svg'],
+        includeAssets: ['apple-touch-icon.png', 'icon.svg'],
         manifest: {
           id: '/',
-          name: 'AgencyOps: International Client Handling Suite',
-          short_name: 'AgencyOps',
+          name: 'ClientOps: Multi-Tenant Company & Department Operations',
+          short_name: 'ClientOps',
           description: 'Standard Operating Procedure and workflow automation for web development sales, staging, and delivery.',
           theme_color: '#0f172a',
           background_color: '#0f172a',
