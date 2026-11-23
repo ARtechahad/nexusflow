@@ -338,15 +338,65 @@ async function startServer() {
     return candidates.find((p) => fs.existsSync(p)) || null;
   };
 
+  const PUBLIC_ROUTE_SET = new Set([
+    '/',
+    '/services',
+    '/products',
+    '/work',
+    '/about',
+    '/contact',
+    '/privacy',
+    '/terms'
+  ]);
+
+  const NOINDEX_PREFIXES = ['/docs', '/login', '/signup', '/app', '/workspace', '/portal'];
+
+  const normalizeRoutePath = (rawPath: string): string => {
+    const clean = rawPath.split('?')[0].split('#')[0] || '/';
+    if (clean.length > 1 && clean.endsWith('/')) {
+      return clean.slice(0, -1);
+    }
+    return clean;
+  };
+
+  const isNoIndexRoutePath = (normalized: string, query: Request['query']): boolean => {
+    if (query && typeof query.invite === 'string' && query.invite.length > 0) {
+      return true;
+    }
+    return NOINDEX_PREFIXES.some(
+      (prefix) => normalized === prefix || normalized.startsWith(`${prefix}/`)
+    );
+  };
+
+  const isAssetOrInternalPath = (reqPath: string): boolean => {
+    if (
+      reqPath.startsWith('/@') ||
+      reqPath.startsWith('/src/') ||
+      reqPath.startsWith('/node_modules/') ||
+      reqPath.startsWith('/assets/') ||
+      reqPath.startsWith('/api/')
+    ) {
+      return true;
+    }
+    const lastSegment = reqPath.split('/').pop() || '';
+    return lastSegment.includes('.');
+  };
+
   app.get('/sitemap.xml', (_req: Request, res: Response) => {
     const filePath = resolvePublicOrDistFile('sitemap.xml');
     res.setHeader('Content-Type', 'application/xml; charset=utf-8');
     if (filePath) {
       return res.send(fs.readFileSync(filePath, 'utf8'));
     }
-    return res.status(200).send(
-      `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url>\n    <loc>https://almnexus.tech/</loc>\n    <lastmod>2026-11-23</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>1.0</priority>\n  </url>\n</urlset>\n`
-    );
+    const urls = Array.from(PUBLIC_ROUTE_SET)
+      .map(
+        (route) =>
+          `  <url>\n    <loc>https://almnexus.tech${route}</loc>\n    <lastmod>2026-11-23</lastmod>\n  </url>`
+      )
+      .join('\n');
+    return res
+      .status(200)
+      .send(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`);
   });
 
   app.get('/robots.txt', (_req: Request, res: Response) => {
@@ -355,7 +405,11 @@ async function startServer() {
     if (filePath) {
       return res.send(fs.readFileSync(filePath, 'utf8'));
     }
-    return res.status(200).send('User-agent: *\nAllow: /\nSitemap: https://almnexus.tech/sitemap.xml\n');
+    return res
+      .status(200)
+      .send(
+        'User-agent: *\nAllow: /\nDisallow: /docs\nDisallow: /login\nDisallow: /signup\nDisallow: /app\nDisallow: /workspace\nDisallow: /portal\nSitemap: https://almnexus.tech/sitemap.xml\n'
+      );
   });
 
   if (!isProd) {
@@ -366,21 +420,85 @@ async function startServer() {
         middlewareMode: true,
         hmr: isHmrDisabled ? false : { server }
       },
-      appType: 'spa'
+      appType: 'custom'
     });
+
     app.use(vite.middlewares);
+
+    app.get('*', async (req: Request, res: Response, next) => {
+      if (isAssetOrInternalPath(req.path)) {
+        return next();
+      }
+      const normalized = normalizeRoutePath(req.path);
+      try {
+        const indexPath = path.join(process.cwd(), 'index.html');
+        const rawTemplate = fs.readFileSync(indexPath, 'utf8');
+        const template = await vite.transformIndexHtml(req.originalUrl, rawTemplate);
+        const ssrMod = await vite.ssrLoadModule('/src/ssr/renderPublicRoute.tsx');
+
+        if (isNoIndexRoutePath(normalized, req.query)) {
+          const appHtml = ssrMod.renderNoIndexAppHtml(template, normalized);
+          res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+          return res.status(200).set({ 'Content-Type': 'text/html; charset=utf-8' }).end(appHtml);
+        }
+
+        const { html, statusCode } = ssrMod.renderPublicRouteHtml(template, normalized);
+        if (statusCode === 404) {
+          res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+        }
+        return res.status(statusCode).set({ 'Content-Type': 'text/html; charset=utf-8' }).end(html);
+      } catch (err: any) {
+        vite.ssrFixStacktrace(err);
+        logger.error(`SSR render fallback on ${req.path}: ${err?.message}`, { context: 'SSR' });
+        return next(err);
+      }
+    });
   } else {
     console.log(`[ClientOps] Serving production static assets from: ${distPath}`);
-    app.use(express.static(distPath, { index: false }));
+    app.use(express.static(distPath, { index: false, redirect: false }));
 
-    // SPA client-side routing fallback
     app.get('*', (req: Request, res: Response) => {
-      const indexPath = path.join(distPath, 'index.html');
-      if (fs.existsSync(indexPath)) {
-        res.sendFile(indexPath);
-      } else {
-        res.status(500).send('Production build not found. Please ensure `npm run build` completed.');
+      const normalized = normalizeRoutePath(req.path);
+
+      if (isNoIndexRoutePath(normalized, req.query)) {
+        res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+        const appShellPath = path.join(distPath, 'app-shell.html');
+        const fallbackIndex = path.join(distPath, 'index.html');
+        if (fs.existsSync(appShellPath)) {
+          let shellHtml = fs.readFileSync(appShellPath, 'utf8');
+          shellHtml = shellHtml.replace(
+            /<meta\s+name="robots"\s+content="[^"]*"\s*\/?>/i,
+            '<meta name="robots" content="noindex, nofollow" />'
+          );
+          shellHtml = shellHtml
+            .replace('<!--SEO_JSON_LD-->', '')
+            .replace('<!--SSR_OUTLET-->', '');
+          return res.status(200).set({ 'Content-Type': 'text/html; charset=utf-8' }).send(shellHtml);
+        }
+        if (fs.existsSync(fallbackIndex)) {
+          return res.status(200).sendFile(fallbackIndex);
+        }
       }
+
+      if (PUBLIC_ROUTE_SET.has(normalized)) {
+        const routeFile =
+          normalized === '/'
+            ? path.join(distPath, 'index.html')
+            : path.join(distPath, normalized.replace(/^\//, ''), 'index.html');
+        if (fs.existsSync(routeFile)) {
+          return res.status(200).sendFile(routeFile);
+        }
+      }
+
+      // Real HTTP 404 for unknown routes
+      res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+      const notFoundPath = path.join(distPath, '404.html');
+      if (fs.existsSync(notFoundPath)) {
+        return res.status(404).sendFile(notFoundPath);
+      }
+      return res.status(404).set({ 'Content-Type': 'text/html; charset=utf-8' }).send(
+        '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="robots" content="noindex, nofollow"><title>Page Not Found | ALM Nexus</title></head><body><h1>Page not found</h1><p><a href="/">Back to home</a></p></body></html>'
+      );
     });
   }
 

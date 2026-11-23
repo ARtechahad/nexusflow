@@ -1,3 +1,9 @@
 User-agent: *
 Allow: /
+Disallow: /docs
+Disallow: /login
+Disallow: /signup
+Disallow: /app
+Disallow: /workspace
+Disallow: /portal
 Sitemap: https://almnexus.tech/sitemap.xml

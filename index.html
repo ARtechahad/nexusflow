@@ -3,20 +3,25 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ALM Nexus — AI Lead Generation &amp; Automation | NexusFlow</title>
-    <meta name="description" content="ALM Nexus delivers hand-verified B2B lead generation, custom Python data intelligence, and automated outbound systems—powered by our proprietary SaaS platform, NexusFlow." />
+    <!--SEO_HEAD_START-->
+    <title>ALM Nexus — Software Studio &amp; R&amp;D Lab</title>
+    <meta name="description" content="Software studio and R&D lab building web and mobile apps, Unity games, AI agents, data pipelines, and NexusFlow." />
+    <meta name="robots" content="index, follow" />
     <link rel="canonical" href="https://almnexus.tech/" />
     <meta property="og:site_name" content="ALM Nexus" />
     <meta property="og:url" content="https://almnexus.tech/" />
-    <meta property="og:title" content="ALM Nexus — AI Lead Generation &amp; Automation | NexusFlow" />
-    <meta property="og:description" content="ALM Nexus delivers hand-verified B2B lead generation, custom Python data intelligence, and automated outbound systems—powered by NexusFlow." />
+    <meta property="og:title" content="ALM Nexus — Software Studio &amp; R&amp;D Lab" />
+    <meta property="og:description" content="Software studio and R&D lab building web and mobile apps, Unity games, AI agents, data pipelines, and NexusFlow." />
     <meta property="og:type" content="website" />
     <meta property="og:image" content="https://almnexus.tech/favicon.jpg" />
+    <meta property="og:image:alt" content="ALM Nexus software studio logo" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="ALM Nexus — AI Lead Generation &amp; Automation | NexusFlow" />
-    <meta name="twitter:description" content="Precision B2B lead generation, custom Python data intelligence, and automated outbound pipelines—powered by NexusFlow." />
+    <meta name="twitter:title" content="ALM Nexus — Software Studio &amp; R&amp;D Lab" />
+    <meta name="twitter:description" content="Software studio and R&D lab building web and mobile apps, Unity games, AI agents, data pipelines, and NexusFlow." />
     <meta name="twitter:image" content="https://almnexus.tech/favicon.jpg" />
-    <meta name="theme-color" content="#062B3D" />
+    <meta name="twitter:image:alt" content="ALM Nexus software studio logo" />
+    <!--SEO_HEAD_END-->
+    <meta name="theme-color" content="#0B0F17" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
@@ -24,56 +29,17 @@
     <link rel="icon" type="image/jpeg" href="/favicon.jpg" />
     <link rel="shortcut icon" href="/favicon.jpg" />
     <link rel="apple-touch-icon" href="/favicon.jpg" />
-    <script type="application/ld+json">
-      {
-        "@context": "https://schema.org",
-        "@graph": [
-          {
-            "@type": "Organization",
-            "name": "ALM Nexus",
-            "url": "https://almnexus.tech/",
-            "logo": "https://almnexus.tech/favicon.jpg",
-            "email": "contact@almnexus.tech",
-            "description": "Precision B2B Lead Generation, Custom Python Data Intelligence & Automated Outbound Pipeline Systems.",
-            "address": {
-              "@type": "PostalAddress",
-              "addressLocality": "Islamabad",
-              "addressCountry": "PK"
-            },
-            "sameAs": [
-              "https://www.linkedin.com/company/almnexus/",
-              "https://www.instagram.com/almnexus/",
-              "https://www.facebook.com/share/1CPfabuMZf/",
-              "https://x.com/almnexus50408",
-              "https://github.com/ARtechahad"
-            ]
-          },
-          {
-            "@type": "SoftwareApplication",
-            "name": "NexusFlow",
-            "applicationCategory": "BusinessApplication",
-            "operatingSystem": "Web",
-            "url": "https://almnexus.tech/#nexusflow",
-            "description": "Multi-tenant B2B client portal, automated outbound outreach engine, deal pipeline CRM, and encrypted BYOK integrations vault engineered by ALM Nexus.",
-            "creator": {
-              "@type": "Organization",
-              "name": "ALM Nexus",
-              "url": "https://almnexus.tech/"
-            }
-          }
-        ]
-      }
-    </script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <!--SEO_JSON_LD-->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
     <script>
       (function() {
         try {
-          const mode = localStorage.getItem('clientops_theme_mode') || localStorage.getItem('clientops_theme');
-          const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-          const isDark = mode === 'dark' || (mode === 'system' && prefersDark);
-          const root = document.documentElement;
+          var mode = localStorage.getItem('clientops_theme_mode') || localStorage.getItem('clientops_theme');
+          var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+          var isDark = mode === 'dark' || (mode === 'system' && prefersDark);
+          var root = document.documentElement;
           if (isDark) {
             root.classList.add('dark');
             root.classList.remove('light');
@@ -89,25 +55,23 @@
       })();
     </script>
     <script>
-      // Filter benign Vite HMR websocket connection messages in sandboxed iframe previews
       if (typeof window !== 'undefined' && window.console && window.console.error) {
-        const _origConsoleError = window.console.error;
-        window.console.error = function (...args) {
-          const firstArg = typeof args[0] === 'string' ? args[0] : '';
+        var _origConsoleError = window.console.error;
+        window.console.error = function () {
+          var firstArg = typeof arguments[0] === 'string' ? arguments[0] : '';
           if (
             firstArg.includes('[vite] failed to connect to websocket') ||
-            (firstArg === '[vite]' && typeof args[1] === 'string' && args[1].includes('websocket'))
+            (firstArg === '[vite]' && typeof arguments[1] === 'string' && arguments[1].includes('websocket'))
           ) {
             return;
           }
-          _origConsoleError.apply(window.console, args);
+          return _origConsoleError.apply(window.console, arguments);
         };
       }
     </script>
   </head>
-  <body class="bg-[#F8FAFC] dark:bg-[#090D16] text-slate-900 dark:text-slate-100 antialiased font-sans selection:bg-indigo-600 selection:text-white min-h-screen">
-    <div id="root"></div>
+  <body class="bg-[#F8FAFC] dark:bg-[#0B0F17] text-[#0F172A] dark:text-[#F1F5F9] antialiased font-sans min-h-screen">
+    <div id="root"><!--SSR_OUTLET--></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-

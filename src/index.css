@@ -4,6 +4,7 @@
 
 @layer base {
   :root {
+    --accent: #2563EB;
     color-scheme: light dark;
   }
 
@@ -16,8 +17,26 @@
   }
 
   body {
-    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
-    transition: background-color 0.2s ease, color 0.2s ease;
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    transition: background-color 0.15s ease, color 0.15s ease;
+  }
+
+  code,
+  pre,
+  .font-mono {
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  }
+
+  a:focus-visible,
+  button:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  [role="tab"]:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
 
   html.light body {
@@ -26,7 +45,7 @@
   }
 
   html.dark body {
-    background-color: #090D16;
+    background-color: #0B0F17;
     color: #F1F5F9;
   }
 }

@@ -38,7 +38,8 @@ import { ToastNotification } from './components/ToastNotification';
 import { RoleLoginView } from './components/RoleLoginView';
 import { RoleRouteGuard } from './components/RoleRouteGuard';
 import { OfflineSyncBanner } from './components/OfflineSyncBanner';
-import { LeadFlowLandingView } from './components/LeadFlowLandingView';
+import { StudioWebsite, normalizePathname } from './components/studio/StudioWebsite';
+import { NOINDEX_APP_PREFIXES, STUDIO_BRAND } from './data/studioData';
 import { DocsView } from './components/DocsView';
 import { GlobalCommandPalette } from './components/GlobalCommandPalette';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -55,6 +56,8 @@ const AppContent: React.FC = () => {
     inviteToken,
     activeTab,
     setActiveTab,
+    isDark,
+    toggleTheme,
     isAISettingsModalOpen,
     setIsAISettingsModalOpen,
     isOnboardingModalOpen,
@@ -80,6 +83,7 @@ const AppContent: React.FC = () => {
 
   // Global Keyboard Navigation (⌘K / Ctrl+K Command Palette)
   useEffect(() => {
+    if (typeof window === 'undefined') return;
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
@@ -90,26 +94,65 @@ const AppContent: React.FC = () => {
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
   }, [isCommandPaletteOpen, setIsCommandPaletteOpen]);
 
-  const [isDocsRoute, setIsDocsRoute] = useState(() => {
-    return typeof window !== 'undefined' && window.location.pathname.startsWith('/docs');
+  const [currentPath, setCurrentPath] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return normalizePathname(window.location.pathname);
+    }
+    return '/';
   });
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
     const checkPath = () => {
-      setIsDocsRoute(window.location.pathname.startsWith('/docs'));
+      setCurrentPath(normalizePathname(window.location.pathname));
     };
     window.addEventListener('popstate', checkPath);
     return () => window.removeEventListener('popstate', checkPath);
   }, []);
 
+  const navigateTo = (href: string) => {
+    if (typeof window === 'undefined') return;
+    const [rawPath, hashPart] = href.split('#');
+    const nextPath = normalizePathname(rawPath || '/');
+    window.history.pushState({}, '', href);
+    setCurrentPath(nextPath);
+
+    if (hashPart) {
+      window.requestAnimationFrame(() => {
+        const el = document.getElementById(hashPart);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth' });
+        }
+      });
+    } else {
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    }
+  };
+
+  const isNoIndexRoute = NOINDEX_APP_PREFIXES.some(
+    (prefix) => currentPath === prefix || currentPath.startsWith(`${prefix}/`)
+  );
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (currentUser || inviteToken || isNoIndexRoute) {
+      let robotsMeta = document.querySelector<HTMLMetaElement>('meta[name="robots"]');
+      if (!robotsMeta) {
+        robotsMeta = document.createElement('meta');
+        robotsMeta.setAttribute('name', 'robots');
+        document.head.appendChild(robotsMeta);
+      }
+      robotsMeta.setAttribute('content', 'noindex, nofollow');
+    }
+  }, [currentUser, inviteToken, isNoIndexRoute]);
+
+  const isDocsRoute = currentPath === '/docs' || currentPath.startsWith('/docs/');
+
   if (isDocsRoute || (activeTab as any) === 'docs') {
     return (
       <DocsView
         onBackToApp={() => {
-          if (typeof window !== 'undefined') {
-            window.history.pushState({}, '', '/');
-          }
-          setIsDocsRoute(false);
+          navigateTo('/');
           setActiveTab(currentUser ? (companyRole === 'company_admin' ? 'overview' : 'departmental') : 'leadflow');
         }}
       />
@@ -126,19 +169,51 @@ const AppContent: React.FC = () => {
     );
   }
 
-  // 1. Unauthenticated Landing Page & Auth Gateway
+  // 1. Unauthenticated Public Website & Dedicated Auth Routes (/login, /signup, /app, /workspace, /portal)
   if (!currentUser) {
+    if (isNoIndexRoute) {
+      const authMode: 'signin' | 'signup' = currentPath === '/signup' ? 'signup' : 'signin';
+      return (
+        <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0B0F17] text-slate-900 dark:text-slate-100 flex flex-col items-center justify-center p-4 font-sans">
+          <div className="w-full max-w-md space-y-4">
+            <div className="flex items-center justify-between">
+              <a
+                href="/"
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigateTo('/');
+                }}
+                className="text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white underline underline-offset-4"
+              >
+                Back to {STUDIO_BRAND.name}
+              </a>
+            </div>
+            <RoleLoginView
+              initialMode={authMode}
+              onSuccess={() => {
+                setAuthModalState({ open: false, mode: 'signin' });
+              }}
+            />
+          </div>
+          <AuthModal />
+          <ToastNotification toasts={toasts} onDismiss={dismissToast} />
+        </div>
+      );
+    }
+
     return (
-      <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#090D16] bg-canvas-textured text-slate-900 dark:text-slate-100 flex flex-col font-sans selection:bg-indigo-600 selection:text-white transition-colors duration-200 relative">
-        <LeadFlowLandingView
-          onOpenSignIn={() => setAuthModalState({ open: true, mode: 'signin' })}
-          onOpenSignUp={() => setAuthModalState({ open: true, mode: 'signup' })}
-          onEnterWorkspace={() => setAuthModalState({ open: true, mode: 'signin' })}
+      <>
+        <StudioWebsite
+          currentPath={currentPath}
+          isDark={isDark}
+          onToggleTheme={toggleTheme}
+          onNavigate={navigateTo}
+          onOpenAuth={(mode) => setAuthModalState({ open: true, mode })}
         />
 
         {authModalState.open && (
           <div
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm overflow-y-auto animate-fadeIn"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm overflow-y-auto"
             onClick={() => setAuthModalState((prev) => ({ ...prev, open: false }))}
           >
             <div className="relative w-full max-w-md my-auto" onClick={(e) => e.stopPropagation()}>
@@ -164,7 +239,7 @@ const AppContent: React.FC = () => {
         />
         <AuthModal />
         <ToastNotification toasts={toasts} onDismiss={dismissToast} />
-      </div>
+      </>
     );
   }
 
