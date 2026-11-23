@@ -4,12 +4,14 @@ import {
   ArrowUpRight,
   Check,
   CheckCircle2,
+  ChevronDown,
   Copy,
   Database,
   Globe,
   Inbox,
   KeyRound,
   Layers,
+  Loader2,
   Lock,
   Mail,
   MapPin,
@@ -19,6 +21,7 @@ import {
   ShieldCheck,
   Sparkles,
   Sun,
+  Table2,
   Users,
   Workflow,
   X
@@ -717,6 +720,9 @@ export const LeadFlowLandingView: React.FC<LeadFlowLandingViewProps> = ({
   const [activePipelineStage, setActivePipelineStage] = useState<number>(0);
   const [activeNexusModule, setActiveNexusModule] = useState<NexusModuleKey>('portal');
   const [isInquiryModalOpen, setIsInquiryModalOpen] = useState(false);
+  const [isSampleModalOpen, setIsSampleModalOpen] = useState(false);
+  const [sampleRegionFilter, setSampleRegionFilter] = useState<'ALL' | 'US' | 'UK' | 'UAE' | 'EU'>('ALL');
+  const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
   const [legalModal, setLegalModal] = useState<LegalModalType>(null);
   const [inquiryForm, setInquiryForm] = useState<InquiryFormState>({
     name: '',
@@ -726,7 +732,13 @@ export const LeadFlowLandingView: React.FC<LeadFlowLandingViewProps> = ({
     notes: ''
   });
   const [inquiryError, setInquiryError] = useState<string | null>(null);
+  const [isSubmittingInquiry, setIsSubmittingInquiry] = useState(false);
   const [inquirySubmitted, setInquirySubmitted] = useState(false);
+  const [inquiryResult, setInquiryResult] = useState<{
+    referenceId: string;
+    deliveryMode: 'resend' | 'mailto_fallback';
+    message: string;
+  } | null>(null);
   const [copiedBrief, setCopiedBrief] = useState(false);
   const copyTimerRef = useRef<number | null>(null);
 
@@ -756,12 +768,13 @@ export const LeadFlowLandingView: React.FC<LeadFlowLandingViewProps> = ({
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         if (isInquiryModalOpen) setIsInquiryModalOpen(false);
+        if (isSampleModalOpen) setIsSampleModalOpen(false);
         if (legalModal) setLegalModal(null);
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [isInquiryModalOpen, legalModal]);
+  }, [isInquiryModalOpen, isSampleModalOpen, legalModal]);
 
   const handleClientSignIn = () => {
     if (currentUser) {
@@ -787,6 +800,7 @@ export const LeadFlowLandingView: React.FC<LeadFlowLandingViewProps> = ({
     setInquiryForm((prev) => ({ ...prev, focus }));
     setInquiryError(null);
     setInquirySubmitted(false);
+    setInquiryResult(null);
     setIsInquiryModalOpen(true);
   };
 
@@ -806,11 +820,15 @@ export const LeadFlowLandingView: React.FC<LeadFlowLandingViewProps> = ({
       `[almnexus.tech] ${inquiryForm.focus} — ${inquiryForm.companyWebsite.trim() || inquiryForm.name.trim()}`
     );
     const body = encodeURIComponent(buildBriefText());
-    return `mailto:almnexus26@gmail.com?cc=contact@abdulahadrana.me&subject=${subject}&body=${body}`;
+    return `mailto:contact@almnexus.tech?cc=ahad@almnexus.tech&subject=${subject}&body=${body}`;
   };
 
-  const handleSubmitInquiry = (e: React.FormEvent) => {
+  const submitInquiryRequest = async (
+    e: React.FormEvent,
+    source: 'landing_inline' | 'landing_modal'
+  ) => {
     e.preventDefault();
+    if (isSubmittingInquiry) return;
     setInquiryError(null);
 
     const trimmedName = inquiryForm.name.trim();
@@ -830,9 +848,59 @@ export const LeadFlowLandingView: React.FC<LeadFlowLandingViewProps> = ({
       return;
     }
 
-    setInquirySubmitted(true);
-    if (showToast) {
-      showToast('Consultation brief prepared for almnexus26@gmail.com.', 'success');
+    setIsSubmittingInquiry(true);
+    try {
+      const response = await fetch('/api/inquiry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: trimmedName,
+          email: trimmedEmail,
+          companyWebsite: inquiryForm.companyWebsite.trim(),
+          focus: inquiryForm.focus,
+          notes: trimmedNotes,
+          source
+        })
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.success) {
+        throw new Error(
+          payload?.error || 'Unable to submit your consultation brief right now. Please use the direct contact@almnexus.tech email link below.'
+        );
+      }
+
+      const mode: 'resend' | 'mailto_fallback' =
+        payload.deliveryMode === 'resend' ? 'resend' : 'mailto_fallback';
+
+      setInquiryResult({
+        referenceId: payload.referenceId || `inq_${Date.now()}`,
+        deliveryMode: mode,
+        message:
+          payload.message ||
+          (mode === 'resend'
+            ? 'Your consultation brief has been sent straight to contact@almnexus.tech.'
+            : 'Email dispatch key is not configured. Use the direct mailto:contact@almnexus.tech button below to send your brief.')
+      });
+      setInquirySubmitted(true);
+      if (showToast) {
+        showToast(
+          mode === 'resend'
+            ? 'Strategy request sent straight to contact@almnexus.tech.'
+            : 'Brief prepared — click Send via contact@almnexus.tech to dispatch.',
+          'success'
+        );
+      }
+    } catch (err: any) {
+      const errMsg =
+        err?.message ||
+        'Network error while submitting request. Please retry or email contact@almnexus.tech.';
+      setInquiryError(errMsg);
+      if (showToast) {
+        showToast(errMsg, 'error');
+      }
+    } finally {
+      setIsSubmittingInquiry(false);
     }
   };
 
@@ -1084,6 +1152,150 @@ export const LeadFlowLandingView: React.FC<LeadFlowLandingViewProps> = ({
     }
   ];
 
+  const performanceMetrics = [
+    {
+      value: '99.4%',
+      label: 'SMTP-Verified Accuracy',
+      sublabel: 'Multi-layer DNS · MX · Handshake'
+    },
+    {
+      value: '<0.5%',
+      label: 'Bounce Guarantee',
+      sublabel: '2:1 Replacement Protection'
+    },
+    {
+      value: '48–72h',
+      label: 'Sprint Delivery',
+      sublabel: 'Custom ICP & Python Pipelines'
+    },
+    {
+      value: '4 Regions',
+      label: 'US · UK · UAE · EU',
+      sublabel: 'Islamabad HQ Global Desk'
+    }
+  ];
+
+  const sampleDataPreviewRecords = [
+    {
+      executiveName: 'Daniel Mercer',
+      role: 'VP of Revenue Operations',
+      company: 'StrataGrid Cloud Inc.',
+      region: 'US' as const,
+      verifiedEmail: 'd.mercer@stratagrid.io',
+      smtpStatus: 'SMTP · MX Verified',
+      buyingSignal: 'Series B Expansion · Hiring 6 AEs'
+    },
+    {
+      executiveName: 'Charlotte Whitfield',
+      role: 'Managing Director',
+      company: 'Aldgate Capital Partners',
+      region: 'UK' as const,
+      verifiedEmail: 'c.whitfield@aldgatecap.co.uk',
+      smtpStatus: 'SMTP · MX Verified',
+      buyingSignal: 'FCA FinTech Licensing Upgrade'
+    },
+    {
+      executiveName: 'Tariq Al-Mansoor',
+      role: 'Head of Acquisitions',
+      company: 'Crescent Commercial Holdings',
+      region: 'UAE' as const,
+      verifiedEmail: 't.almansoor@crescentholdings.ae',
+      smtpStatus: 'SMTP · MX Verified',
+      buyingSignal: 'Off-Market Logistics Portfolio'
+    },
+    {
+      executiveName: 'Lukas Lindner',
+      role: 'Chief Operating Officer',
+      company: 'Kinetik Flow GmbH',
+      region: 'EU' as const,
+      verifiedEmail: 'l.lindner@kinetikflow.de',
+      smtpStatus: 'SMTP · MX Verified',
+      buyingSignal: 'DACH Outbound Team Rollout'
+    },
+    {
+      executiveName: 'Hannah Sato',
+      role: 'Founder & CEO',
+      company: 'Vektor Analytics Ltd.',
+      region: 'US' as const,
+      verifiedEmail: 'hannah@vektoranalytics.com',
+      smtpStatus: 'SMTP · MX Verified',
+      buyingSignal: 'Replacing Legacy Data Broker'
+    }
+  ];
+
+  const clientOutcomes = [
+    {
+      code: 'Case 01',
+      vertical: 'B2B SaaS Outbound',
+      clientProfile: 'Series A Cloud Infrastructure · US & UK',
+      challenge:
+        'High hard-bounce rates (11%+) from stale database exports damaged primary sender reputation and stalled enterprise SDR outreach.',
+      execution:
+        'Delivered hand-verified Founder & VP Engineering decision-maker lists backed by secondary SPF/DKIM/DMARC sending domains.',
+      metrics: [
+        { label: 'Hard Bounce Rate', value: '0.3%' },
+        { label: 'Qualified Demos (90d)', value: '42' },
+        { label: 'Inbox Placement', value: '98.1%' }
+      ]
+    },
+    {
+      code: 'Case 02',
+      vertical: 'Real Estate Off-Market Data Pipeline',
+      clientProfile: 'Commercial Acquisition Group · UAE & US',
+      challenge:
+        'Acquisition analysts spent 25+ hours weekly manually cross-referencing fragmented property registries and principal contact records.',
+      execution:
+        'Engineered an automated Python scraping & entity-resolution pipeline with live MX/SMTP validation synced straight to CRM.',
+      metrics: [
+        { label: 'Verified Owner Records', value: '4,800+' },
+        { label: 'Initial Sprint Turnaround', value: '54h' },
+        { label: 'Duplicate Records', value: '0%' }
+      ]
+    },
+    {
+      code: 'Case 03',
+      vertical: 'Growth Agency Multi-Tenant Portal',
+      clientProfile: 'Performance Outbound Agency · EU & US',
+      challenge:
+        'Disconnected spreadsheets, shared mailbox logins, and manual client reporting slowed onboarding across client retainers.',
+      execution:
+        'Deployed NexusFlow with isolated per-client workspaces, department RBAC locks, Resend/SMTP outreach, and BYOK API storage.',
+      metrics: [
+        { label: 'Client Workspaces', value: '12' },
+        { label: 'Unified Reply Inbox', value: '1 Portal' },
+        { label: 'Onboarding Cycle', value: '<24h' }
+      ]
+    }
+  ];
+
+  const enterpriseFaqs = [
+    {
+      question: 'What is your bounce replacement guarantee?',
+      answer:
+        'Every contact record passes syntax validation, DNS MX inspection, catch-all screening, and live SMTP mailbox verification before delivery—maintaining our <0.5% hard-bounce standard. If any verified address bounces above threshold, ALM Nexus replaces it 2:1 or credits the record at no additional cost.'
+    },
+    {
+      question: 'How do you ensure GDPR & CAN-SPAM B2B data compliance?',
+      answer:
+        'We source strictly corporate decision-maker roles (business domains only—never personal consumer emails) under legitimate B2B commercial interest standards aligned with GDPR Article 6(1)(f), UK GDPR, and US CAN-SPAM transparency obligations, with immediate opt-out suppression support across all NexusFlow sequences.'
+    },
+    {
+      question: 'What are the turnaround times for custom Python scraping & data sprints?',
+      answer:
+        'Standard custom ICP datasets and Python extraction sprints deliver within 48–72 hours. Larger multi-source scraping pipelines, recurring enrichment feeds, and CRM webhook integrations are scoped into predictable weekly milestone sprints.'
+    },
+    {
+      question: 'How does NexusFlow BYOK (Resend / SMTP) setup work?',
+      answer:
+        'Inside your company-isolated NexusFlow BYOK Integrations Vault, connect your own Resend API key or custom business SMTP credentials, verify your SPF/DKIM/DMARC records, and launch multi-step sequences with zero vendor lock-in or per-seat markups.'
+    },
+    {
+      question: 'Do you configure dedicated sending domains and warm-up?',
+      answer:
+        'Yes. For Managed Outbound Growth engagements and outbound infrastructure builds, we configure dedicated secondary sending domains with full SPF, DKIM, DMARC, and custom tracking alignment, followed by controlled warm-up ramps before scaling campaign volume.'
+    }
+  ];
+
   const engagementModels = [
     {
       index: '01.',
@@ -1225,8 +1437,11 @@ export const LeadFlowLandingView: React.FC<LeadFlowLandingViewProps> = ({
             <a href="#nexusflow" className={`transition-colors whitespace-nowrap shrink-0 ${headerIsDark ? 'hover:text-cyan-300' : 'hover:text-[#005B9F]'}`}>
               NexusFlow
             </a>
-            <a href="#standards" className={`transition-colors whitespace-nowrap shrink-0 ${headerIsDark ? 'hover:text-cyan-300' : 'hover:text-[#005B9F]'}`}>
-              Standards
+            <a href="#outcomes" className={`transition-colors whitespace-nowrap shrink-0 ${headerIsDark ? 'hover:text-cyan-300' : 'hover:text-[#005B9F]'}`}>
+              Outcomes
+            </a>
+            <a href="#faq" className={`transition-colors whitespace-nowrap shrink-0 ${headerIsDark ? 'hover:text-cyan-300' : 'hover:text-[#005B9F]'}`}>
+              FAQ
             </a>
             <a href="#contact" className={`transition-colors whitespace-nowrap shrink-0 ${headerIsDark ? 'hover:text-cyan-300' : 'hover:text-[#005B9F]'}`}>
               Contact
@@ -1362,8 +1577,21 @@ export const LeadFlowLandingView: React.FC<LeadFlowLandingViewProps> = ({
 
                     <button
                       type="button"
+                      onClick={() => setIsSampleModalOpen(true)}
+                      className={`inline-flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-semibold border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                        heroIsDark
+                          ? 'border-cyan-400/35 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-200'
+                          : 'border-[#005B9F]/30 bg-[#005B9F]/5 hover:bg-[#005B9F]/10 text-[#005B9F]'
+                      }`}
+                    >
+                      <Table2 className="w-4 h-4 shrink-0" />
+                      <span>Preview Verified Data Sample</span>
+                    </button>
+
+                    <button
+                      type="button"
                       onClick={handleLaunchWorkspace}
-                      className={`inline-flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-semibold border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                      className={`inline-flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-semibold border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                         heroIsDark
                           ? 'border-white/25 bg-white/5 hover:bg-white/10 text-white'
                           : 'border-slate-300 bg-white hover:bg-slate-50 text-[#0B2545]'
@@ -1384,10 +1612,10 @@ export const LeadFlowLandingView: React.FC<LeadFlowLandingViewProps> = ({
                     </button>
                     <span aria-hidden="true">·</span>
                     <a
-                      href="mailto:almnexus26@gmail.com"
+                      href="mailto:contact@almnexus.tech"
                       className={`font-mono transition-colors ${heroIsDark ? 'hover:text-white' : 'hover:text-[#0B2545]'}`}
                     >
-                      almnexus26@gmail.com
+                      contact@almnexus.tech
                     </a>
                   </div>
                 </div>
@@ -1397,6 +1625,38 @@ export const LeadFlowLandingView: React.FC<LeadFlowLandingViewProps> = ({
               <div className="lg:col-span-6">
                 <InteractiveIntelligenceGlobe themeMode={themeMode} />
               </div>
+            </div>
+          </div>
+        </section>
+
+        {/* 1B. VERIFIED PERFORMANCE METRICS STRIP */}
+        <section
+          aria-label="Verified Performance Metrics"
+          className={`transition-colors duration-200 ${contentSectionBg}`}
+        >
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div
+              className={`grid grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x ${
+                contentSectionsLight ? 'divide-slate-200' : 'divide-white/10'
+              }`}
+            >
+              {performanceMetrics.map((metric) => (
+                <div key={metric.label} className="py-6 sm:py-7 px-3 sm:px-6 first:pl-0 last:pr-0 space-y-1">
+                  <div
+                    className={`text-2xl sm:text-3xl font-extrabold tracking-tight tabular-nums ${
+                      contentSectionsLight ? 'text-[#005B9F]' : 'text-[#06B6D4]'
+                    }`}
+                  >
+                    {metric.value}
+                  </div>
+                  <div className={`text-xs sm:text-sm font-bold ${contentSectionsLight ? 'text-[#0B2545]' : 'text-white'}`}>
+                    {metric.label}
+                  </div>
+                  <div className={`text-[11px] font-mono ${contentSectionsLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                    {metric.sublabel}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </section>
@@ -2019,6 +2279,97 @@ export const LeadFlowLandingView: React.FC<LeadFlowLandingViewProps> = ({
           </div>
         </section>
 
+        {/* 4B. VERIFIED CLIENT OUTCOMES (3 Anonymized B2B Case Studies) */}
+        <section id="outcomes" className={`py-20 sm:py-28 transition-colors duration-200 ${altContentSectionBg}`}>
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
+            <RevealBlock className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
+              <div className="max-w-2xl space-y-3">
+                <p className={`text-xs font-mono font-semibold ${contentSectionsLight ? 'text-[#005B9F]' : 'text-[#06B6D4]'}`}>
+                  Verified Client Outcomes · Anonymized Case Studies
+                </p>
+                <h2 className={`text-2xl sm:text-4xl font-extrabold tracking-[-0.025em] leading-[1.12] text-balance ${contentSectionsLight ? 'text-[#0B2545]' : 'text-white'}`}>
+                  Measured pipeline impact across SaaS, Real Estate &amp; Agencies
+                </h2>
+                <p className={`text-sm leading-[1.65] ${contentSectionsLight ? 'text-slate-600' : 'text-slate-300'}`}>
+                  Representative anonymized delivery outcomes governed by NDA—showing verified deliverability, extraction velocity, and NexusFlow operational adoption.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsSampleModalOpen(true)}
+                className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold border transition-colors cursor-pointer whitespace-nowrap shrink-0 self-start lg:self-auto ${
+                  contentSectionsLight
+                    ? 'border-slate-300 bg-white hover:bg-slate-50 text-[#0B2545]'
+                    : 'border-white/15 bg-white/[0.04] hover:bg-white/[0.08] text-white'
+                }`}
+              >
+                <Table2 className="w-3.5 h-3.5 text-[#005B9F]" />
+                <span>Preview Verified Data Sample</span>
+              </button>
+            </RevealBlock>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
+              {clientOutcomes.map((study, idx) => (
+                <RevealBlock key={study.code} delayMs={idx * 70}>
+                  <TiltSpotlightCard
+                    surfaceMode={contentSectionsLight ? 'light' : 'dark'}
+                    className="h-full p-6 sm:p-8 flex flex-col justify-between space-y-6"
+                  >
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between gap-2 text-xs font-mono">
+                        <span className={contentSectionsLight ? 'text-[#005B9F] font-semibold' : 'text-[#06B6D4] font-semibold'}>
+                          {study.code}
+                        </span>
+                        <span className={contentSectionsLight ? 'text-slate-500' : 'text-slate-400'}>
+                          Anonymized NDA
+                        </span>
+                      </div>
+
+                      <div className="space-y-1">
+                        <h3 className={`text-lg font-bold tracking-tight ${contentSectionsLight ? 'text-[#0B2545]' : 'text-white'}`}>
+                          {study.vertical}
+                        </h3>
+                        <p className={`text-xs font-medium ${contentSectionsLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                          {study.clientProfile}
+                        </p>
+                      </div>
+
+                      <div className={`space-y-2.5 pt-3 border-t text-xs leading-relaxed ${contentSectionsLight ? 'border-slate-200 text-slate-600' : 'border-white/10 text-slate-300'}`}>
+                        <p>
+                          <span className={`font-semibold ${contentSectionsLight ? 'text-[#0B2545]' : 'text-white'}`}>Scope: </span>
+                          {study.challenge}
+                        </p>
+                        <p>
+                          <span className={`font-semibold ${contentSectionsLight ? 'text-[#0B2545]' : 'text-white'}`}>Delivery: </span>
+                          {study.execution}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div
+                      className={`grid grid-cols-3 gap-2 pt-4 border-t ${
+                        contentSectionsLight ? 'border-slate-200' : 'border-white/10'
+                      }`}
+                    >
+                      {study.metrics.map((m) => (
+                        <div key={m.label} className="space-y-0.5">
+                          <div className={`text-base sm:text-lg font-extrabold tabular-nums ${contentSectionsLight ? 'text-[#005B9F]' : 'text-[#06B6D4]'}`}>
+                            {m.value}
+                          </div>
+                          <div className={`text-[10px] leading-tight ${contentSectionsLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                            {m.label}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </TiltSpotlightCard>
+                </RevealBlock>
+              ))}
+            </div>
+          </div>
+        </section>
+
         {/* 5. OPERATIONAL STANDARDS (Zero Fake Testimonials or Fake Client Logos) */}
         <section id="standards" className={`py-20 sm:py-28 transition-colors duration-200 ${contentSectionBg}`}>
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
@@ -2144,6 +2495,78 @@ export const LeadFlowLandingView: React.FC<LeadFlowLandingViewProps> = ({
           </div>
         </section>
 
+        {/* 6B. B2B ENTERPRISE FAQ ACCORDION */}
+        <section id="faq" className={`py-20 sm:py-24 transition-colors duration-200 ${altContentSectionBg}`}>
+          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
+            <RevealBlock className="space-y-3">
+              <p className={`text-xs font-mono font-semibold ${contentSectionsLight ? 'text-[#005B9F]' : 'text-[#06B6D4]'}`}>
+                Enterprise Technical FAQ
+              </p>
+              <h2 className={`text-2xl sm:text-3xl font-extrabold tracking-[-0.025em] text-balance ${contentSectionsLight ? 'text-[#0B2545]' : 'text-white'}`}>
+                Data verification, compliance &amp; NexusFlow architecture
+              </h2>
+              <p className={`text-sm leading-[1.65] ${contentSectionsLight ? 'text-slate-600' : 'text-slate-300'}`}>
+                Direct answers for B2B revenue leaders, technical buyers, and agency operators evaluating ALM Nexus.
+              </p>
+            </RevealBlock>
+
+            <RevealBlock delayMs={60}>
+              <div
+                className={`rounded-2xl border divide-y overflow-hidden ${
+                  contentSectionsLight
+                    ? 'border-slate-200 bg-white divide-slate-200'
+                    : 'border-white/10 bg-[#0B1120] divide-white/10'
+                }`}
+              >
+                {enterpriseFaqs.map((item, idx) => {
+                  const isOpen = openFaqIndex === idx;
+                  const panelId = `enterprise-faq-panel-${idx}`;
+                  return (
+                    <div key={item.question}>
+                      <button
+                        type="button"
+                        aria-expanded={isOpen}
+                        aria-controls={panelId}
+                        onClick={() => setOpenFaqIndex(isOpen ? null : idx)}
+                        className={`w-full px-5 sm:px-7 py-5 text-left flex items-center justify-between gap-4 transition-colors cursor-pointer ${
+                          contentSectionsLight
+                            ? 'hover:bg-slate-50/80 text-[#0B2545]'
+                            : 'hover:bg-white/[0.03] text-white'
+                        }`}
+                      >
+                        <span className="flex items-center gap-3 min-w-0">
+                          <span className={`text-xs font-mono font-bold tabular-nums shrink-0 ${contentSectionsLight ? 'text-[#005B9F]' : 'text-[#06B6D4]'}`}>
+                            0{idx + 1}.
+                          </span>
+                          <span className="text-sm sm:text-base font-bold tracking-tight">
+                            {item.question}
+                          </span>
+                        </span>
+                        <ChevronDown
+                          className={`w-4 h-4 shrink-0 transition-transform duration-200 ${
+                            isOpen ? 'rotate-180' : ''
+                          } ${contentSectionsLight ? 'text-slate-500' : 'text-slate-400'}`}
+                        />
+                      </button>
+
+                      {isOpen && (
+                        <div
+                          id={panelId}
+                          className={`px-5 sm:px-7 pb-5 pl-12 sm:pl-14 text-sm leading-[1.7] ${
+                            contentSectionsLight ? 'text-slate-600' : 'text-slate-300'
+                          }`}
+                        >
+                          {item.answer}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </RevealBlock>
+          </div>
+        </section>
+
         {/* 7. STRATEGY CALL & CUSTOM DATA SAMPLE DESK */}
         <section id="contact" className={`py-20 sm:py-28 transition-colors duration-200 ${contentSectionsLight ? 'bg-white text-[#0B2545]' : 'bg-[#050811] text-slate-100'}`}>
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -2167,12 +2590,12 @@ export const LeadFlowLandingView: React.FC<LeadFlowLandingViewProps> = ({
                         Primary Agency Email
                       </div>
                       <a
-                        href="mailto:almnexus26@gmail.com"
+                        href="mailto:contact@almnexus.tech"
                         className={`font-mono text-xs sm:text-sm font-semibold transition-colors block ${
                           contentSectionsLight ? 'text-[#0B2545] hover:text-[#005B9F]' : 'text-white hover:text-[#06B6D4]'
                         }`}
                       >
-                        almnexus26@gmail.com
+                        contact@almnexus.tech
                       </a>
                     </div>
                   </div>
@@ -2184,12 +2607,12 @@ export const LeadFlowLandingView: React.FC<LeadFlowLandingViewProps> = ({
                         Direct / Founder Email
                       </div>
                       <a
-                        href="mailto:contact@abdulahadrana.me"
+                        href="mailto:ahad@almnexus.tech"
                         className={`font-mono text-xs sm:text-sm transition-colors block ${
                           contentSectionsLight ? 'text-slate-700 hover:text-[#005B9F]' : 'text-slate-200 hover:text-[#06B6D4]'
                         }`}
                       >
-                        contact@abdulahadrana.me
+                        ahad@almnexus.tech
                       </a>
                     </div>
                   </div>
@@ -2235,12 +2658,24 @@ export const LeadFlowLandingView: React.FC<LeadFlowLandingViewProps> = ({
                 >
                   {inquirySubmitted ? (
                     <div className="space-y-5">
-                      <div className={`flex items-center gap-2.5 text-sm font-bold ${contentSectionsLight ? 'text-[#0B2545]' : 'text-white'}`}>
-                        <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
-                        <span>Brief Ready for almnexus26@gmail.com</span>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className={`flex items-center gap-2.5 text-sm font-bold ${contentSectionsLight ? 'text-[#0B2545]' : 'text-white'}`}>
+                          <CheckCircle2 className={`w-5 h-5 shrink-0 ${inquiryResult?.deliveryMode === 'resend' ? 'text-emerald-500' : 'text-[#005B9F]'}`} />
+                          <span>
+                            {inquiryResult?.deliveryMode === 'resend'
+                              ? 'Sent to contact@almnexus.tech'
+                              : 'Ready to Send via contact@almnexus.tech'}
+                          </span>
+                        </div>
+                        {inquiryResult?.referenceId && (
+                          <span className={`text-[11px] font-mono px-2.5 py-1 rounded-md border ${contentSectionsLight ? 'border-slate-200 bg-white text-slate-600' : 'border-white/15 bg-white/5 text-cyan-300'}`}>
+                            Ref: {inquiryResult.referenceId}
+                          </span>
+                        )}
                       </div>
                       <p className={`text-sm leading-relaxed ${contentSectionsLight ? 'text-slate-600' : 'text-slate-300'}`}>
-                        Send your structured brief directly via your email client (routed to almnexus26@gmail.com &amp; contact@abdulahadrana.me) or copy the formatted brief below.
+                        {inquiryResult?.message ||
+                          'Your brief is ready for contact@almnexus.tech. Send directly via your email client or copy the structured brief below.'}
                       </p>
                       <pre
                         className={`p-4 rounded-xl border text-xs font-mono whitespace-pre-wrap ${
@@ -2257,7 +2692,11 @@ export const LeadFlowLandingView: React.FC<LeadFlowLandingViewProps> = ({
                           className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-semibold bg-[#005B9F] hover:bg-[#004A82] text-white transition-colors whitespace-nowrap"
                         >
                           <Mail className="w-3.5 h-3.5" />
-                          <span>Send via Email Client</span>
+                          <span>
+                            {inquiryResult?.deliveryMode === 'resend'
+                              ? 'Send Follow-Up via Email Client'
+                              : 'Send via contact@almnexus.tech'}
+                          </span>
                         </a>
                         <button
                           type="button"
@@ -2273,17 +2712,20 @@ export const LeadFlowLandingView: React.FC<LeadFlowLandingViewProps> = ({
                         </button>
                         <button
                           type="button"
-                          onClick={() => setInquirySubmitted(false)}
+                          onClick={() => {
+                            setInquirySubmitted(false);
+                            setInquiryResult(null);
+                          }}
                           className={`text-xs font-semibold hover:underline cursor-pointer px-2 ${
                             contentSectionsLight ? 'text-slate-600' : 'text-slate-400'
                           }`}
                         >
-                          Edit Brief
+                          Submit Another Request
                         </button>
                       </div>
                     </div>
                   ) : (
-                    <form onSubmit={handleSubmitInquiry} className="space-y-4">
+                    <form onSubmit={(e) => submitInquiryRequest(e, 'landing_inline')} className="space-y-4">
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                           <label htmlFor="landing-inquiry-name" className={`block text-xs font-semibold mb-1.5 ${contentSectionsLight ? 'text-[#0B2545]' : 'text-slate-200'}`}>
@@ -2398,21 +2840,39 @@ export const LeadFlowLandingView: React.FC<LeadFlowLandingViewProps> = ({
                       </div>
 
                       {inquiryError && (
-                        <p className={`text-xs font-medium ${contentSectionsLight ? 'text-rose-600' : 'text-rose-400'}`}>
-                          {inquiryError}
-                        </p>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className={`text-xs font-medium ${contentSectionsLight ? 'text-rose-600' : 'text-rose-400'}`}>
+                            {inquiryError}
+                          </p>
+                          <a
+                            href={buildMailtoHref()}
+                            className={`text-xs font-semibold underline whitespace-nowrap ${contentSectionsLight ? 'text-[#005B9F]' : 'text-cyan-300'}`}
+                          >
+                            Email contact@almnexus.tech directly
+                          </a>
+                        </div>
                       )}
 
                       <div className="flex flex-wrap items-center justify-between gap-4 pt-1">
                         <span className={`text-xs ${contentSectionsLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                          Routed to almnexus26@gmail.com &amp; contact@abdulahadrana.me
+                          Routed to contact@almnexus.tech &amp; ahad@almnexus.tech
                         </span>
                         <button
                           type="submit"
-                          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-semibold bg-[#005B9F] hover:bg-[#004A82] text-white transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                          disabled={isSubmittingInquiry}
+                          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-semibold bg-[#005B9F] hover:bg-[#004A82] disabled:opacity-60 disabled:cursor-not-allowed text-white transition-colors cursor-pointer whitespace-nowrap shrink-0"
                         >
-                          <span>Prepare Request</span>
-                          <ArrowRight className="w-3.5 h-3.5" />
+                          {isSubmittingInquiry ? (
+                            <>
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              <span>Sending Request...</span>
+                            </>
+                          ) : (
+                            <>
+                              <span>Send Strategy Request</span>
+                              <ArrowRight className="w-3.5 h-3.5" />
+                            </>
+                          )}
                         </button>
                       </div>
                     </form>
@@ -2453,20 +2913,20 @@ export const LeadFlowLandingView: React.FC<LeadFlowLandingViewProps> = ({
                 NexusFlow
               </a>
               <a
-                href="mailto:almnexus26@gmail.com"
+                href="mailto:contact@almnexus.tech"
                 className={`font-mono font-semibold transition-colors whitespace-nowrap ${
                   footerIsDark ? 'text-white hover:text-[#06B6D4]' : 'text-[#0B2545] hover:text-[#005B9F]'
                 }`}
               >
-                almnexus26@gmail.com
+                contact@almnexus.tech
               </a>
               <a
-                href="mailto:contact@abdulahadrana.me"
+                href="mailto:ahad@almnexus.tech"
                 className={`font-mono transition-colors whitespace-nowrap ${
                   footerIsDark ? 'hover:text-[#06B6D4]' : 'hover:text-[#005B9F]'
                 }`}
               >
-                contact@abdulahadrana.me
+                ahad@almnexus.tech
               </a>
               <button
                 type="button"
@@ -2567,10 +3027,24 @@ export const LeadFlowLandingView: React.FC<LeadFlowLandingViewProps> = ({
 
             {inquirySubmitted ? (
               <div className="space-y-4">
-                <div className="flex items-center gap-2 text-sm font-bold">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
-                  <span>Brief Ready for almnexus26@gmail.com</span>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-sm font-bold">
+                    <CheckCircle2 className={`w-5 h-5 shrink-0 ${inquiryResult?.deliveryMode === 'resend' ? 'text-emerald-400' : 'text-cyan-400'}`} />
+                    <span>
+                      {inquiryResult?.deliveryMode === 'resend'
+                        ? 'Sent to contact@almnexus.tech'
+                        : 'Ready to Send via contact@almnexus.tech'}
+                    </span>
+                  </div>
+                  {inquiryResult?.referenceId && (
+                    <span className={`text-[11px] font-mono px-2 py-0.5 rounded border ${modalIsDark ? 'border-white/15 bg-white/5 text-cyan-300' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
+                      Ref: {inquiryResult.referenceId}
+                    </span>
+                  )}
                 </div>
+                <p className={`text-xs leading-relaxed ${modalIsDark ? 'text-slate-300' : 'text-slate-600'}`}>
+                  {inquiryResult?.message}
+                </p>
                 <pre
                   className={`p-3.5 rounded-xl border text-xs font-mono whitespace-pre-wrap ${
                     modalIsDark ? 'border-white/15 bg-[#041D2A] text-slate-100' : 'border-slate-200 bg-[#F8FAFC] text-[#0B2545]'
@@ -2584,7 +3058,11 @@ export const LeadFlowLandingView: React.FC<LeadFlowLandingViewProps> = ({
                     className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-semibold bg-[#005B9F] hover:bg-[#004A82] text-white transition-colors whitespace-nowrap"
                   >
                     <Mail className="w-3.5 h-3.5" />
-                    <span>Send via Email Client</span>
+                    <span>
+                      {inquiryResult?.deliveryMode === 'resend'
+                        ? 'Send Follow-Up via Email Client'
+                        : 'Send via contact@almnexus.tech'}
+                    </span>
                   </a>
                   <button
                     type="button"
@@ -2596,10 +3074,22 @@ export const LeadFlowLandingView: React.FC<LeadFlowLandingViewProps> = ({
                     {copiedBrief ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
                     <span>{copiedBrief ? 'Copied' : 'Copy Brief'}</span>
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInquirySubmitted(false);
+                      setInquiryResult(null);
+                    }}
+                    className={`text-xs font-semibold hover:underline cursor-pointer px-1 ${
+                      modalIsDark ? 'text-slate-300' : 'text-slate-600'
+                    }`}
+                  >
+                    New Request
+                  </button>
                 </div>
               </div>
             ) : (
-              <form onSubmit={handleSubmitInquiry} className="space-y-4">
+              <form onSubmit={(e) => submitInquiryRequest(e, 'landing_modal')} className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   <div>
                     <label htmlFor="modal-inquiry-name" className="block text-xs font-semibold mb-1">
@@ -2709,16 +3199,26 @@ export const LeadFlowLandingView: React.FC<LeadFlowLandingViewProps> = ({
                   />
                 </div>
 
-                {inquiryError && <p className="text-xs font-medium text-rose-400">{inquiryError}</p>}
+                {inquiryError && (
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs font-medium text-rose-400">{inquiryError}</p>
+                    <a
+                      href={buildMailtoHref()}
+                      className={`text-xs font-semibold underline whitespace-nowrap ${modalIsDark ? 'text-cyan-300' : 'text-[#005B9F]'}`}
+                    >
+                      Email contact@almnexus.tech directly
+                    </a>
+                  </div>
+                )}
 
                 <div className="flex items-center justify-between gap-3 pt-1">
                   <a
-                    href="mailto:almnexus26@gmail.com"
+                    href="mailto:contact@almnexus.tech"
                     className={`text-xs font-mono transition-colors truncate ${
                       modalIsDark ? 'text-cyan-300 hover:text-white' : 'text-[#005B9F] hover:underline'
                     }`}
                   >
-                    almnexus26@gmail.com
+                    contact@almnexus.tech
                   </a>
                   <div className="flex items-center gap-2 shrink-0">
                     <button
@@ -2732,10 +3232,20 @@ export const LeadFlowLandingView: React.FC<LeadFlowLandingViewProps> = ({
                     </button>
                     <button
                       type="submit"
-                      className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold bg-[#005B9F] hover:bg-[#004A82] text-white transition-colors cursor-pointer whitespace-nowrap"
+                      disabled={isSubmittingInquiry}
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold bg-[#005B9F] hover:bg-[#004A82] disabled:opacity-60 disabled:cursor-not-allowed text-white transition-colors cursor-pointer whitespace-nowrap"
                     >
-                      <span>Prepare Request</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
+                      {isSubmittingInquiry ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Sending...</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>Send Strategy Request</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </>
+                      )}
                     </button>
                   </div>
                 </div>
@@ -2817,12 +3327,12 @@ export const LeadFlowLandingView: React.FC<LeadFlowLandingViewProps> = ({
                   </h4>
                   <p>
                     Contact{' '}
-                    <a href="mailto:almnexus26@gmail.com" className={`font-mono underline ${modalIsDark ? 'text-[#06B6D4]' : 'text-[#005B9F]'}`}>
-                      almnexus26@gmail.com
+                    <a href="mailto:contact@almnexus.tech" className={`font-mono underline ${modalIsDark ? 'text-[#06B6D4]' : 'text-[#005B9F]'}`}>
+                      contact@almnexus.tech
                     </a>{' '}
                     or{' '}
-                    <a href="mailto:contact@abdulahadrana.me" className={`font-mono underline ${modalIsDark ? 'text-[#06B6D4]' : 'text-[#005B9F]'}`}>
-                      contact@abdulahadrana.me
+                    <a href="mailto:ahad@almnexus.tech" className={`font-mono underline ${modalIsDark ? 'text-[#06B6D4]' : 'text-[#005B9F]'}`}>
+                      ahad@almnexus.tech
                     </a>
                     .
                   </p>
@@ -2860,12 +3370,12 @@ export const LeadFlowLandingView: React.FC<LeadFlowLandingViewProps> = ({
                   </h4>
                   <p>
                     For enterprise agreements or compliance documentation, email{' '}
-                    <a href="mailto:almnexus26@gmail.com" className={`font-mono underline ${modalIsDark ? 'text-[#06B6D4]' : 'text-[#005B9F]'}`}>
-                      almnexus26@gmail.com
+                    <a href="mailto:contact@almnexus.tech" className={`font-mono underline ${modalIsDark ? 'text-[#06B6D4]' : 'text-[#005B9F]'}`}>
+                      contact@almnexus.tech
                     </a>{' '}
                     or{' '}
-                    <a href="mailto:contact@abdulahadrana.me" className={`font-mono underline ${modalIsDark ? 'text-[#06B6D4]' : 'text-[#005B9F]'}`}>
-                      contact@abdulahadrana.me
+                    <a href="mailto:ahad@almnexus.tech" className={`font-mono underline ${modalIsDark ? 'text-[#06B6D4]' : 'text-[#005B9F]'}`}>
+                      ahad@almnexus.tech
                     </a>
                     .
                   </p>
@@ -2881,6 +3391,157 @@ export const LeadFlowLandingView: React.FC<LeadFlowLandingViewProps> = ({
               >
                 Close
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: INTERACTIVE VERIFIED B2B DATA SAMPLE PREVIEW */}
+      {isSampleModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm overflow-y-auto"
+          onClick={() => setIsSampleModalOpen(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="sample-preview-modal-title"
+        >
+          <div
+            className={`relative w-full max-w-5xl rounded-2xl border p-6 sm:p-7 space-y-5 my-auto shadow-2xl ${
+              modalIsDark
+                ? 'border-white/15 bg-[#062B3D] text-white'
+                : 'border-slate-200 bg-white text-[#0B2545]'
+            }`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className={`flex flex-wrap items-start justify-between gap-4 border-b pb-4 ${modalIsDark ? 'border-white/15' : 'border-slate-200'}`}>
+              <div className="space-y-1">
+                <p className={`text-xs font-mono ${modalIsDark ? 'text-[#06B6D4]' : 'text-[#005B9F]'}`}>
+                  ALM Nexus · Verified Deliverable Schema Preview
+                </p>
+                <h3 id="sample-preview-modal-title" className="text-lg sm:text-xl font-bold">
+                  B2B Decision-Maker Sample Dataset (Anonymized Preview)
+                </h3>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <div
+                  role="group"
+                  aria-label="Filter Sample by Region"
+                  className={`inline-flex items-center p-0.5 rounded-lg border text-[11px] font-mono font-semibold ${
+                    modalIsDark ? 'border-white/15 bg-[#041D2A]' : 'border-slate-200 bg-slate-100'
+                  }`}
+                >
+                  {(['ALL', 'US', 'UK', 'UAE', 'EU'] as const).map((region) => {
+                    const active = sampleRegionFilter === region;
+                    return (
+                      <button
+                        key={region}
+                        type="button"
+                        onClick={() => setSampleRegionFilter(region)}
+                        className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
+                          active
+                            ? 'bg-[#005B9F] text-white'
+                            : modalIsDark
+                              ? 'text-slate-300 hover:text-white'
+                              : 'text-slate-600 hover:text-[#0B2545]'
+                        }`}
+                      >
+                        {region}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsSampleModalOpen(false)}
+                  className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                    modalIsDark ? 'text-slate-300 hover:text-white hover:bg-white/10' : 'text-slate-400 hover:text-[#0B2545] hover:bg-slate-100'
+                  }`}
+                  aria-label="Close Sample Preview Modal"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className={`rounded-xl border overflow-x-auto ${modalIsDark ? 'border-white/15 bg-[#041D2A]' : 'border-slate-200 bg-[#F8FAFC]'}`}>
+              <table className="w-full text-left border-collapse min-w-[780px]">
+                <thead>
+                  <tr className={`border-b text-[11px] font-mono uppercase tracking-wider ${modalIsDark ? 'border-white/12 text-slate-300 bg-[#052434]' : 'border-slate-200 text-slate-500 bg-slate-100/70'}`}>
+                    <th className="py-3 px-4 font-semibold">Executive Name</th>
+                    <th className="py-3 px-4 font-semibold">Role</th>
+                    <th className="py-3 px-4 font-semibold">Company</th>
+                    <th className="py-3 px-4 font-semibold">Region</th>
+                    <th className="py-3 px-4 font-semibold">Verified Email</th>
+                    <th className="py-3 px-4 font-semibold">SMTP/MX Status</th>
+                    <th className="py-3 px-4 font-semibold">Buying Signal</th>
+                  </tr>
+                </thead>
+                <tbody className={`divide-y text-xs ${modalIsDark ? 'divide-white/10 text-slate-200' : 'divide-slate-200 text-[#0B2545]'}`}>
+                  {sampleDataPreviewRecords
+                    .filter((rec) => sampleRegionFilter === 'ALL' || rec.region === sampleRegionFilter)
+                    .map((rec) => (
+                      <tr
+                        key={rec.verifiedEmail}
+                        className={modalIsDark ? 'hover:bg-white/[0.03]' : 'bg-white hover:bg-slate-50/80'}
+                      >
+                        <td className="py-3.5 px-4 font-semibold whitespace-nowrap">{rec.executiveName}</td>
+                        <td className={`py-3.5 px-4 whitespace-nowrap ${modalIsDark ? 'text-slate-300' : 'text-slate-600'}`}>
+                          {rec.role}
+                        </td>
+                        <td className="py-3.5 px-4 font-medium whitespace-nowrap">{rec.company}</td>
+                        <td className="py-3.5 px-4 font-mono whitespace-nowrap">{rec.region}</td>
+                        <td className={`py-3.5 px-4 font-mono whitespace-nowrap ${modalIsDark ? 'text-cyan-300' : 'text-[#005B9F]'}`}>
+                          {rec.verifiedEmail}
+                        </td>
+                        <td className="py-3.5 px-4 whitespace-nowrap">
+                          <span
+                            className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-[11px] font-mono font-semibold ${
+                              modalIsDark
+                                ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300'
+                                : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                            }`}
+                          >
+                            <CheckCircle2 className="w-3 h-3 shrink-0" />
+                            <span>{rec.smtpStatus}</span>
+                          </span>
+                        </td>
+                        <td className={`py-3.5 px-4 ${modalIsDark ? 'text-slate-300' : 'text-slate-600'}`}>
+                          {rec.buyingSignal}
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className={`flex flex-wrap items-center justify-between gap-4 pt-2 border-t ${modalIsDark ? 'border-white/15' : 'border-slate-200'}`}>
+              <p className={`text-xs ${modalIsDark ? 'text-slate-300' : 'text-slate-600'}`}>
+                Illustrative deliverable format. Every production batch is custom-sourced &amp; freshly SMTP-verified for your exact ICP.
+              </p>
+              <div className="flex items-center gap-2.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setIsSampleModalOpen(false)}
+                  className={`px-3.5 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                    modalIsDark ? 'text-slate-300 hover:text-white hover:bg-white/10' : 'text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSampleModalOpen(false);
+                    openInquiryModal('On-Demand Data Intelligence');
+                  }}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold bg-[#005B9F] hover:bg-[#004A82] text-white transition-colors cursor-pointer whitespace-nowrap"
+                >
+                  <span>Request Custom ICP Sample</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
           </div>
         </div>

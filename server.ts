@@ -64,6 +64,7 @@ import { emailRouter } from './server/services/emailEngine';
 import { gtmToolsRouter } from './server/routes/gtmToolsRoutes';
 import { checkoutRouter } from './server/routes/checkoutRoutes';
 import { emailOutreachRouter } from './server/routes/emailOutreachRoutes';
+import publicRouter from './server/routes/publicRoutes';
 
 // Outreach Suite Module
 import { outreachSystemRouter } from './server/routes/outreach/systemRoutes';
@@ -152,6 +153,8 @@ app.use('/api/', globalRateLimiter);
 // ==========================================
 
 // Authentication, Companies, Invites & Tenants
+app.use('/api/inquiry', publicRouter);
+app.use('/api/public', publicRouter);
 app.use('/api/auth', authRoutes);
 app.use('/api/companies', companyRouter);
 app.use('/api/invites', invitePublicRouter);
@@ -323,6 +326,36 @@ async function startServer() {
       success: false,
       error: `API route not found: ${req.method} ${req.path}`
     });
+  });
+
+  // Serve SEO files directly with explicit Content-Type, bypassing any SPA catch-all HTML fallback
+  const resolvePublicOrDistFile = (filename: string): string | null => {
+    const candidates = [
+      path.join(distPath, filename),
+      path.join(process.cwd(), 'public', filename),
+      path.resolve(appDirname, 'public', filename)
+    ];
+    return candidates.find((p) => fs.existsSync(p)) || null;
+  };
+
+  app.get('/sitemap.xml', (_req: Request, res: Response) => {
+    const filePath = resolvePublicOrDistFile('sitemap.xml');
+    res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+    if (filePath) {
+      return res.send(fs.readFileSync(filePath, 'utf8'));
+    }
+    return res.status(200).send(
+      `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url>\n    <loc>https://almnexus.tech/</loc>\n    <lastmod>2026-11-23</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>1.0</priority>\n  </url>\n</urlset>\n`
+    );
+  });
+
+  app.get('/robots.txt', (_req: Request, res: Response) => {
+    const filePath = resolvePublicOrDistFile('robots.txt');
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    if (filePath) {
+      return res.send(fs.readFileSync(filePath, 'utf8'));
+    }
+    return res.status(200).send('User-agent: *\nAllow: /\nSitemap: https://almnexus.tech/sitemap.xml\n');
   });
 
   if (!isProd) {
