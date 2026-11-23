@@ -1,0 +1,25 @@
+name: Auto Deploy to Oracle
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH to Oracle VPS
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.ORACLE_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/oracle_key
+          chmod 600 ~/.ssh/oracle_key
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/oracle_key ubuntu@129.151.140.113 "
+            cd ~/almnexus &&
+            git fetch origin main &&
+            git reset --hard origin/main &&
+            npm install &&
+            npm run build &&
+            pm2 restart almnexus
+          "

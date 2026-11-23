@@ -168,6 +168,7 @@ const RevealBlock: React.FC<{ children: React.ReactNode; className?: string; del
   useEffect(() => {
     const prefersReduced =
       typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
       window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (prefersReduced || typeof IntersectionObserver === 'undefined') {
       setVisible(true);
@@ -228,6 +229,8 @@ const InteractiveIntelligenceGlobe: React.FC<{ themeMode: BrandThemeMode }> = ({
     hoverY: 0
   });
 
+  const redrawFnRef = useRef<(() => void) | null>(null);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -236,6 +239,7 @@ const InteractiveIntelligenceGlobe: React.FC<{ themeMode: BrandThemeMode }> = ({
 
     const prefersReduced =
       typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
       window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     interface SphereNode {
@@ -323,11 +327,17 @@ const InteractiveIntelligenceGlobe: React.FC<{ themeMode: BrandThemeMode }> = ({
       const sinX = Math.sin(rx);
 
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      if (width <= 1 || height <= 1 || !Number.isFinite(width) || !Number.isFinite(height)) {
+        if (!prefersReduced) {
+          rafId = requestAnimationFrame(renderFrame);
+        }
+        return;
+      }
       ctx.clearRect(0, 0, width, height);
 
       const cx = width / 2;
       const cy = height / 2;
-      const sphereRadius = Math.min(width, height) * 0.36;
+      const sphereRadius = Math.max(1, Math.min(width, height) * 0.36);
       const fov = sphereRadius * 3.1;
 
       // Ambient radial glow behind the 3D sphere adapted per theme
@@ -372,7 +382,7 @@ const InteractiveIntelligenceGlobe: React.FC<{ themeMode: BrandThemeMode }> = ({
         const py = y2 * sphereRadius;
         const pz = z2 * sphereRadius;
 
-        const scale = fov / (fov + pz);
+        const scale = fov / Math.max(1, fov + pz);
         let color = '#06B6D4';
         if (isLight) {
           color = n.variant === 'cyan' ? '#0891B2' : n.variant === 'royal' ? '#005B9F' : '#0B2545';
@@ -486,7 +496,11 @@ const InteractiveIntelligenceGlobe: React.FC<{ themeMode: BrandThemeMode }> = ({
           ctx.strokeStyle = isLight ? 'rgba(11, 37, 69, 0.16)' : 'rgba(6, 182, 212, 0.35)';
           ctx.lineWidth = 1;
           ctx.beginPath();
-          ctx.roundRect(tagX, tagY, textW + 12, 18, 5);
+          if (typeof ctx.roundRect === 'function') {
+            ctx.roundRect(tagX, tagY, textW + 12, 18, 5);
+          } else {
+            ctx.rect(tagX, tagY, textW + 12, 18);
+          }
           ctx.fill();
           ctx.stroke();
 
@@ -501,19 +515,35 @@ const InteractiveIntelligenceGlobe: React.FC<{ themeMode: BrandThemeMode }> = ({
       }
     };
 
+    redrawFnRef.current = () => renderFrame(performance.now());
     rafId = requestAnimationFrame(renderFrame);
 
     return () => {
       cancelAnimationFrame(rafId);
+      redrawFnRef.current = null;
       if (resizeObserver) resizeObserver.disconnect();
     };
+  }, []);
+
+  useEffect(() => {
+    const prefersReduced =
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (prefersReduced && redrawFnRef.current) {
+      redrawFnRef.current();
+    }
   }, [themeMode]);
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     dragRef.current.isDragging = true;
     dragRef.current.lastX = e.clientX;
     dragRef.current.lastY = e.clientY;
-    e.currentTarget.setPointerCapture(e.pointerId);
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // Ignore synthetic or non-capturable pointer events
+    }
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -533,8 +563,12 @@ const InteractiveIntelligenceGlobe: React.FC<{ themeMode: BrandThemeMode }> = ({
 
   const handlePointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
     dragRef.current.isDragging = false;
-    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-      e.currentTarget.releasePointerCapture(e.pointerId);
+    try {
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
+    } catch {
+      // Ignore synthetic or already-released pointer events
     }
   };
 
@@ -558,6 +592,7 @@ const InteractiveIntelligenceGlobe: React.FC<{ themeMode: BrandThemeMode }> = ({
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
         onPointerLeave={() => {
           dragRef.current.isDragging = false;
           dragRef.current.hoverX = 0;
@@ -693,12 +728,16 @@ export const LeadFlowLandingView: React.FC<LeadFlowLandingViewProps> = ({
   const [inquiryError, setInquiryError] = useState<string | null>(null);
   const [inquirySubmitted, setInquirySubmitted] = useState(false);
   const [copiedBrief, setCopiedBrief] = useState(false);
+  const copyTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     const previousTitle = document.title;
     document.title = 'ALM Nexus — AI Lead Generation & Automation | NexusFlow';
     return () => {
       document.title = previousTitle;
+      if (copyTimerRef.current !== null) {
+        window.clearTimeout(copyTimerRef.current);
+      }
     };
   }, []);
 
@@ -799,10 +838,16 @@ export const LeadFlowLandingView: React.FC<LeadFlowLandingViewProps> = ({
 
   const handleCopyBrief = async () => {
     try {
+      if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') {
+        throw new Error('Clipboard unavailable');
+      }
       await navigator.clipboard.writeText(buildBriefText());
       setCopiedBrief(true);
       if (showToast) showToast('Inquiry brief copied to clipboard.', 'success');
-      setTimeout(() => setCopiedBrief(false), 2500);
+      if (copyTimerRef.current !== null) {
+        window.clearTimeout(copyTimerRef.current);
+      }
+      copyTimerRef.current = window.setTimeout(() => setCopiedBrief(false), 2500);
     } catch {
       if (showToast) showToast('Clipboard copy failed. Please copy the text manually.', 'error');
     }
@@ -1127,7 +1172,7 @@ export const LeadFlowLandingView: React.FC<LeadFlowLandingViewProps> = ({
       : 'bg-[#F8FAFC] text-slate-600 border-t border-slate-200';
 
   return (
-    <div className={`min-h-screen flex flex-col font-sans selection:bg-[#005B9F] selection:text-white relative overflow-x-hidden transition-colors duration-200 ${rootBg}`}>
+    <div className={`min-h-screen flex flex-col font-sans selection:bg-[#005B9F] selection:text-white relative overflow-x-clip transition-colors duration-200 ${rootBg}`}>
       <style>{`
         @keyframes almBeamFlow {
           0% { stroke-dashoffset: 36; }
@@ -2247,6 +2292,7 @@ export const LeadFlowLandingView: React.FC<LeadFlowLandingViewProps> = ({
                           <input
                             id="landing-inquiry-name"
                             type="text"
+                            autoComplete="name"
                             value={inquiryForm.name}
                             onChange={(e) => setInquiryForm((prev) => ({ ...prev, name: e.target.value }))}
                             placeholder="Your full name"
@@ -2265,6 +2311,7 @@ export const LeadFlowLandingView: React.FC<LeadFlowLandingViewProps> = ({
                           <input
                             id="landing-inquiry-email"
                             type="email"
+                            autoComplete="email"
                             value={inquiryForm.email}
                             onChange={(e) => setInquiryForm((prev) => ({ ...prev, email: e.target.value }))}
                             placeholder="you@company.com"
@@ -2285,6 +2332,7 @@ export const LeadFlowLandingView: React.FC<LeadFlowLandingViewProps> = ({
                           <input
                             id="landing-inquiry-website"
                             type="text"
+                            autoComplete="url"
                             value={inquiryForm.companyWebsite}
                             onChange={(e) => setInquiryForm((prev) => ({ ...prev, companyWebsite: e.target.value }))}
                             placeholder="https://company.com"
@@ -2560,6 +2608,7 @@ export const LeadFlowLandingView: React.FC<LeadFlowLandingViewProps> = ({
                     <input
                       id="modal-inquiry-name"
                       type="text"
+                      autoComplete="name"
                       value={inquiryForm.name}
                       onChange={(e) => setInquiryForm((prev) => ({ ...prev, name: e.target.value }))}
                       placeholder="Your full name"
@@ -2577,6 +2626,7 @@ export const LeadFlowLandingView: React.FC<LeadFlowLandingViewProps> = ({
                     <input
                       id="modal-inquiry-email"
                       type="email"
+                      autoComplete="email"
                       value={inquiryForm.email}
                       onChange={(e) => setInquiryForm((prev) => ({ ...prev, email: e.target.value }))}
                       placeholder="you@company.com"
@@ -2597,6 +2647,7 @@ export const LeadFlowLandingView: React.FC<LeadFlowLandingViewProps> = ({
                     <input
                       id="modal-inquiry-website"
                       type="text"
+                      autoComplete="url"
                       value={inquiryForm.companyWebsite}
                       onChange={(e) => setInquiryForm((prev) => ({ ...prev, companyWebsite: e.target.value }))}
                       placeholder="https://company.com"
