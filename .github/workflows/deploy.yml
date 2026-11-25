@@ -4,22 +4,105 @@ on:
   push:
     branches: [ main ]
 
+concurrency:
+  group: deploy-oracle-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
-      - name: Deploy via SSH to Oracle VPS
+      - name: Deploy Node App and FastAPI Engine to Oracle VPS
         env:
           SSH_PRIVATE_KEY: ${{ secrets.ORACLE_SSH_KEY }}
         run: |
+          set -euo pipefail
           mkdir -p ~/.ssh
-          echo "$SSH_PRIVATE_KEY" > ~/.ssh/oracle_key
+          trap 'rm -f ~/.ssh/oracle_key' EXIT
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/oracle_key
           chmod 600 ~/.ssh/oracle_key
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/oracle_key ubuntu@129.151.140.113 "
-            cd ~/almnexus &&
-            git fetch origin main &&
-            git reset --hard origin/main &&
-            npm install &&
-            npm run build &&
-            pm2 restart almnexus
-          "
+
+          ssh \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=no \
+            -o ConnectTimeout=15 \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=20 \
+            -i ~/.ssh/oracle_key \
+            ubuntu@129.151.140.113 \
+            'bash -s' <<'EOF'
+          set -euo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+
+          echo "[1/5] Syncing repository on main..."
+          cd ~/almnexus
+          git fetch origin main
+          git reset --hard origin/main
+
+          echo "[2/5] Installing Node dependencies and building frontend + SSR server..."
+          npm install --no-audit --no-fund
+          npm run build
+
+          echo "[3/5] Restarting Node/Express app via PM2..."
+          if pm2 describe almnexus >/dev/null 2>&1; then
+            pm2 restart almnexus --update-env
+          else
+            pm2 start dist/server.cjs --name almnexus
+          fi
+          pm2 save || true
+
+          echo "[4/5] Building and restarting alm-nexus-engine FastAPI Docker container..."
+          if docker info >/dev/null 2>&1; then
+            DOCKER_CMD="docker"
+          elif sudo -n docker info >/dev/null 2>&1; then
+            DOCKER_CMD="sudo -n docker"
+          else
+            echo "Error: Docker daemon is not accessible without a password prompt." >&2
+            exit 1
+          fi
+
+          $DOCKER_CMD build -t alm-nexus-engine:latest ~/almnexus/alm-nexus-engine
+          $DOCKER_CMD rm -f alm-nexus-engine >/dev/null 2>&1 || true
+          $DOCKER_CMD run -d \
+            --name alm-nexus-engine \
+            --restart unless-stopped \
+            --init \
+            --shm-size=1gb \
+            -p 127.0.0.1:8000:8000 \
+            -e ALLOWED_ORIGINS="https://almnexus.tech,https://www.almnexus.tech,http://localhost:5173,http://localhost:3000" \
+            alm-nexus-engine:latest
+
+          $DOCKER_CMD image prune -f >/dev/null 2>&1 || true
+
+          echo "[5/5] Verifying live health endpoints..."
+          NODE_OK=0
+          for i in $(seq 1 15); do
+            if curl -fsS http://127.0.0.1:3000/api/health >/dev/null 2>&1; then
+              NODE_OK=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$NODE_OK" -ne 1 ]; then
+            echo "Error: Node/Express backend failed health check on port 3000." >&2
+            pm2 logs almnexus --lines 30 --nostream || true
+            exit 1
+          fi
+
+          ENGINE_OK=0
+          for i in $(seq 1 15); do
+            if curl -fsS http://127.0.0.1:8000/health >/dev/null 2>&1; then
+              ENGINE_OK=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$ENGINE_OK" -ne 1 ]; then
+            echo "Error: alm-nexus-engine container failed health check on port 8000." >&2
+            $DOCKER_CMD logs --tail 30 alm-nexus-engine || true
+            exit 1
+          fi
+
+          echo "Deployment complete: Node/Express (3000) and alm-nexus-engine (8000) are healthy."
+          EOF
