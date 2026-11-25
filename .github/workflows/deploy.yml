@@ -11,9 +11,9 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 20
     steps:
-      - name: Deploy Node App and FastAPI Engine to Oracle VPS
+      - name: Deploy Node App and Python FastAPI Engine via PM2 on Oracle VPS
         env:
           SSH_PRIVATE_KEY: ${{ secrets.ORACLE_SSH_KEY }}
         run: |
@@ -40,40 +40,35 @@ jobs:
           git fetch origin main
           git reset --hard origin/main
 
-          echo "[2/5] Installing Node dependencies and building frontend + SSR server..."
+          echo "[2/5] Installing Node dependencies and building Node/Express app..."
           npm install --no-audit --no-fund
           npm run build
 
-          echo "[3/5] Restarting Node/Express app via PM2..."
+          echo "[3/5] Restarting main Node/Express site via PM2..."
           if pm2 describe almnexus >/dev/null 2>&1; then
             pm2 restart almnexus --update-env
           else
             pm2 start dist/server.cjs --name almnexus
           fi
-          pm2 save || true
 
-          echo "[4/5] Building and restarting alm-nexus-engine FastAPI Docker container..."
-          if docker info >/dev/null 2>&1; then
-            DOCKER_CMD="docker"
-          elif sudo -n docker info >/dev/null 2>&1; then
-            DOCKER_CMD="sudo -n docker"
-          else
-            echo "Error: Docker daemon is not accessible without a password prompt." >&2
-            exit 1
+          echo "[4/5] Preparing Python venv and restarting FastAPI engine via PM2..."
+          if [ ! -d "alm-nexus-engine/.venv" ]; then
+            python3 -m venv alm-nexus-engine/.venv
           fi
 
-          $DOCKER_CMD build -t alm-nexus-engine:latest ~/almnexus/alm-nexus-engine
-          $DOCKER_CMD rm -f alm-nexus-engine >/dev/null 2>&1 || true
-          $DOCKER_CMD run -d \
-            --name alm-nexus-engine \
-            --restart unless-stopped \
-            --init \
-            --shm-size=1gb \
-            -p 127.0.0.1:8000:8000 \
-            -e ALLOWED_ORIGINS="https://almnexus.tech,https://www.almnexus.tech,http://localhost:5173,http://localhost:3000" \
-            alm-nexus-engine:latest
+          alm-nexus-engine/.venv/bin/pip install --no-input --disable-pip-version-check -r alm-nexus-engine/requirements.txt
 
-          $DOCKER_CMD image prune -f >/dev/null 2>&1 || true
+          if ! compgen -G "$HOME/.cache/ms-playwright/chromium-*" >/dev/null 2>&1; then
+            alm-nexus-engine/.venv/bin/playwright install chromium
+          fi
+
+          if pm2 describe alm-engine >/dev/null 2>&1; then
+            pm2 restart alm-engine --update-env
+          else
+            pm2 start "$PWD/alm-nexus-engine/.venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000" --name alm-engine --cwd "$PWD/alm-nexus-engine"
+          fi
+
+          pm2 save
 
           echo "[5/5] Verifying live health endpoints..."
           NODE_OK=0
@@ -99,10 +94,10 @@ jobs:
             sleep 2
           done
           if [ "$ENGINE_OK" -ne 1 ]; then
-            echo "Error: alm-nexus-engine container failed health check on port 8000." >&2
-            $DOCKER_CMD logs --tail 30 alm-nexus-engine || true
+            echo "Error: alm-engine FastAPI server failed health check on port 8000." >&2
+            pm2 logs alm-engine --lines 30 --nostream || true
             exit 1
           fi
 
-          echo "Deployment complete: Node/Express (3000) and alm-nexus-engine (8000) are healthy."
+          echo "Deployment complete: almnexus (3000) and alm-engine (8000) are healthy."
           EOF
