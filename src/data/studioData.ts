@@ -58,7 +58,7 @@ export const ROUTE_SEO: Record<PublicRoutePath, RouteSeoConfig> = {
     canonical: `${SITE_ORIGIN}/products`
   },
   '/tools/web-data-engine': {
-    title: 'Web Data Engine | ALM Nexus',
+    title: 'ALM Nexus Web Data Engine — Live Extraction Tool',
     description:
       'Interactive deep web extraction interface for inspecting target sites, crawling structured directory profiles, and exporting UTF-8 CSV or JSON datasets.',
     canonical: `${SITE_ORIGIN}/tools/web-data-engine`

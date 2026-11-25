@@ -140,7 +140,7 @@ export function resolveEngineBaseUrl(): string {
     }
   }
 
-  return '';
+  return 'https://almnexus.tech/engine';
 }
 
 export function validateTargetUrl(rawInput: string): UrlValidationResult {
@@ -314,8 +314,11 @@ export async function getCrawlJobStatus(
 
 export function formatCellValue(value: unknown): string {
   if (value === null || value === undefined) return '';
+  if (typeof value === 'number') {
+    return Number.isNaN(value) ? '' : String(value);
+  }
   if (typeof value === 'string') return value;
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (typeof value === 'boolean') return String(value);
   try {
     return JSON.stringify(value);
   } catch {

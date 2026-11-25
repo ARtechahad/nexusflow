@@ -96,7 +96,7 @@ export const StudioWebsite: React.FC<StudioWebsiteProps> = ({
       case '/products':
         return <ProductsPage onNavigate={onNavigate} onOpenAuth={onOpenAuth} />;
       case '/tools/web-data-engine':
-        return <WebDataEnginePage />;
+        return <WebDataEnginePage onNavigate={onNavigate} />;
       case '/work':
         return <WorkPage onNavigate={onNavigate} />;
       case '/about':

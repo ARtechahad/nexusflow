@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
+  ArrowRight,
   Check,
   CheckCircle2,
   ChevronLeft,
@@ -31,26 +32,152 @@ import {
   triggerFileDownload,
   validateTargetUrl
 } from '../../services/webDataEngineApi';
+import { StudioLink } from './StudioLayout';
 
 type BackendStatusState = 'checking' | 'online' | 'offline';
 
-const CATEGORY_ORDER_PRIORITY = [
-  'category',
-  'type',
-  'title',
-  'name',
-  'value',
-  'email',
-  'phone',
-  'whatsapp',
-  'url',
-  'source_url',
-  'price',
-  'rating',
-  'description'
+interface DemoPreset {
+  id: string;
+  label: string;
+  url: string;
+  maxPages: number;
+  crawlProfiles: boolean;
+  maxProfiles: number;
+  categories: EngineCategoryId[];
+}
+
+const DEMO_PRESETS: DemoPreset[] = [
+  {
+    id: 'quotes-scroll',
+    label: 'Quotes Scroll Demo',
+    url: 'https://quotes.toscrape.com/scroll',
+    maxPages: 1,
+    crawlProfiles: false,
+    maxProfiles: 10,
+    categories: ['quotes', 'meta_info']
+  },
+  {
+    id: 'books-catalog',
+    label: 'Books Catalog Demo',
+    url: 'https://books.toscrape.com/',
+    maxPages: 2,
+    crawlProfiles: false,
+    maxProfiles: 10,
+    categories: ['books', 'images', 'meta_info']
+  },
+  {
+    id: 'business-directory',
+    label: 'Business Directory Demo',
+    url: 'https://almnexus.tech/',
+    maxPages: 1,
+    crawlProfiles: true,
+    maxProfiles: 5,
+    categories: [
+      'business_emails',
+      'socials',
+      'meta_info',
+      'directory_profiles',
+      'images'
+    ]
+  }
 ];
 
-export const WebDataEnginePage: React.FC = () => {
+const COLUMN_ORDER_PRIORITY = [
+  'Category',
+  'category',
+  'type',
+  'Page #',
+  'Website',
+  'Profile / Shop Name',
+  'Page Title',
+  'Book Title',
+  'Quote',
+  'Author',
+  'Tags',
+  'title',
+  'name',
+  'Price',
+  'price',
+  'Availability',
+  'Rating',
+  'Business Emails',
+  'Personal Emails',
+  'email',
+  'Phone Numbers',
+  'phone',
+  'WhatsApp',
+  'whatsapp',
+  'Official External Website',
+  'Meta Description',
+  'Instagram',
+  'LinkedIn',
+  'Twitter/X',
+  'Facebook',
+  'YouTube',
+  'TikTok',
+  'Alt Text',
+  'Image URL',
+  'Book URL',
+  'Source Page',
+  'url',
+  'source_url'
+];
+
+interface WebDataEnginePageProps {
+  onNavigate?: (href: string) => void;
+}
+
+const renderSafeCellContent = (rawVal: unknown, textVal: string) => {
+  if (textVal === '') {
+    return <span className="text-slate-400 dark:text-slate-600">—</span>;
+  }
+
+  if (isSafeHttpUrl(rawVal)) {
+    return (
+      <a
+        href={rawVal.trim()}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-1 font-mono text-xs text-[var(--accent)] dark:text-blue-400 hover:underline break-all"
+      >
+        <span>{textVal}</span>
+        <ExternalLink className="w-3 h-3 shrink-0" strokeWidth={1.75} aria-hidden="true" />
+      </a>
+    );
+  }
+
+  if (typeof rawVal === 'string' && rawVal.includes(',') && rawVal.includes('http')) {
+    const parts = rawVal.split(',').map((s) => s.trim()).filter(Boolean);
+    if (parts.length > 1 && parts.every((part) => isSafeHttpUrl(part))) {
+      return (
+        <div className="flex flex-col gap-1">
+          {parts.map((part) => (
+            <a
+              key={part}
+              href={part}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 font-mono text-xs text-[var(--accent)] dark:text-blue-400 hover:underline break-all"
+            >
+              <span>{part}</span>
+              <ExternalLink className="w-3 h-3 shrink-0" strokeWidth={1.75} aria-hidden="true" />
+            </a>
+          ))}
+        </div>
+      );
+    }
+  }
+
+  return (
+    <span className={typeof rawVal === 'number' ? 'font-mono tabular-nums' : undefined}>
+      {textVal}
+    </span>
+  );
+};
+
+export const WebDataEnginePage: React.FC<WebDataEnginePageProps> = ({
+  onNavigate = () => {}
+}) => {
   const baseUrl = useMemo(() => resolveEngineBaseUrl(), []);
 
   // Backend health state
@@ -98,15 +225,6 @@ export const WebDataEnginePage: React.FC = () => {
   const refreshHealth = useCallback(async () => {
     setHealthStatus('checking');
     setHealthError(null);
-
-    if (!baseUrl) {
-      setHealthStatus('offline');
-      setEngineLabel('');
-      setHealthError(
-        'VITE_ENGINE_API_URL is not configured for this environment. Set VITE_ENGINE_API_URL in your build environment or run locally on http://localhost:8000.'
-      );
-      return;
-    }
 
     try {
       const data = await checkEngineHealth(baseUrl);
@@ -170,6 +288,17 @@ export const WebDataEnginePage: React.FC = () => {
     },
     [baseUrl, stopPolling]
   );
+
+  const handleApplyPreset = (preset: DemoPreset) => {
+    setTargetUrl(preset.url);
+    setUrlError(null);
+    setActionError(null);
+    setInspectResult(null);
+    setMaxPages(preset.maxPages);
+    setCrawlProfiles(preset.crawlProfiles);
+    setMaxProfiles(preset.maxProfiles);
+    setSelectedCategories(preset.categories);
+  };
 
   const handleInspectSite = async () => {
     setActionError(null);
@@ -294,8 +423,8 @@ export const WebDataEnginePage: React.FC = () => {
     }
     const keys = Array.from(seen);
     keys.sort((a, b) => {
-      const idxA = CATEGORY_ORDER_PRIORITY.indexOf(a);
-      const idxB = CATEGORY_ORDER_PRIORITY.indexOf(b);
+      const idxA = COLUMN_ORDER_PRIORITY.indexOf(a);
+      const idxB = COLUMN_ORDER_PRIORITY.indexOf(b);
       if (idxA !== -1 && idxB !== -1) return idxA - idxB;
       if (idxA !== -1) return -1;
       if (idxB !== -1) return 1;
@@ -305,7 +434,7 @@ export const WebDataEnginePage: React.FC = () => {
   }, [rawResults]);
 
   const categoryColumnKey = useMemo(() => {
-    for (const candidate of ['category', 'type', 'record_type']) {
+    for (const candidate of ['Category', 'category', 'type', 'record_type']) {
       if (dynamicColumns.includes(candidate)) return candidate;
     }
     return null;
@@ -518,7 +647,7 @@ export const WebDataEnginePage: React.FC = () => {
                     Crawl Configuration
                   </h2>
                   <p className="text-sm text-slate-600 dark:text-slate-400">
-                    Inspect a target site to detect categories automatically, or choose fields manually.
+                    Load a sample preset or inspect a target site to detect categories automatically.
                   </p>
                 </div>
                 {baseUrl && (
@@ -526,6 +655,31 @@ export const WebDataEnginePage: React.FC = () => {
                     {baseUrl}
                   </span>
                 )}
+              </div>
+
+              {/* Sample Preset Buttons */}
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-mono text-slate-500 dark:text-slate-400 mr-1">
+                  Sample presets:
+                </span>
+                {DEMO_PRESETS.map((preset) => {
+                  const isActive = targetUrl === preset.url;
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => handleApplyPreset(preset)}
+                      disabled={isJobRunning}
+                      className={`px-3 py-1.5 rounded-[6px] border text-xs font-medium transition-colors cursor-pointer whitespace-nowrap disabled:opacity-50 ${
+                        isActive
+                          ? 'border-[var(--accent)] bg-blue-50/70 dark:bg-blue-950/30 text-[var(--accent)] dark:text-blue-400'
+                          : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#0B0F17] text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-600'
+                      }`}
+                    >
+                      {preset.label}
+                    </button>
+                  );
+                })}
               </div>
 
               {/* Target URL + Smart Inspect */}
@@ -551,7 +705,7 @@ export const WebDataEnginePage: React.FC = () => {
                         setTargetUrl(e.target.value);
                         if (urlError) setUrlError(null);
                       }}
-                      placeholder="https://books.toscrape.com"
+                      placeholder="https://books.toscrape.com/"
                       aria-invalid={Boolean(urlError)}
                       aria-describedby={urlError ? 'engine-url-error' : undefined}
                       className="w-full h-11 pl-10 pr-3.5 rounded-[6px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#0B0F17] text-sm font-mono text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500"
@@ -595,7 +749,7 @@ export const WebDataEnginePage: React.FC = () => {
                     </span>
                     <span aria-hidden="true" className="hidden sm:inline">·</span>
                     <span>
-                      Suggested:{' '}
+                      Suggested Categories:{' '}
                       <strong className="text-slate-900 dark:text-white tabular-nums">
                         {inspectResult.suggested_categories.length}
                       </strong>
@@ -607,25 +761,31 @@ export const WebDataEnginePage: React.FC = () => {
                       <p className="text-xs font-medium text-slate-700 dark:text-slate-300">
                         Detected Social Channels
                       </p>
-                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs font-mono">
-                        {inspectResult.detected_socials.map((socialUrl) =>
-                          isSafeHttpUrl(socialUrl) ? (
-                            <a
-                              key={socialUrl}
-                              href={socialUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 text-[var(--accent)] dark:text-blue-400 hover:underline truncate max-w-[260px]"
-                            >
-                              <span className="truncate">{socialUrl}</span>
-                              <ExternalLink className="w-3 h-3 shrink-0" strokeWidth={1.75} aria-hidden="true" />
-                            </a>
-                          ) : (
-                            <span key={socialUrl} className="text-slate-600 dark:text-slate-400 truncate max-w-[260px]">
-                              {socialUrl}
-                            </span>
-                          )
-                        )}
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-mono">
+                        {inspectResult.detected_socials.map((socialItem, idx) => (
+                          <React.Fragment key={socialItem}>
+                            {idx > 0 && (
+                              <span aria-hidden="true" className="text-slate-400">
+                                ·
+                              </span>
+                            )}
+                            {isSafeHttpUrl(socialItem) ? (
+                              <a
+                                href={socialItem}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-[var(--accent)] dark:text-blue-400 hover:underline truncate max-w-[260px]"
+                              >
+                                <span className="truncate">{socialItem}</span>
+                                <ExternalLink className="w-3 h-3 shrink-0" strokeWidth={1.75} aria-hidden="true" />
+                              </a>
+                            ) : (
+                              <span className="text-slate-700 dark:text-slate-300">
+                                {socialItem}
+                              </span>
+                            )}
+                          </React.Fragment>
+                        ))}
                       </div>
                     </div>
                   )}
@@ -732,7 +892,7 @@ export const WebDataEnginePage: React.FC = () => {
                     </span>
                     <span className="ml-2 text-xs font-mono tabular-nums text-slate-500 dark:text-slate-400">
                       {selectedCategories.length === 0
-                        ? 'Auto-all mode (none restricted)'
+                        ? 'Auto-detect mode (backend chooses)'
                         : `${selectedCategories.length} selected`}
                     </span>
                   </div>
@@ -851,7 +1011,7 @@ export const WebDataEnginePage: React.FC = () => {
               {!activeJob ? (
                 <div className="py-6 space-y-3 text-sm text-slate-600 dark:text-slate-400">
                   <p>
-                    No active extraction job yet. Enter a URL on the left, run <strong className="text-slate-900 dark:text-slate-200">Smart Inspect URL</strong> to auto-detect target entities, then start an extraction job.
+                    No active extraction job yet. Choose a preset or enter a URL, run <strong className="text-slate-900 dark:text-slate-200">Smart Inspect URL</strong>, then start extraction.
                   </p>
                   <p className="text-xs font-mono text-slate-500 dark:text-slate-400">
                     Ready · Polling interval: 1.5s
@@ -936,219 +1096,219 @@ export const WebDataEnginePage: React.FC = () => {
         </div>
       </section>
 
-      {/* Results Table Section */}
+      {/* Results Table & Conversion Banner */}
       <section className="py-10 md:py-14">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <h2 className="text-xl font-bold tracking-[-0.015em] text-slate-900 dark:text-white">
-                Extracted Records
-              </h2>
-              <p className="text-sm text-slate-600 dark:text-slate-400 font-mono tabular-nums">
-                {rawResults.length === 0
-                  ? 'No extracted dataset loaded yet'
-                  : `${filteredResults.length} of ${rawResults.length} records shown`}
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                onClick={handleExportCsv}
-                disabled={filteredResults.length === 0}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-[6px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#111827] hover:bg-slate-50 dark:hover:bg-slate-800/70 text-sm font-medium text-slate-900 dark:text-slate-100 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
-              >
-                <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" strokeWidth={1.75} aria-hidden="true" />
-                <span>Export CSV (UTF-8)</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleExportJson}
-                disabled={filteredResults.length === 0}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-[6px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#111827] hover:bg-slate-50 dark:hover:bg-slate-800/70 text-sm font-medium text-slate-900 dark:text-slate-100 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
-              >
-                <FileJson className="w-4 h-4 text-[var(--accent)] dark:text-blue-400" strokeWidth={1.75} aria-hidden="true" />
-                <span>Export JSON</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Search & Category Filter Controls */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-            <div className="relative flex-1">
-              <Search
-                className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none"
-                strokeWidth={1.75}
-                aria-hidden="true"
-              />
-              <input
-                type="search"
-                aria-label="Search extracted records"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search across extracted domains, emails, titles, prices, or URLs..."
-                className="w-full h-10 pl-10 pr-3.5 rounded-[6px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#111827] text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500"
-              />
-            </div>
-
-            {availableResultCategories.length > 0 && (
-              <select
-                aria-label="Filter by extracted category"
-                value={categoryFilter}
-                onChange={(e) => setCategoryFilter(e.target.value)}
-                className="h-10 px-3 rounded-[6px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#111827] text-sm text-slate-900 dark:text-white"
-              >
-                <option value="all">All Categories</option>
-                {availableResultCategories.map((cat) => (
-                  <option key={cat} value={cat}>
-                    {cat}
-                  </option>
-                ))}
-              </select>
-            )}
-
-            <select
-              aria-label="Rows per page"
-              value={pageSize}
-              onChange={(e) => setPageSize(Number(e.target.value))}
-              className="h-10 px-3 rounded-[6px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#111827] text-sm font-mono tabular-nums text-slate-900 dark:text-white"
-            >
-              <option value={10}>10 / page</option>
-              <option value={25}>25 / page</option>
-              <option value={50}>50 / page</option>
-            </select>
-          </div>
-
-          {/* Data Grid */}
-          <div className="rounded-[8px] border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] overflow-hidden">
-            {rawResults.length === 0 ? (
-              <div className="p-12 text-center space-y-3">
-                <Download className="w-6 h-6 text-slate-400 mx-auto" strokeWidth={1.75} aria-hidden="true" />
-                <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
-                  {isJobRunning
-                    ? 'Crawling target pages and streaming results...'
-                    : 'Run an extraction job to populate dynamic result columns here.'}
-                </p>
-                <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-                  Columns adapt automatically to the schema returned by the backend (books, quotes, emails, phone numbers, social links, or directory profiles).
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
+          <div className="space-y-6">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-bold tracking-[-0.015em] text-slate-900 dark:text-white">
+                  Extracted Records
+                </h2>
+                <p className="text-sm text-slate-600 dark:text-slate-400 font-mono tabular-nums">
+                  {rawResults.length === 0
+                    ? 'No extracted dataset loaded yet'
+                    : `${filteredResults.length} of ${rawResults.length} records shown`}
                 </p>
               </div>
-            ) : filteredResults.length === 0 ? (
-              <div className="p-10 text-center space-y-2">
-                <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
-                  No records match your current search or category filter.
-                </p>
+
+              <div className="flex flex-wrap items-center gap-3">
                 <button
                   type="button"
-                  onClick={() => {
-                    setSearchQuery('');
-                    setCategoryFilter('all');
-                  }}
-                  className="text-xs font-medium text-[var(--accent)] dark:text-blue-400 hover:underline cursor-pointer"
+                  onClick={handleExportCsv}
+                  disabled={filteredResults.length === 0}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-[6px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#111827] hover:bg-slate-50 dark:hover:bg-slate-800/70 text-sm font-medium text-slate-900 dark:text-slate-100 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
                 >
-                  Clear filters
+                  <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" strokeWidth={1.75} aria-hidden="true" />
+                  <span>Export CSV (UTF-8)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleExportJson}
+                  disabled={filteredResults.length === 0}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-[6px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#111827] hover:bg-slate-50 dark:hover:bg-slate-800/70 text-sm font-medium text-slate-900 dark:text-slate-100 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+                >
+                  <FileJson className="w-4 h-4 text-[var(--accent)] dark:text-blue-400" strokeWidth={1.75} aria-hidden="true" />
+                  <span>Export JSON</span>
                 </button>
               </div>
-            ) : (
-              <>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse text-sm">
-                    <thead>
-                      <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0D131F]">
-                        <th className="py-2.5 px-3 font-mono text-xs font-medium text-slate-500 dark:text-slate-400 w-12 tabular-nums">
-                          #
-                        </th>
-                        {dynamicColumns.map((col) => (
-                          <th
-                            key={col}
-                            className="py-2.5 px-3 font-mono text-xs font-semibold text-slate-700 dark:text-slate-200 whitespace-nowrap"
-                          >
-                            {col}
+            </div>
+
+            {/* Search & Category Filter Controls */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+              <div className="relative flex-1">
+                <Search
+                  className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none"
+                  strokeWidth={1.75}
+                  aria-hidden="true"
+                />
+                <input
+                  type="search"
+                  aria-label="Search extracted records"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search across extracted domains, emails, titles, prices, or URLs..."
+                  className="w-full h-10 pl-10 pr-3.5 rounded-[6px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#111827] text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500"
+                />
+              </div>
+
+              {availableResultCategories.length > 0 && (
+                <select
+                  aria-label="Filter by extracted category"
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                  className="h-10 px-3 rounded-[6px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#111827] text-sm text-slate-900 dark:text-white"
+                >
+                  <option value="all">All Categories</option>
+                  {availableResultCategories.map((cat) => (
+                    <option key={cat} value={cat}>
+                      {cat}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              <select
+                aria-label="Rows per page"
+                value={pageSize}
+                onChange={(e) => setPageSize(Number(e.target.value))}
+                className="h-10 px-3 rounded-[6px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#111827] text-sm font-mono tabular-nums text-slate-900 dark:text-white"
+              >
+                <option value={10}>10 / page</option>
+                <option value={25}>25 / page</option>
+                <option value={50}>50 / page</option>
+              </select>
+            </div>
+
+            {/* Data Grid */}
+            <div className="rounded-[8px] border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] overflow-hidden">
+              {rawResults.length === 0 ? (
+                <div className="p-12 text-center space-y-3">
+                  <Download className="w-6 h-6 text-slate-400 mx-auto" strokeWidth={1.75} aria-hidden="true" />
+                  <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                    {isJobRunning
+                      ? 'Crawling target pages and streaming results...'
+                      : 'Run an extraction job to populate dynamic result columns here.'}
+                  </p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+                    Columns adapt automatically to the schema returned by the backend (books, quotes, emails, phone numbers, social links, or directory profiles).
+                  </p>
+                </div>
+              ) : filteredResults.length === 0 ? (
+                <div className="p-10 text-center space-y-2">
+                  <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                    No records match your current search or category filter.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchQuery('');
+                      setCategoryFilter('all');
+                    }}
+                    className="text-xs font-medium text-[var(--accent)] dark:text-blue-400 hover:underline cursor-pointer"
+                  >
+                    Clear filters
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-sm">
+                      <thead>
+                        <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0D131F]">
+                          <th className="py-2.5 px-3 font-mono text-xs font-medium text-slate-500 dark:text-slate-400 w-12 tabular-nums">
+                            #
                           </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                      {paginatedResults.map((row, rowIdx) => {
-                        const globalIndex = (safeCurrentPage - 1) * pageSize + rowIdx + 1;
-                        return (
-                          <tr
-                            key={`row-${globalIndex}`}
-                            className="hover:bg-slate-50/80 dark:hover:bg-slate-800/30 transition-colors"
-                          >
-                            <td className="py-2.5 px-3 font-mono text-xs tabular-nums text-slate-500 dark:text-slate-400 align-top">
-                              {globalIndex}
-                            </td>
-                            {dynamicColumns.map((col) => {
-                              const rawVal = row?.[col];
-                              const textVal = formatCellValue(rawVal);
-                              const isUrl = isSafeHttpUrl(rawVal);
+                          {dynamicColumns.map((col) => (
+                            <th
+                              key={col}
+                              className="py-2.5 px-3 font-mono text-xs font-semibold text-slate-700 dark:text-slate-200 whitespace-nowrap"
+                            >
+                              {col}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+                        {paginatedResults.map((row, rowIdx) => {
+                          const globalIndex = (safeCurrentPage - 1) * pageSize + rowIdx + 1;
+                          return (
+                            <tr
+                              key={`row-${globalIndex}`}
+                              className="hover:bg-slate-50/80 dark:hover:bg-slate-800/30 transition-colors"
+                            >
+                              <td className="py-2.5 px-3 font-mono text-xs tabular-nums text-slate-500 dark:text-slate-400 align-top">
+                                {globalIndex}
+                              </td>
+                              {dynamicColumns.map((col) => {
+                                const rawVal = row?.[col];
+                                const textVal = formatCellValue(rawVal);
 
-                              return (
-                                <td
-                                  key={col}
-                                  className="py-2.5 px-3 text-xs sm:text-sm text-slate-800 dark:text-slate-200 align-top max-w-[280px] break-words"
-                                >
-                                  {textVal === '' ? (
-                                    <span className="text-slate-400 dark:text-slate-600">—</span>
-                                  ) : isUrl ? (
-                                    <a
-                                      href={rawVal}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="inline-flex items-center gap-1 font-mono text-xs text-[var(--accent)] dark:text-blue-400 hover:underline break-all"
-                                    >
-                                      <span>{textVal}</span>
-                                      <ExternalLink className="w-3 h-3 shrink-0" strokeWidth={1.75} aria-hidden="true" />
-                                    </a>
-                                  ) : (
-                                    <span className={typeof rawVal === 'number' ? 'font-mono tabular-nums' : undefined}>
-                                      {textVal}
-                                    </span>
-                                  )}
-                                </td>
-                              );
-                            })}
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Pagination Bar */}
-                <div className="px-4 py-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0D131F] flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
-                  <span className="font-mono tabular-nums text-slate-600 dark:text-slate-400">
-                    Page {safeCurrentPage} of {totalPages} · Showing{' '}
-                    {(safeCurrentPage - 1) * pageSize + 1}–
-                    {Math.min(safeCurrentPage * pageSize, filteredResults.length)} of{' '}
-                    {filteredResults.length}
-                  </span>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                      disabled={safeCurrentPage <= 1}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-[6px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#111827] text-slate-700 dark:text-slate-200 disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
-                    >
-                      <ChevronLeft className="w-3.5 h-3.5" strokeWidth={1.75} aria-hidden="true" />
-                      <span>Prev</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                      disabled={safeCurrentPage >= totalPages}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-[6px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#111827] text-slate-700 dark:text-slate-200 disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
-                    >
-                      <span>Next</span>
-                      <ChevronRight className="w-3.5 h-3.5" strokeWidth={1.75} aria-hidden="true" />
-                    </button>
+                                return (
+                                  <td
+                                    key={col}
+                                    className="py-2.5 px-3 text-xs sm:text-sm text-slate-800 dark:text-slate-200 align-top max-w-[280px] break-words"
+                                  >
+                                    {renderSafeCellContent(rawVal, textVal)}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
-                </div>
-              </>
-            )}
+
+                  {/* Pagination Bar */}
+                  <div className="px-4 py-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0D131F] flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+                    <span className="font-mono tabular-nums text-slate-600 dark:text-slate-400">
+                      Page {safeCurrentPage} of {totalPages} · Showing{' '}
+                      {(safeCurrentPage - 1) * pageSize + 1}–
+                      {Math.min(safeCurrentPage * pageSize, filteredResults.length)} of{' '}
+                      {filteredResults.length}
+                    </span>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                        disabled={safeCurrentPage <= 1}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-[6px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#111827] text-slate-700 dark:text-slate-200 disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5" strokeWidth={1.75} aria-hidden="true" />
+                        <span>Prev</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                        disabled={safeCurrentPage >= totalPages}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-[6px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#111827] text-slate-700 dark:text-slate-200 disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
+                      >
+                        <span>Next</span>
+                        <ChevronRight className="w-3.5 h-3.5" strokeWidth={1.75} aria-hidden="true" />
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Subtle Conversion Banner */}
+          <div className="p-6 sm:p-8 rounded-[8px] border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <p className="text-[15px] sm:text-[16px] leading-[1.6] text-slate-700 dark:text-slate-200 max-w-[68ch]">
+              Need 10,000+ leads, automated CRM sync, or custom scheduled scraping pipelines?
+            </p>
+            <StudioLink
+              href="/contact"
+              onNavigate={onNavigate}
+              className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-[6px] text-sm font-medium bg-[var(--accent)] hover:bg-[#1D4ED8] text-white transition-colors whitespace-nowrap shrink-0"
+            >
+              <span>Scope a Custom Pipeline</span>
+              <ArrowRight className="w-4 h-4" strokeWidth={1.75} aria-hidden="true" />
+            </StudioLink>
           </div>
         </div>
       </section>
