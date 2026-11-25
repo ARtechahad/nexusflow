@@ -11,9 +11,9 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
-      - name: Deploy Node App and Python FastAPI Engine via PM2 on Oracle VPS
+      - name: Provision Swap, Python Venv, Node Build & PM2 Processes on Oracle VPS
         env:
           SSH_PRIVATE_KEY: ${{ secrets.ORACLE_SSH_KEY }}
         run: |
@@ -28,38 +28,49 @@ jobs:
             -o StrictHostKeyChecking=no \
             -o ConnectTimeout=15 \
             -o ServerAliveInterval=30 \
-            -o ServerAliveCountMax=20 \
+            -o ServerAliveCountMax=25 \
             -i ~/.ssh/oracle_key \
             ubuntu@129.151.140.113 \
             'bash -s' <<'EOF'
           set -euo pipefail
           export DEBIAN_FRONTEND=noninteractive
 
-          echo "[1/5] Syncing repository on main..."
+          echo "[1/6] Ensuring 2GB swapfile is active on Oracle VM..."
+          if [ ! -f /swapfile ]; then
+            sudo fallocate -l 2G /swapfile
+            sudo chmod 600 /swapfile
+            sudo mkswap /swapfile
+            sudo swapon /swapfile
+            echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab >/dev/null
+          elif ! swapon --show=NAME 2>/dev/null | grep -q '^/swapfile$'; then
+            sudo swapon /swapfile || true
+          fi
+
+          echo "[2/6] Syncing repository on main..."
           cd ~/almnexus
           git fetch origin main
           git reset --hard origin/main
 
-          echo "[2/5] Installing Node dependencies and building Node/Express app..."
+          echo "[3/6] Installing Node dependencies and building frontend + SSR server..."
           npm install --no-audit --no-fund
           npm run build
 
-          echo "[3/5] Restarting main Node/Express site via PM2..."
+          echo "[4/6] Restarting main Node/Express site via PM2..."
           if pm2 describe almnexus >/dev/null 2>&1; then
             pm2 restart almnexus --update-env
           else
             pm2 start dist/server.cjs --name almnexus
           fi
 
-          echo "[4/5] Preparing Python venv and restarting FastAPI engine via PM2..."
-          if [ ! -d "alm-nexus-engine/.venv" ]; then
-            python3 -m venv alm-nexus-engine/.venv
-          fi
+          echo "[5/6] Configuring Python venv, Playwright Chromium, and restarting alm-engine via PM2..."
+          dpkg -s python3-venv >/dev/null 2>&1 || (sudo apt-get update && sudo apt-get install -y python3-venv)
 
-          alm-nexus-engine/.venv/bin/pip install --no-input --disable-pip-version-check -r alm-nexus-engine/requirements.txt
+          python3 -m venv alm-nexus-engine/.venv
+          alm-nexus-engine/.venv/bin/pip install --no-input --upgrade pip -r alm-nexus-engine/requirements.txt
+          alm-nexus-engine/.venv/bin/playwright install chromium
 
-          if ! compgen -G "$HOME/.cache/ms-playwright/chromium-*" >/dev/null 2>&1; then
-            alm-nexus-engine/.venv/bin/playwright install chromium
+          if [ ! -f alm-nexus-engine/.venv/.playwright-deps-ok ]; then
+            sudo -E alm-nexus-engine/.venv/bin/playwright install-deps chromium >/dev/null 2>&1 && touch alm-nexus-engine/.venv/.playwright-deps-ok || true
           fi
 
           if pm2 describe alm-engine >/dev/null 2>&1; then
@@ -70,7 +81,7 @@ jobs:
 
           pm2 save
 
-          echo "[5/5] Verifying live health endpoints..."
+          echo "[6/6] Verifying live health endpoints (Node :3000 & FastAPI :8000)..."
           NODE_OK=0
           for i in $(seq 1 15); do
             if curl -fsS http://127.0.0.1:3000/api/health >/dev/null 2>&1; then
@@ -99,5 +110,5 @@ jobs:
             exit 1
           fi
 
-          echo "Deployment complete: almnexus (3000) and alm-engine (8000) are healthy."
+          echo "Deployment complete: almnexus (:3000) and alm-engine (:8000) are live and healthy."
           EOF

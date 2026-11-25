@@ -115,6 +115,84 @@ app.use((_req, res, next) => {
   next();
 });
 app.use(dynamicCors);
+
+// Reverse proxy /engine/* -> local Python FastAPI engine (http://127.0.0.1:8000)
+// Mounted before body-parsing middlewares so POST streams pass through intact.
+app.use('/engine', (req: Request, res: Response) => {
+  const targetPath = req.url && req.url.startsWith('/') ? req.url : `/${req.url || ''}`;
+  const forwardedHeaders: http.OutgoingHttpHeaders = {};
+  for (const [key, val] of Object.entries(req.headers)) {
+    const lower = key.toLowerCase();
+    if (
+      lower === 'host' ||
+      lower === 'connection' ||
+      lower === 'keep-alive' ||
+      lower === 'proxy-connection' ||
+      lower === 'transfer-encoding' ||
+      lower === 'upgrade'
+    ) {
+      continue;
+    }
+    if (val !== undefined) {
+      forwardedHeaders[key] = val;
+    }
+  }
+  forwardedHeaders.host = '127.0.0.1:8000';
+  forwardedHeaders['x-forwarded-for'] = req.ip || req.socket.remoteAddress || '';
+  forwardedHeaders['x-forwarded-proto'] = req.protocol || 'https';
+
+  const proxyReq = http.request(
+    {
+      hostname: '127.0.0.1',
+      port: 8000,
+      path: targetPath,
+      method: req.method,
+      headers: forwardedHeaders,
+      timeout: 60000
+    },
+    (proxyRes) => {
+      const responseHeaders: http.OutgoingHttpHeaders = {};
+      for (const [key, val] of Object.entries(proxyRes.headers)) {
+        const lower = key.toLowerCase();
+        if (lower === 'connection' || lower === 'keep-alive' || lower === 'transfer-encoding') {
+          continue;
+        }
+        if (val !== undefined) {
+          responseHeaders[key] = val;
+        }
+      }
+      res.writeHead(proxyRes.statusCode || 502, responseHeaders);
+      proxyRes.pipe(res);
+    }
+  );
+
+  proxyReq.on('timeout', () => {
+    proxyReq.destroy(new Error('Upstream FastAPI engine request timed out'));
+  });
+
+  proxyReq.on('error', (err) => {
+    logger.warn(`Engine proxy error (${req.method} ${targetPath}): ${err.message}`, {
+      context: 'EngineProxy'
+    });
+    if (!res.headersSent) {
+      res.status(502).json({
+        status: 'offline',
+        detail: 'ALM Nexus FastAPI engine is unreachable on port 8000.'
+      });
+    } else if (!res.writableEnded) {
+      res.end();
+    }
+  });
+
+  res.on('close', () => {
+    if (!res.writableFinished && !proxyReq.destroyed) {
+      proxyReq.destroy();
+    }
+  });
+
+  req.pipe(proxyReq);
+});
+
 app.use(parseCookies);
 app.use(compressionMiddleware);
 app.use(express.json({ limit: '25mb' }));
