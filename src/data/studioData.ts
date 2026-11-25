@@ -2,6 +2,7 @@ export type PublicRoutePath =
   | '/'
   | '/services'
   | '/products'
+  | '/tools/web-data-engine'
   | '/work'
   | '/about'
   | '/contact'
@@ -12,6 +13,7 @@ export const PUBLIC_ROUTES: PublicRoutePath[] = [
   '/',
   '/services',
   '/products',
+  '/tools/web-data-engine',
   '/work',
   '/about',
   '/contact',
@@ -54,6 +56,12 @@ export const ROUTE_SEO: Record<PublicRoutePath, RouteSeoConfig> = {
     description:
       'NexusFlow multi-tenant operations platform for agencies and B2B teams, plus software tools in R&D from ALM Nexus.',
     canonical: `${SITE_ORIGIN}/products`
+  },
+  '/tools/web-data-engine': {
+    title: 'Web Data Engine | ALM Nexus',
+    description:
+      'Interactive deep web extraction interface for inspecting target sites, crawling structured directory profiles, and exporting UTF-8 CSV or JSON datasets.',
+    canonical: `${SITE_ORIGIN}/tools/web-data-engine`
   },
   '/work': {
     title: 'Work and Case Studies | ALM Nexus',
@@ -108,6 +116,7 @@ export interface NavItem {
 export const PRIMARY_NAV_ITEMS: NavItem[] = [
   { label: 'Services', href: '/services' },
   { label: 'Products', href: '/products' },
+  { label: 'Data Engine', href: '/tools/web-data-engine' },
   { label: 'Work', href: '/work' },
   { label: 'About', href: '/about' }
 ];

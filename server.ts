@@ -342,6 +342,7 @@ async function startServer() {
     '/',
     '/services',
     '/products',
+    '/tools/web-data-engine',
     '/work',
     '/about',
     '/contact',

@@ -262,6 +262,11 @@ export const StudioLayout: React.FC<StudioLayoutProps> = ({
                     </StudioLink>
                   </li>
                   <li>
+                    <StudioLink href="/tools/web-data-engine" onNavigate={handleNavClick} className="hover:text-slate-900 dark:hover:text-white">
+                      Web Data Engine
+                    </StudioLink>
+                  </li>
+                  <li>
                     <StudioLink href="/work" onNavigate={handleNavClick} className="hover:text-slate-900 dark:hover:text-white">
                       Work
                     </StudioLink>

@@ -7,6 +7,7 @@ import { ProductsPage } from './ProductsPage';
 import { WorkPage } from './WorkPage';
 import { AboutPage } from './AboutPage';
 import { ContactPage } from './ContactPage';
+import { WebDataEnginePage } from './WebDataEnginePage';
 import { NotFoundPage, PrivacyPage, TermsPage } from './LegalPages';
 
 export function normalizePathname(rawPathname: string): string {
@@ -94,6 +95,8 @@ export const StudioWebsite: React.FC<StudioWebsiteProps> = ({
         return <ServicesPage onNavigate={onNavigate} />;
       case '/products':
         return <ProductsPage onNavigate={onNavigate} onOpenAuth={onOpenAuth} />;
+      case '/tools/web-data-engine':
+        return <WebDataEnginePage />;
       case '/work':
         return <WorkPage onNavigate={onNavigate} />;
       case '/about':

@@ -66,6 +66,22 @@ export const ServicesPage: React.FC<StudioNavigationProps> = ({ onNavigate }) =>
                   </p>
                 </div>
               </div>
+
+              {service.id === 'data' && (
+                <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-sm text-slate-600 dark:text-slate-300">
+                    Test our standalone extraction frontend directly against the Python crawler API.
+                  </p>
+                  <StudioLink
+                    href="/tools/web-data-engine"
+                    onNavigate={onNavigate}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-[6px] text-sm font-medium border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-[#0B0F17] hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-900 dark:text-white transition-colors whitespace-nowrap"
+                  >
+                    <span>Open Web Data Engine</span>
+                    <ArrowRight className="w-4 h-4" strokeWidth={1.75} aria-hidden="true" />
+                  </StudioLink>
+                </div>
+              )}
             </article>
           ))}
         </div>

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { ArrowRight } from 'lucide-react';
 import {
   NEXUSFLOW_TABS,
   NexusFlowTabItem,
@@ -6,7 +7,7 @@ import {
   RdProduct
 } from '../../data/studioData';
 import { NexusFlowPreviewWindow } from './NexusFlowPreviewWindow';
-import { StudioNavigationProps } from './StudioLayout';
+import { StudioLink, StudioNavigationProps } from './StudioLayout';
 
 const RdProductCard: React.FC<{ product: RdProduct }> = ({ product }) => (
   <article className="p-6 rounded-[8px] border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] space-y-3">
@@ -191,6 +192,28 @@ export const ProductsPage: React.FC<ProductsPageProps> = ({
             {RD_PRODUCTS.map((product) => (
               <RdProductCard key={product.id} product={product} />
             ))}
+          </div>
+
+          <div className="p-6 rounded-[8px] border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <p className="text-xs font-mono uppercase tracking-wider text-[var(--accent)] dark:text-blue-400">
+                Interactive Tool
+              </p>
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+                ALM Nexus Web Data Engine
+              </h3>
+              <p className="text-sm text-slate-600 dark:text-slate-300 max-w-[60ch]">
+                Inspect domains, run multi-page and directory-profile crawls via FastAPI, and export UTF-8 CSV or JSON datasets.
+              </p>
+            </div>
+            <StudioLink
+              href="/tools/web-data-engine"
+              onNavigate={onNavigate}
+              className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-[6px] text-sm font-medium bg-[var(--accent)] hover:bg-[#1D4ED8] text-white transition-colors whitespace-nowrap shrink-0"
+            >
+              <span>Open Web Data Engine</span>
+              <ArrowRight className="w-4 h-4" strokeWidth={1.75} aria-hidden="true" />
+            </StudioLink>
           </div>
         </div>
       </section>
