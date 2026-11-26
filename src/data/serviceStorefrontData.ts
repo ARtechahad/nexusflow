@@ -76,6 +76,7 @@ export interface ServiceStorefrontConfig {
   eyebrow: string;
   title: string;
   lead: string;
+  quickAnswer: string;
   serviceSchemaName: string;
   serviceSchemaType: string;
   inquiryCategory: InquiryCategory;
@@ -112,6 +113,8 @@ export const SERVICE_STOREFRONT_CONFIGS: Record<
     eyebrow: 'MOBILE APPS · IOS & ANDROID',
     title: 'Custom Mobile App Development (iOS & Android)',
     lead: 'Pick the right mobile framework, preview starter screens, and scope your backend.',
+    quickAnswer:
+      'Designed for startups, consumer brands, and B2B operations teams launching mobile products. We build cross-platform and native iOS and Android apps using Flutter, React Native, Expo, Swift, or Kotlin paired with Node.js, FastAPI, and PostgreSQL. Clients receive production store builds, full source code ownership, admin controls, and deployment scripts.',
     serviceSchemaName: 'Custom Mobile App Development (iOS & Android)',
     serviceSchemaType: 'Mobile Application Development',
     inquiryCategory: 'Web / Mobile App',
@@ -262,6 +265,8 @@ export const SERVICE_STOREFRONT_CONFIGS: Record<
     eyebrow: 'WEB & SAAS PLATFORMS',
     title: 'Custom Web & SaaS Platform Development',
     lead: 'Compare web architectures, preview starter interfaces, and configure your stack.',
+    quickAnswer:
+      'Built for SaaS founders, agencies, and enterprises replacing manual spreadsheets or scaling customer portals. We engineer web platforms using Next.js, React, TypeScript, Tailwind CSS, Node.js, FastAPI, PostgreSQL, and MongoDB. Clients receive responsive multi-tenant apps, role-based access control, automated CI/CD cloud deployment, database schemas, and complete repository handoff.',
     serviceSchemaName: 'Custom Web & SaaS Platform Development',
     serviceSchemaType: 'Web Application & SaaS Development',
     inquiryCategory: 'Web / Mobile App',
@@ -422,6 +427,8 @@ export const SERVICE_STOREFRONT_CONFIGS: Record<
     eyebrow: 'AI AGENTS & WORKFLOW AUTOMATION',
     title: 'Custom AI Agents, RAG & Workflow Automation',
     lead: 'Compare AI automation systems, preview deployment privacy, and scope your integrations.',
+    quickAnswer:
+      "Ideal for support teams, sales leaders, and regulated organizations automating repetitive workflows safely. We build cited RAG assistants, n8n pipelines, and B2B scraping agents using Python, pgvector, Qdrant, cloud LLM APIs, or private self-hosted LLMs via vLLM. Clients receive grounded chatbots, CRM webhook integrations, guardrails, and full infrastructure ownership.",
     serviceSchemaName: 'Custom AI Agents, RAG & Workflow Automation',
     serviceSchemaType: 'Artificial Intelligence Engineering',
     inquiryCategory: 'AI Bot / Model Fine-Tuning',
@@ -576,6 +583,8 @@ export const SERVICE_STOREFRONT_CONFIGS: Record<
     eyebrow: 'B2B LEAD GEN & DATA ENGINEERING',
     title: 'B2B Lead Generation & Web Data Engineering',
     lead: 'Configure verified web extraction pipelines—or test our live scraper free.',
+    quickAnswer:
+      'Created for outbound SDR teams, market researchers, and SaaS companies needing reliable web data. We engineer extraction pipelines using Python, FastAPI, Playwright headless Chromium, PostgreSQL, and live DNS/MX/SMTP verification. Clients receive deduplicated, bounce-checked B2B lead datasets delivered cleanly via CSV, JSON, REST APIs, Google Sheets, or CRM sync.',
     serviceSchemaName: 'B2B Lead Generation & Web Data Engineering',
     serviceSchemaType: 'Data Engineering & Web Scraping',
     inquiryCategory: 'Data Scraping & Lead Gen',
@@ -737,6 +746,8 @@ export const SERVICE_STOREFRONT_CONFIGS: Record<
     eyebrow: 'APPLICATION & CLOUD SECURITY',
     title: 'Web App Penetration Testing & Security Audits',
     lead: 'Compare audit methodologies, inspect tested surfaces, and scope your security review.',
+    quickAnswer:
+      'Built for pre-launch SaaS startups, fintech platforms, and engineering teams preparing for enterprise security reviews. We conduct manual Grey-Box and Black-Box penetration tests, OWASP Top 10 API checks, SAST code reviews, and AWS or Linux hardening. Clients receive CVSS-scored executive reports, reproducible PoC payloads, patch guides, and a free re-test.',
     serviceSchemaName: 'Web App Penetration Testing & Security Audits',
     serviceSchemaType: 'Cybersecurity & Penetration Testing',
     inquiryCategory: 'Cybersecurity & Audit',
@@ -898,6 +909,7 @@ export function buildServiceRouteJsonLd(
       description: seo.description,
       provider: {
         '@type': 'Organization',
+        '@id': `${SITE_ORIGIN}/#organization`,
         name: STUDIO_BRAND.name,
         url: `${SITE_ORIGIN}/`,
         email: STUDIO_BRAND.emailPrimary

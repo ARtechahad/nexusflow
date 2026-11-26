@@ -205,6 +205,19 @@ export const ServiceStorefrontPage: React.FC<ServiceStorefrontPageProps> = ({
               <span>Compare Options</span>
             </a>
           </div>
+
+          {/* AEO Direct Answer / Featured Snippet Callout */}
+          <aside
+            aria-label="Quick Answer Summary"
+            className="max-w-4xl rounded-[8px] border border-slate-200 dark:border-slate-800 bg-slate-50/90 dark:bg-[#111827] p-4 sm:p-5 space-y-1.5"
+          >
+            <p className="text-[11px] font-mono font-semibold uppercase tracking-wider text-[var(--accent)] dark:text-blue-400">
+              Quick Answer
+            </p>
+            <p className="text-sm leading-[1.6] text-slate-700 dark:text-slate-300">
+              {config.quickAnswer}
+            </p>
+          </aside>
         </div>
       </section>
 

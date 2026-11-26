@@ -475,7 +475,7 @@ async function startServer() {
     const urls = Array.from(PUBLIC_ROUTE_SET)
       .map(
         (route) =>
-          `  <url>\n    <loc>https://almnexus.tech${route}</loc>\n    <lastmod>2026-11-23</lastmod>\n  </url>`
+          `  <url>\n    <loc>https://almnexus.tech${route}</loc>\n    <lastmod>2026-11-25</lastmod>\n  </url>`
       )
       .join('\n');
     return res
@@ -492,7 +492,82 @@ async function startServer() {
     return res
       .status(200)
       .send(
-        'User-agent: *\nAllow: /\nDisallow: /docs\nDisallow: /login\nDisallow: /signup\nDisallow: /app\nDisallow: /workspace\nDisallow: /portal\nSitemap: https://almnexus.tech/sitemap.xml\n'
+        [
+          'User-agent: Googlebot',
+          'Allow: /',
+          '',
+          'User-agent: Bingbot',
+          'Allow: /',
+          '',
+          'User-agent: OAI-SearchBot',
+          'Allow: /',
+          '',
+          'User-agent: GPTBot',
+          'Allow: /',
+          '',
+          'User-agent: PerplexityBot',
+          'Allow: /',
+          '',
+          'User-agent: ClaudeBot',
+          'Allow: /',
+          '',
+          'User-agent: Google-Extended',
+          'Allow: /',
+          '',
+          'User-agent: *',
+          'Allow: /',
+          'Disallow: /api/',
+          'Disallow: /engine/',
+          'Disallow: /docs',
+          'Disallow: /login',
+          'Disallow: /signup',
+          'Disallow: /app',
+          'Disallow: /workspace',
+          'Disallow: /portal',
+          '',
+          'Sitemap: https://almnexus.tech/sitemap.xml',
+          ''
+        ].join('\n')
+      );
+  });
+
+  app.get('/llms.txt', (_req: Request, res: Response) => {
+    const filePath = resolvePublicOrDistFile('llms.txt');
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    if (filePath) {
+      return res.send(fs.readFileSync(filePath, 'utf8'));
+    }
+    return res
+      .status(200)
+      .send(
+        [
+          '# ALM Nexus',
+          '',
+          '> Custom software engineering, AI automation, cybersecurity auditing, and B2B web data engineering agency at https://almnexus.tech.',
+          '',
+          '- Services: https://almnexus.tech/services',
+          '- Mobile App Development: https://almnexus.tech/services/app-development',
+          '- Web & SaaS Development: https://almnexus.tech/services/web-development',
+          '- AI Agents & Automation: https://almnexus.tech/services/ai-automation',
+          '- Data & Lead Engineering: https://almnexus.tech/services/data-intelligence',
+          '- Cybersecurity & Audits: https://almnexus.tech/services/cybersecurity',
+          '- Free AI Web Scraper: https://almnexus.tech/tools/web-data-engine',
+          '- Contact: https://almnexus.tech/contact (contact@almnexus.tech)',
+          ''
+        ].join('\n')
+      );
+  });
+
+  app.get('/llms-full.txt', (_req: Request, res: Response) => {
+    const filePath = resolvePublicOrDistFile('llms-full.txt');
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    if (filePath) {
+      return res.send(fs.readFileSync(filePath, 'utf8'));
+    }
+    return res
+      .status(200)
+      .send(
+        'ALM Nexus — AI, Web & Mobile Software Engineering Agency. Full technical capabilities: https://almnexus.tech/services | Proposal intake: https://almnexus.tech/contact (POST /api/inquiry) | Email: contact@almnexus.tech\n'
       );
   });
 

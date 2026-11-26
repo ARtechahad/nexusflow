@@ -1,0 +1,38 @@
+# ALM Nexus
+
+> Custom software engineering, AI automation, cybersecurity auditing, and B2B web data engineering agency based in Pakistan and serving companies across the US, UK, UAE, EU, and worldwide.
+
+ALM Nexus (`https://almnexus.tech`) is founded and led by Abdul Ahad Rana. We design, engineer, and deploy production-grade mobile applications, multi-tenant web & SaaS platforms, grounded AI RAG & workflow automation systems, verified B2B data pipelines, and manual web application penetration tests—always transferring full source code and infrastructure ownership to the client.
+
+## Core Engineering Services
+
+- [Custom Mobile App Development (iOS & Android)](https://almnexus.tech/services/app-development): Cross-platform Flutter, React Native, Expo, and native Swift/Kotlin mobile engineering with interactive blueprint configurator and backend integrations.
+- [Custom Web & SaaS Platform Development](https://almnexus.tech/services/web-development): High-converting SEO websites, interactive SPAs, multi-tenant B2B SaaS portals, and internal CRMs built on Next.js, React, TypeScript, Node.js, FastAPI, and PostgreSQL.
+- [AI Agents, RAG & Workflow Automation](https://almnexus.tech/services/ai-automation): Zero-hallucination RAG assistants, B2B lead/scraping agents, n8n orchestrations, and private self-hosted LLMs inside dedicated VPC infrastructure.
+- [B2B Lead Generation & Web Data Engineering](https://almnexus.tech/services/data-intelligence): Custom hybrid HTTP/Playwright web crawlers, entity deduplication, live DNS/MX/SMTP email verification, and CRM or REST API feeds.
+- [Web App Penetration Testing & Security Audits](https://almnexus.tech/services/cybersecurity): Manual Grey-Box and Black-Box pentesting, OWASP Top 10 & API security testing, SAST code audits, cloud hardening, and 30-day patch verification re-testing.
+
+## Free Tools & Live Utilities
+
+- [Free AI Web Scraper & Lead Extractor](https://almnexus.tech/tools/web-data-engine): Live public tool extracting business emails, personal emails, phone numbers, WhatsApp links, social profiles, directory profiles, and structured catalogs from any public URL with instant CSV, JSON, and PDF export.
+
+## Platforms, Case Studies & Agency Overview
+
+- [Engineering Services Overview](https://almnexus.tech/services): Summary of ALM Nexus engineering capabilities across Web & Mobile Apps, Unity 2D/3D Games, AI Engineering, and Data Pipelines.
+- [NexusFlow & Internal R&D Products](https://almnexus.tech/products): Multi-tenant agency operations portal featuring client workspaces, role-based access control, outbound sequences, deal pipelines, and encrypted BYOK API key storage.
+- [Case Studies & Shipped Work](https://almnexus.tech/work): Production architecture case studies covering NexusFlow, B2B property/data pipelines, Unity physics prototypes, and AI customer triage systems.
+- [About ALM Nexus](https://almnexus.tech/about): Leadership profile for founder Abdul Ahad Rana, remote delivery workflow, and engineering principles.
+- [Start a Project & Proposal Intake](https://almnexus.tech/contact): Scoped inquiry portal connecting to automated email intake (`POST /api/inquiry`), replying within 1–2 business days.
+
+## Target Client Profiles
+
+- Seed to Series B startups needing a production iOS/Android app or multi-tenant web SaaS MVP in 2–6 weeks.
+- Agencies, brokerages, and B2B operations teams replacing manual spreadsheets with custom internal CRMs or verified lead pipelines.
+- Healthcare, legal, finance, and enterprise teams deploying private self-hosted LLMs or requiring pre-launch Grey-Box penetration tests.
+
+## Contact & Direct Proposal Channels
+
+- Website: https://almnexus.tech
+- Proposal & Scoping Form: https://almnexus.tech/contact
+- Primary Email: contact@almnexus.tech
+- Founder Direct Email: ahad@almnexus.tech

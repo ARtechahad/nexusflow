@@ -1,0 +1,108 @@
+# ALM Nexus — Technical Capabilities & Agency Reference
+
+> Canonical Domain: https://almnexus.tech
+> Agency Positioning: AI, Web & Mobile Software Engineering Agency
+> Founder & Lead Architect: Abdul Ahad Rana
+> Service Regions: US, UK, UAE, EU, Worldwide (Remote Delivery from Pakistan)
+> Primary Contact: contact@almnexus.tech | Direct: ahad@almnexus.tech
+
+---
+
+## 1. Organization & Delivery Principles
+
+ALM Nexus is a custom software engineering and AI automation agency focused on shipping measurable software with zero proprietary vendor lock-in. Every client engagement follows a transparent three-stage cycle:
+1. Scope and architecture: Data model, user roles, tech stack, and milestone agreement before implementation.
+2. Sprint build: Weekly working staging builds deployed directly for live interactive testing.
+3. Deploy and handoff: Production deployment to client-owned cloud infrastructure (AWS, Railway, Oracle Cloud VM, Vercel, Apple App Store, Google Play) with complete Git repository, environment schemas, and documentation transfer.
+
+---
+
+## 2. Supported Technology Matrix
+
+- **Mobile Engineering:** Flutter (Dart), React Native (TypeScript), Expo Cross-Platform (OTA updates), Native iOS (SwiftUI), Native Android (Kotlin), APNs/FCM push notifications, Stripe & in-app subscriptions, WebSocket real-time chat.
+- **Web & SaaS Engineering:** Next.js, React, TypeScript, Vite, Tailwind CSS, Node.js, Express SSR, Python FastAPI, PostgreSQL, MongoDB, multi-tenant row/organization isolation, Role-Based Access Control (RBAC), Stripe billing, Resend & SMTP transactional infrastructure.
+- **AI Agents & Automation:** Retrieval-Augmented Generation (RAG) with source citations, pgvector, Qdrant, OpenAI/Anthropic/Gemini APIs, Private Self-Hosted Open-Weight LLMs (vLLM, Ollama inside dedicated VPC), Hybrid PII-redaction pipelines, n8n webhook orchestrations, CRM triage & sync (HubSpot, Pipedrive, NexusFlow).
+- **Data Engineering & Web Scraping:** Python FastAPI async workers, HTTPX/BeautifulSoup fast parsing, Playwright headless Chromium dynamic JavaScript/SPA rendering, entity resolution & deduplication, DNS MX & live SMTP mailbox verification, CSV/JSON/PDF/REST/PostgreSQL delivery.
+- **Cybersecurity & Auditing:** Manual Grey-Box Web & API Penetration Testing, Black-Box External Attack Surface Testing, OWASP Top 10 & API Security Top 10 (BOLA/IDOR, JWT tampering, RBAC bypass, SSRF, XSS, SQLi), Source Code Reviews (SAST), Cloud & Linux Server Hardening (SSH, IAM, VPC, Nginx TLS), CVSS v3.1 reporting + free 30-day remediation re-testing.
+- **Game Prototyping:** Unity 2D/3D, C#, custom rigidbody/physics systems, deterministic state machines.
+
+---
+
+## 3. Core Service Blueprints & Configurators
+
+### 3.1 Custom Mobile App Development (iOS & Android)
+- Canonical URL: https://almnexus.tech/services/app-development
+- Who It Is For: Startups, consumer brands, fintech wallets, and field/logistics teams launching cross-platform or hardware-integrated mobile apps.
+- Comparison Paths:
+  - Flutter (Dart): Single codebase, GPU-rendered 60/120fps pixel-identical UI, 2–4 week MVP.
+  - React Native & Expo: Fastest TypeScript launch sharing logic with React web apps, instant OTA updates, 2–3 week MVP.
+  - Native iOS (SwiftUI): Hardware-critical Apple performance, HealthKit/AR/Metal, smallest binary.
+  - Native Android (Kotlin): Enterprise POS, NFC scanners, reliable background GPS tracking, 3–5 week build.
+- Interactive Configurator Options: UI templates (SaaS Mobile Dashboard, E-Commerce & Delivery, On-Demand Booking, Fintech & Wallet UI) + backend modules (Node.js/FastAPI API, PostgreSQL/Supabase/Firebase, Push Notifications, Stripe Payments, Real-Time Chat).
+
+### 3.2 Custom Web & SaaS Platform Development
+- Canonical URL: https://almnexus.tech/services/web-development
+- Who It Is For: SaaS founders, agencies, and B2B operations teams replacing spreadsheets or building subscription software.
+- Architecture Paths:
+  - Marketing & SEO Websites (1–2 weeks): Prerendered static/SSR pages engineered for Google Core Web Vitals and structured Schema.org indexing.
+  - Single-Page Web Apps (2–3 weeks MVP): Responsive calculators, analytical tables, and interactive browser utilities.
+  - Multi-Tenant B2B SaaS (3–6 weeks MVP): Strict tenant key enforcement, Stripe subscription billing, and team RBAC.
+  - Internal CRM & Ops Portals (2–4 weeks): Zero per-seat licensing fees with tailored pipeline stages and webhooks.
+- Stack Options: Next.js/React+TS, React+Vite+Tailwind, Express SSR+React; UI templates (Multi-Tenant SaaS, Agency Product Site, Internal CRM Pipeline, E-Commerce Storefront); Backends (Node.js Express, Python FastAPI, PostgreSQL, MongoDB, RBAC).
+
+### 3.3 AI Agents, RAG & Workflow Automation
+- Canonical URL: https://almnexus.tech/services/ai-automation
+- Who It Is For: Customer support desks, B2B sales teams, and regulated healthcare/legal firms automating high-volume knowledge and routing tasks.
+- Solutions:
+  - RAG Knowledge Assistants (1–2 weeks): Strict citation grounding over PDFs, SOPs, and SQL databases with zero-hallucination escalation rules.
+  - B2B Lead & Scraping Agents (1–3 weeks): Autonomous crawlers scoring ICP fit and enriching CRM records.
+  - n8n & API Automations (1–2 weeks): Cross-app event triggers across email, WhatsApp, CRM, and billing without per-task SaaS markups.
+  - Private Self-Hosted LLMs (1–3 weeks): Air-gapped open-weight models running on client VPC/GPU hardware via vLLM or Ollama, plus Hybrid PII-Redacted routing.
+
+### 3.4 B2B Lead Generation & Web Data Engineering
+- Canonical URL: https://almnexus.tech/services/data-intelligence
+- Who It Is For: Outbound SDR teams, research analysts, and SaaS platforms needing clean, bounce-checked datasets or automated delta feeds.
+- 4-Stage Pipeline:
+  1. Hybrid Crawling: Async HTTP + Playwright headless Chromium for SPAs, directories, catalogs, and infinite scroll (48–72 hours for datasets).
+  2. Clean & Deduplicate: Entity resolution, normalized phone/company/domain schemas ready for instant CRM upload.
+  3. Live DNS MX / SMTP Verification: Mailbox handshake validation eliminating dead addresses to protect outbound sender reputation.
+  4. Flexible Delivery: Clean UTF-8 CSV/JSON exports, live REST API & PostgreSQL tables, or scheduled Google Sheets / HubSpot / CRM sync.
+
+### 3.5 Web App Penetration Testing & Security Audits
+- Canonical URL: https://almnexus.tech/services/cybersecurity
+- Who It Is For: Pre-launch SaaS platforms, fintech startups, and teams preparing for enterprise buyer security due diligence.
+- Methodologies:
+  - Grey-Box Penetration Testing (5–10 business days): Authenticated multi-role testing uncovering RBAC bypasses, BOLA/IDOR flaws, and tenant isolation gaps.
+  - Black-Box & OWASP Top 10 Testing (5–7 business days): External attacker simulation targeting public auth, APIs, XSS, SQLi, and SSRF with zero false-positive scanner spam.
+  - Source Code Audit / SAST (3–7 business days): Manual line-by-line inspection of auth middleware, database queries, secret handling, and dependencies.
+  - Cloud & Server Hardening (2–5 business days): AWS, Oracle VM, Railway, SSH, IAM, VPC, and Nginx TLS header lockdown.
+- Deliverables: Executive Risk Summary (CVSS), Reproducible Proof-of-Concept HTTP payloads, Developer Patch Guide, and a Free 30-Day Remediation Re-Test attestation (under Mutual NDA & RoE).
+
+---
+
+## 4. Free Public Tool: AI Web Scraper & Lead Extractor
+
+- Canonical URL: https://almnexus.tech/tools/web-data-engine
+- Pricing: Free (no account required; supports up to 20 crawled pages and 25 deep profile visits per job)
+- Engine Architecture: Python FastAPI backend (`GET /health`, `POST /api/v1/inspect`, `POST /api/v1/crawl`, `GET /api/v1/jobs/{job_id}`) using hybrid fast HTTP parsing and automatic Playwright headless Chromium escalation.
+- Extractable Data Categories: Business Emails, Personal Emails, Phone Numbers, WhatsApp Links (`wa.me`), Social Profiles (LinkedIn, X, Instagram, Facebook, YouTube, TikTok), Page Metadata & Contacts, Images, Nested Directory/Store Profiles, Quotes, and Book Catalogs.
+- Export Formats: CSV spreadsheet, clean JSON, and formatted PDF summary report.
+
+---
+
+## 5. Shipped Products & Representative Case Studies
+
+- **NexusFlow** (`https://almnexus.tech/products`): Multi-tenant operations platform for agencies featuring isolated client portals, department RBAC permissions, Resend/SMTP outreach sequences, structured deal pipelines, and encrypted BYOK API key vaults.
+- **Real Estate & B2B Data Extraction Pipeline** (`https://almnexus.tech/work`): Scheduled Python extractors with entity resolution, live MX/SMTP mailbox verification, and PostgreSQL/CSV delivery.
+- **3D Puzzle-Action Game Prototype** (`https://almnexus.tech/work`): Unity C# physics controller, deterministic state machines, and cross-platform builds.
+- **AI Workflow & Customer Triage Automation** (`https://almnexus.tech/work`): LLM intent classification and deterministic webhook CRM routing.
+
+---
+
+## 6. Contact & Project Inquiry Endpoint
+
+- Interactive Proposal Page: https://almnexus.tech/contact (supports blueprint pre-fill parameters `?category=...&service=...&blueprint=...`)
+- Backend Intake API: `POST https://almnexus.tech/api/inquiry` (dispatches confirmed notifications via Resend; typical reply in 1–2 business days)
+- Supported Inquiry Categories: `Web / Mobile App`, `Unity Game Development`, `AI Bot / Model Fine-Tuning`, `Data Scraping & Lead Gen`, `Cybersecurity & Audit`, `NexusFlow SaaS`
+- Direct Email: `contact@almnexus.tech` | Founder Direct: `ahad@almnexus.tech`
+- Social Profiles: LinkedIn (`https://www.linkedin.com/company/almnexus/`), GitHub (`https://github.com/ARtechahad`), X (`https://x.com/almnexus50408`), Instagram (`https://www.instagram.com/almnexus/`).

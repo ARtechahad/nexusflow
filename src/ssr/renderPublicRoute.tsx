@@ -1,17 +1,7 @@
 import React from 'react';
 import { renderToString } from 'react-dom/server';
-import {
-  buildWebScraperJsonLdObjects,
-  ROUTE_SEO,
-  SITE_ORIGIN,
-  SOCIAL_CHANNELS,
-  STUDIO_BRAND
-} from '../data/studioData';
-import {
-  buildServiceRouteJsonLd,
-  SERVICE_STOREFRONT_CONFIGS,
-  ServiceStorefrontRoute
-} from '../data/serviceStorefrontData';
+import { ROUTE_SEO, SITE_ORIGIN } from '../data/studioData';
+import { buildRouteJsonLdObjects } from '../data/seoSchema';
 import {
   isKnownPublicRoute,
   normalizePathname,
@@ -59,48 +49,6 @@ function buildSeoHeadBlock(options: {
   ].join('\n');
 }
 
-function buildHomeOrganizationJsonLd(): string {
-  const payload = {
-    '@context': 'https://schema.org',
-    '@type': 'Organization',
-    name: STUDIO_BRAND.name,
-    url: `${SITE_ORIGIN}/`,
-    logo: `${SITE_ORIGIN}/favicon.jpg`,
-    image: `${SITE_ORIGIN}/og-banner.png`,
-    email: STUDIO_BRAND.emailPrimary,
-    description:
-      'Custom web platforms, iOS & Android mobile apps, AI automation agents, and B2B lead data pipelines built for ambitious companies worldwide.',
-    address: {
-      '@type': 'PostalAddress',
-      addressCountry: 'PK'
-    },
-    contactPoint: {
-      '@type': 'ContactPoint',
-      contactType: 'sales',
-      email: STUDIO_BRAND.emailPrimary,
-      areaServed: ['US', 'GB', 'AE', 'EU']
-    },
-    sameAs: SOCIAL_CHANNELS.map((c) => c.href)
-  };
-  return `<script type="application/ld+json">${JSON.stringify(payload)}</script>`;
-}
-
-function buildWebScraperRouteJsonLd(): string {
-  return buildWebScraperJsonLdObjects()
-    .map((obj) => `<script type="application/ld+json">${JSON.stringify(obj)}</script>`)
-    .join('\n    ');
-}
-
-function buildServiceStorefrontRouteJsonLd(route: ServiceStorefrontRoute): string {
-  return buildServiceRouteJsonLd(route)
-    .map((obj) => `<script type="application/ld+json">${JSON.stringify(obj)}</script>`)
-    .join('\n    ');
-}
-
-function isServiceStorefrontRoute(route: string): route is ServiceStorefrontRoute {
-  return Object.prototype.hasOwnProperty.call(SERVICE_STOREFRONT_CONFIGS, route);
-}
-
 export function renderPublicRouteHtml(
   templateHtml: string,
   rawPath: string
@@ -124,14 +72,12 @@ export function renderPublicRouteHtml(
     robots: isKnown ? 'index, follow' : 'noindex, nofollow'
   });
 
-  const jsonLdBlock =
-    normalized === '/'
-      ? buildHomeOrganizationJsonLd()
-      : normalized === '/tools/web-data-engine'
-      ? buildWebScraperRouteJsonLd()
-      : isServiceStorefrontRoute(normalized)
-      ? buildServiceStorefrontRouteJsonLd(normalized)
-      : '';
+  const jsonLdBlock = buildRouteJsonLdObjects(normalized, isKnown)
+    .map(
+      (obj) =>
+        `<script type="application/ld+json" data-route-jsonld="true">${JSON.stringify(obj)}</script>`
+    )
+    .join('\n    ');
 
   const renderedMarkup = renderToString(
     <StudioWebsite

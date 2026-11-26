@@ -558,6 +558,7 @@ export function buildWebScraperJsonLdObjects(): Record<string, unknown>[] {
       },
       publisher: {
         '@type': 'Organization',
+        '@id': `${SITE_ORIGIN}/#organization`,
         name: STUDIO_BRAND.name,
         url: `${SITE_ORIGIN}/`
       }

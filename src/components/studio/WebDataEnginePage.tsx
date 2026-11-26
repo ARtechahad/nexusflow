@@ -773,6 +773,18 @@ export const WebDataEnginePage: React.FC<WebDataEnginePageProps> = ({
               </div>
             </div>
           )}
+          {/* AEO Direct Answer / Featured Snippet Callout */}
+          <aside
+            aria-label="Quick Answer Summary"
+            className="max-w-4xl rounded-[8px] border border-slate-200 dark:border-slate-800 bg-slate-50/90 dark:bg-[#111827] p-4 sm:p-5 space-y-1.5"
+          >
+            <p className="text-[11px] font-mono font-semibold uppercase tracking-wider text-[var(--accent)] dark:text-blue-400">
+              Quick Answer
+            </p>
+            <p className="text-sm leading-[1.6] text-slate-700 dark:text-slate-300">
+              Built for founders, sales researchers, and growth teams extracting public business contacts without writing code. Powered by ALM Nexus&apos;s Python FastAPI crawler with async HTTP parsing and headless Playwright Chromium rendering, it extracts verified emails, phone numbers, WhatsApp links, socials, and structured tables ready for instant CSV, JSON, or PDF download.
+            </p>
+          </aside>
         </div>
       </section>
 

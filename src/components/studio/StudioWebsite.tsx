@@ -1,15 +1,11 @@
 import React, { useEffect } from 'react';
 import {
-  buildWebScraperJsonLdObjects,
   PUBLIC_ROUTES,
   PublicRoutePath,
   ROUTE_SEO
 } from '../../data/studioData';
-import {
-  buildServiceRouteJsonLd,
-  SERVICE_STOREFRONT_CONFIGS,
-  ServiceStorefrontRoute
-} from '../../data/serviceStorefrontData';
+import { ServiceStorefrontRoute } from '../../data/serviceStorefrontData';
+import { buildRouteJsonLdObjects } from '../../data/seoSchema';
 import { StudioLayout } from './StudioLayout';
 import { HomePage } from './HomePage';
 import { ServicesPage } from './ServicesPage';
@@ -108,31 +104,17 @@ export const StudioWebsite: React.FC<StudioWebsiteProps> = ({
     }
 
     const existingJsonLd = document.querySelectorAll<HTMLScriptElement>(
-      'script[data-route-jsonld="true"]'
+      'script[type="application/ld+json"]'
     );
     existingJsonLd.forEach((node) => node.remove());
 
-    if (normalizedPath === '/tools/web-data-engine') {
-      buildWebScraperJsonLdObjects().forEach((schemaObj) => {
-        const script = document.createElement('script');
-        script.type = 'application/ld+json';
-        script.setAttribute('data-route-jsonld', 'true');
-        script.textContent = JSON.stringify(schemaObj);
-        document.head.appendChild(script);
-      });
-    } else if (
-      Object.prototype.hasOwnProperty.call(SERVICE_STOREFRONT_CONFIGS, normalizedPath)
-    ) {
-      buildServiceRouteJsonLd(normalizedPath as ServiceStorefrontRoute).forEach(
-        (schemaObj) => {
-          const script = document.createElement('script');
-          script.type = 'application/ld+json';
-          script.setAttribute('data-route-jsonld', 'true');
-          script.textContent = JSON.stringify(schemaObj);
-          document.head.appendChild(script);
-        }
-      );
-    }
+    buildRouteJsonLdObjects(normalizedPath, isKnown).forEach((schemaObj) => {
+      const script = document.createElement('script');
+      script.type = 'application/ld+json';
+      script.setAttribute('data-route-jsonld', 'true');
+      script.textContent = JSON.stringify(schemaObj);
+      document.head.appendChild(script);
+    });
   }, [isKnown, normalizedPath]);
 
   const renderPage = () => {
