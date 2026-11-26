@@ -1,6 +1,11 @@
 export type PublicRoutePath =
   | '/'
   | '/services'
+  | '/services/app-development'
+  | '/services/web-development'
+  | '/services/ai-automation'
+  | '/services/data-intelligence'
+  | '/services/cybersecurity'
   | '/products'
   | '/tools/web-data-engine'
   | '/work'
@@ -12,6 +17,11 @@ export type PublicRoutePath =
 export const PUBLIC_ROUTES: PublicRoutePath[] = [
   '/',
   '/services',
+  '/services/app-development',
+  '/services/web-development',
+  '/services/ai-automation',
+  '/services/data-intelligence',
+  '/services/cybersecurity',
   '/products',
   '/tools/web-data-engine',
   '/work',
@@ -40,27 +50,57 @@ export const SITE_ORIGIN = 'https://almnexus.tech';
 
 export const ROUTE_SEO: Record<PublicRoutePath, RouteSeoConfig> = {
   '/': {
-    title: 'ALM Nexus — Software Studio & R&D Lab',
+    title: 'ALM Nexus — AI, Web & Mobile Software Engineering Agency',
     description:
-      'Software studio and R&D lab building web and mobile apps, Unity games, AI agents, data pipelines, and NexusFlow.',
+      'Custom web platforms, iOS & Android mobile apps, AI automation agents, and B2B lead data pipelines built for ambitious companies worldwide.',
     canonical: `${SITE_ORIGIN}/`
   },
   '/services': {
     title: 'Services | ALM Nexus',
     description:
-      'Custom web and mobile apps, Unity game development, AI engineering and fine-tuning, and Python data scraping pipelines.',
+      'Custom web and mobile apps, Unity game development, AI engineering and fine-tuning, Python data scraping pipelines, and security audits.',
     canonical: `${SITE_ORIGIN}/services`
+  },
+  '/services/app-development': {
+    title: 'Custom Mobile App Development | ALM Nexus',
+    description:
+      'Compare Flutter, React Native, Swift, Kotlin, and Expo. Configure your mobile UI template, backend stack, and request a build proposal.',
+    canonical: `${SITE_ORIGIN}/services/app-development`
+  },
+  '/services/web-development': {
+    title: 'Custom Web & SaaS Development | ALM Nexus',
+    description:
+      'Compare marketing websites, SPAs, multi-tenant SaaS, and admin portals. Configure your frontend stack, UI template, database, and scope.',
+    canonical: `${SITE_ORIGIN}/services/web-development`
+  },
+  '/services/ai-automation': {
+    title: 'AI Agents, RAG & Workflow Automation | ALM Nexus',
+    description:
+      'Compare RAG assistants, B2B scraping agents, n8n workflows, and cloud vs. private LLMs. Configure your AI blueprint and request a proposal.',
+    canonical: `${SITE_ORIGIN}/services/ai-automation`
+  },
+  '/services/data-intelligence': {
+    title: 'B2B Lead Gen & Web Data Engineering | ALM Nexus',
+    description:
+      'Targeted crawling, deduplication, SMTP verification, and CRM exports. Configure your data pipeline or test our free web scraper tool.',
+    canonical: `${SITE_ORIGIN}/services/data-intelligence`
+  },
+  '/services/cybersecurity': {
+    title: 'Web App Pentesting & Security Audits | ALM Nexus',
+    description:
+      'Compare Black-Box vs. Grey-Box pentesting, OWASP Top 10 testing, SAST code reviews, and cloud hardening. Configure your security audit scope.',
+    canonical: `${SITE_ORIGIN}/services/cybersecurity`
   },
   '/products': {
     title: 'NexusFlow and Products | ALM Nexus',
     description:
-      'NexusFlow multi-tenant operations platform for agencies and B2B teams, plus software tools in R&D from ALM Nexus.',
+      'NexusFlow multi-tenant operations platform for agencies and B2B teams, plus internal engineering tools from ALM Nexus.',
     canonical: `${SITE_ORIGIN}/products`
   },
   '/tools/web-data-engine': {
-    title: 'ALM Nexus Web Data Engine — Live Extraction Tool',
+    title: 'Free AI Web Scraper & Lead Extractor | ALM Nexus',
     description:
-      'Interactive deep web extraction interface for inspecting target sites, crawling structured directory profiles, and exporting UTF-8 CSV or JSON datasets.',
+      'Free online web scraper and lead extractor. Extract business emails, phone numbers, WhatsApp links, social profiles, and structured data to CSV, JSON, or PDF.',
     canonical: `${SITE_ORIGIN}/tools/web-data-engine`
   },
   '/work': {
@@ -72,7 +112,7 @@ export const ROUTE_SEO: Record<PublicRoutePath, RouteSeoConfig> = {
   '/about': {
     title: 'About | ALM Nexus',
     description:
-      'ALM Nexus is a Pakistan-based software studio and R&D lab founded by Abdul Ahad Rana, working remotely with clients in the US, UK, UAE and EU.',
+      'ALM Nexus is a custom software engineering and AI automation agency founded by Abdul Ahad Rana, serving clients in the US, UK, UAE and EU.',
     canonical: `${SITE_ORIGIN}/about`
   },
   '/contact': {
@@ -103,9 +143,10 @@ export const STUDIO_BRAND = {
   emailDirect: 'ahad@almnexus.tech',
   locationRemote: 'Pakistan-based, working remotely with clients in the US, UK, UAE and EU.',
   contactAvailability: 'Pakistan-based, available remotely for clients in the US, UK, UAE and EU',
-  oneLineSummary: 'Software studio and R&D lab based in Pakistan, working remotely worldwide.',
+  oneLineSummary:
+    'Custom software engineering and AI automation agency working remotely worldwide.',
   founderBio:
-    'ALM Nexus is a software engineering studio and R&D lab founded by Abdul Ahad Rana, based in Pakistan and working remotely with clients across the US, UK, UAE, and EU. Abdul builds full-stack web and mobile applications, Unity games, AI automation systems, and B2B data pipelines.'
+    'ALM Nexus is a custom software engineering and AI automation agency founded by Abdul Ahad Rana, based in Pakistan and working remotely with clients across the US, UK, UAE, and EU. Abdul leads delivery across Web & SaaS Platforms, iOS & Android Mobile Apps, AI Agents & Automation, B2B Data Pipelines, and Security Audits.'
 };
 
 export interface NavItem {
@@ -113,10 +154,49 @@ export interface NavItem {
   href: PublicRoutePath;
 }
 
+export interface ServiceSubNavItem {
+  label: string;
+  shortDesc: string;
+  href:
+    | '/services/app-development'
+    | '/services/web-development'
+    | '/services/ai-automation'
+    | '/services/data-intelligence'
+    | '/services/cybersecurity';
+}
+
+export const SERVICE_SUBNAV_ITEMS: ServiceSubNavItem[] = [
+  {
+    label: 'Mobile App Development',
+    shortDesc: 'Flutter, React Native, Swift, Kotlin & Expo',
+    href: '/services/app-development'
+  },
+  {
+    label: 'Web & SaaS Platforms',
+    shortDesc: 'Next.js, React, SaaS portals & CRMs',
+    href: '/services/web-development'
+  },
+  {
+    label: 'AI Agents & Automation',
+    shortDesc: 'RAG, n8n workflows, cloud & private LLMs',
+    href: '/services/ai-automation'
+  },
+  {
+    label: 'Data & Lead Engineering',
+    shortDesc: 'Crawling, deduplication & SMTP verification',
+    href: '/services/data-intelligence'
+  },
+  {
+    label: 'Cybersecurity & Audits',
+    shortDesc: 'Pentesting, OWASP Top 10 & SAST reviews',
+    href: '/services/cybersecurity'
+  }
+];
+
 export const PRIMARY_NAV_ITEMS: NavItem[] = [
   { label: 'Services', href: '/services' },
   { label: 'Products', href: '/products' },
-  { label: 'Data Engine', href: '/tools/web-data-engine' },
+  { label: 'Web Scraper', href: '/tools/web-data-engine' },
   { label: 'Work', href: '/work' },
   { label: 'About', href: '/about' }
 ];
@@ -283,7 +363,7 @@ export const NEXUSFLOW_TABS: NexusFlowTabItem[] = [
 
 export interface RdProduct {
   id: string;
-  status: 'In active R&D';
+  status: 'Internal engineering tool';
   title: string;
   summary: string;
   stack: string;
@@ -292,7 +372,7 @@ export interface RdProduct {
 export const RD_PRODUCTS: RdProduct[] = [
   {
     id: 'ai-developer-tool',
-    status: 'In active R&D',
+    status: 'Internal engineering tool',
     title: 'AI developer tool',
     summary:
       'Internal CLI and repository indexing utility for running structured code reviews and schema checks on client handoffs.',
@@ -300,7 +380,7 @@ export const RD_PRODUCTS: RdProduct[] = [
   },
   {
     id: 'data-verification-worker',
-    status: 'In active R&D',
+    status: 'Internal engineering tool',
     title: 'Verification & scraping worker',
     summary:
       'Lightweight queue worker for scheduling recurring MX/SMTP mailbox checks and exporting deduplicated CSV or PostgreSQL tables.',
@@ -308,7 +388,7 @@ export const RD_PRODUCTS: RdProduct[] = [
   },
   {
     id: 'unity-telemetry-kit',
-    status: 'In active R&D',
+    status: 'Internal engineering tool',
     title: 'Unity build & state inspector',
     summary:
       'Editor tooling package for logging deterministic physics ticks, state transitions, and input replays during Unity playtesting.',
@@ -400,6 +480,7 @@ export const INQUIRY_CATEGORIES = [
   'Unity Game Development',
   'AI Bot / Model Fine-Tuning',
   'Data Scraping & Lead Gen',
+  'Cybersecurity & Audit',
   'NexusFlow SaaS'
 ] as const;
 
@@ -425,3 +506,73 @@ export const SOCIAL_CHANNELS: SocialChannel[] = [
   { name: 'X', href: 'https://x.com/almnexus50408' },
   { name: 'GitHub', href: 'https://github.com/ARtechahad' }
 ];
+
+export interface WebScraperFaqItem {
+  question: string;
+  answer: string;
+}
+
+export const WEB_SCRAPER_FAQS: WebScraperFaqItem[] = [
+  {
+    question: 'Is the ALM Nexus AI Web Scraper & Lead Extractor free to use?',
+    answer:
+      'Yes. You can inspect public URLs, run multi-page and directory-profile crawls up to 20 pages and 25 profiles per job, and export results to CSV, JSON, or PDF at no cost.'
+  },
+  {
+    question: 'How does the tool handle JavaScript-rendered websites?',
+    answer:
+      'The crawler uses a hybrid engine. It starts with lightweight HTTP parsing for fast static pages and automatically switches to headless Chromium browser rendering with scroll execution when dynamic JavaScript content is detected.'
+  },
+  {
+    question: 'What types of contacts and structured data can I extract?',
+    answer:
+      'You can extract business emails, personal emails, phone numbers, WhatsApp links, social media profiles (LinkedIn, X, Instagram, Facebook, YouTube, TikTok), page metadata, images, directory profiles, book catalogs, and quote lists.'
+  },
+  {
+    question: 'What does Deep Directory / Profile Crawl do?',
+    answer:
+      'When enabled, the crawler automatically identifies inner listing, store, or profile detail pages linked from the target URL and visits up to 25 of them to collect nested contact details and official external websites.'
+  },
+  {
+    question: 'Can ALM Nexus build larger scheduled pipelines or CRM integrations?',
+    answer:
+      'Yes. For high-volume jobs exceeding 10,000 rows, recurring scheduled runs, live SMTP email verification, or automated CRM webhook sync, reach out through the ALM Nexus project intake page.'
+  }
+];
+
+export function buildWebScraperJsonLdObjects(): Record<string, unknown>[] {
+  const seo = ROUTE_SEO['/tools/web-data-engine'];
+  return [
+    {
+      '@context': 'https://schema.org',
+      '@type': 'SoftwareApplication',
+      name: 'Free AI Web Scraper & Lead Extractor — ALM Nexus',
+      applicationCategory: 'UtilitiesApplication',
+      operatingSystem: 'Web',
+      url: seo.canonical,
+      description: seo.description,
+      offers: {
+        '@type': 'Offer',
+        price: '0',
+        priceCurrency: 'USD'
+      },
+      publisher: {
+        '@type': 'Organization',
+        name: STUDIO_BRAND.name,
+        url: `${SITE_ORIGIN}/`
+      }
+    },
+    {
+      '@context': 'https://schema.org',
+      '@type': 'FAQPage',
+      mainEntity: WEB_SCRAPER_FAQS.map((item) => ({
+        '@type': 'Question',
+        name: item.question,
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: item.answer
+        }
+      }))
+    }
+  ];
+}

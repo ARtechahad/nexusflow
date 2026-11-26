@@ -1,11 +1,17 @@
 import React from 'react';
 import { renderToString } from 'react-dom/server';
 import {
+  buildWebScraperJsonLdObjects,
   ROUTE_SEO,
   SITE_ORIGIN,
   SOCIAL_CHANNELS,
   STUDIO_BRAND
 } from '../data/studioData';
+import {
+  buildServiceRouteJsonLd,
+  SERVICE_STOREFRONT_CONFIGS,
+  ServiceStorefrontRoute
+} from '../data/serviceStorefrontData';
 import {
   isKnownPublicRoute,
   normalizePathname,
@@ -41,13 +47,15 @@ function buildSeoHeadBlock(options: {
     `    <meta property="og:title" content="${title}" />`,
     `    <meta property="og:description" content="${description}" />`,
     `    <meta property="og:type" content="website" />`,
-    `    <meta property="og:image" content="${SITE_ORIGIN}/favicon.jpg" />`,
-    `    <meta property="og:image:alt" content="ALM Nexus software studio logo" />`,
+    `    <meta property="og:image" content="${SITE_ORIGIN}/og-banner.png" />`,
+    `    <meta property="og:image:width" content="1200" />`,
+    `    <meta property="og:image:height" content="630" />`,
+    `    <meta property="og:image:alt" content="ALM Nexus — AI, Web &amp; Mobile Software Engineering Agency" />`,
     `    <meta name="twitter:card" content="summary_large_image" />`,
     `    <meta name="twitter:title" content="${title}" />`,
     `    <meta name="twitter:description" content="${description}" />`,
-    `    <meta name="twitter:image" content="${SITE_ORIGIN}/favicon.jpg" />`,
-    `    <meta name="twitter:image:alt" content="ALM Nexus software studio logo" />`
+    `    <meta name="twitter:image" content="${SITE_ORIGIN}/og-banner.png" />`,
+    `    <meta name="twitter:image:alt" content="ALM Nexus — AI, Web &amp; Mobile Software Engineering Agency" />`
   ].join('\n');
 }
 
@@ -58,9 +66,10 @@ function buildHomeOrganizationJsonLd(): string {
     name: STUDIO_BRAND.name,
     url: `${SITE_ORIGIN}/`,
     logo: `${SITE_ORIGIN}/favicon.jpg`,
+    image: `${SITE_ORIGIN}/og-banner.png`,
     email: STUDIO_BRAND.emailPrimary,
     description:
-      'ALM Nexus is a software studio and R&D lab based in Pakistan, working remotely with clients in the US, UK, UAE and EU.',
+      'Custom web platforms, iOS & Android mobile apps, AI automation agents, and B2B lead data pipelines built for ambitious companies worldwide.',
     address: {
       '@type': 'PostalAddress',
       addressCountry: 'PK'
@@ -74,6 +83,22 @@ function buildHomeOrganizationJsonLd(): string {
     sameAs: SOCIAL_CHANNELS.map((c) => c.href)
   };
   return `<script type="application/ld+json">${JSON.stringify(payload)}</script>`;
+}
+
+function buildWebScraperRouteJsonLd(): string {
+  return buildWebScraperJsonLdObjects()
+    .map((obj) => `<script type="application/ld+json">${JSON.stringify(obj)}</script>`)
+    .join('\n    ');
+}
+
+function buildServiceStorefrontRouteJsonLd(route: ServiceStorefrontRoute): string {
+  return buildServiceRouteJsonLd(route)
+    .map((obj) => `<script type="application/ld+json">${JSON.stringify(obj)}</script>`)
+    .join('\n    ');
+}
+
+function isServiceStorefrontRoute(route: string): route is ServiceStorefrontRoute {
+  return Object.prototype.hasOwnProperty.call(SERVICE_STOREFRONT_CONFIGS, route);
 }
 
 export function renderPublicRouteHtml(
@@ -99,7 +124,14 @@ export function renderPublicRouteHtml(
     robots: isKnown ? 'index, follow' : 'noindex, nofollow'
   });
 
-  const jsonLdBlock = normalized === '/' ? buildHomeOrganizationJsonLd() : '';
+  const jsonLdBlock =
+    normalized === '/'
+      ? buildHomeOrganizationJsonLd()
+      : normalized === '/tools/web-data-engine'
+      ? buildWebScraperRouteJsonLd()
+      : isServiceStorefrontRoute(normalized)
+      ? buildServiceStorefrontRouteJsonLd(normalized)
+      : '';
 
   const renderedMarkup = renderToString(
     <StudioWebsite

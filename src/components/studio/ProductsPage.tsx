@@ -176,15 +176,15 @@ export const ProductsPage: React.FC<ProductsPageProps> = ({
         </div>
       </section>
 
-      {/* In active R&D (Data-driven modular array) */}
+      {/* Internal engineering tools */}
       <section className="py-16 md:py-24">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
           <div className="max-w-[68ch] space-y-2">
             <h2 className="text-[24px] sm:text-[28px] lg:text-[32px] font-bold tracking-[-0.02em] leading-[1.2] text-slate-900 dark:text-white">
-              In active R&amp;D
+              Internal engineering tools
             </h2>
             <p className="text-[16px] leading-[1.6] text-slate-600 dark:text-slate-300">
-              Internal software tools currently tested inside client sprints and R&amp;D builds.
+              Internal software utilities supporting client delivery sprints, data verification, and automated QA.
             </p>
           </div>
 
@@ -197,13 +197,13 @@ export const ProductsPage: React.FC<ProductsPageProps> = ({
           <div className="p-6 rounded-[8px] border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="space-y-1">
               <p className="text-xs font-mono uppercase tracking-wider text-[var(--accent)] dark:text-blue-400">
-                Interactive Tool
+                Free Online Tool
               </p>
               <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-                ALM Nexus Web Data Engine
+                Free AI Web Scraper &amp; Lead Extractor
               </h3>
               <p className="text-sm text-slate-600 dark:text-slate-300 max-w-[60ch]">
-                Inspect domains, run multi-page and directory-profile crawls via FastAPI, and export UTF-8 CSV or JSON datasets.
+                Extract business emails, phone numbers, WhatsApp links, social profiles, and structured catalogs to CSV, JSON, or PDF.
               </p>
             </div>
             <StudioLink
@@ -211,7 +211,7 @@ export const ProductsPage: React.FC<ProductsPageProps> = ({
               onNavigate={onNavigate}
               className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-[6px] text-sm font-medium bg-[var(--accent)] hover:bg-[#1D4ED8] text-white transition-colors whitespace-nowrap shrink-0"
             >
-              <span>Open Web Data Engine</span>
+              <span>Open Free Web Scraper</span>
               <ArrowRight className="w-4 h-4" strokeWidth={1.75} aria-hidden="true" />
             </StudioLink>
           </div>

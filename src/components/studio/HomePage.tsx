@@ -35,7 +35,7 @@ export const HomePage: React.FC<HomePageProps> = ({
             </h1>
 
             <p className="text-[16px] sm:text-[17px] leading-[1.6] text-slate-600 dark:text-slate-300">
-              ALM Nexus is a software studio and R&amp;D lab. We build production web and mobile apps, Unity games, fine-tuned AI agents, and automated data pipelines, and we ship our own SaaS products.
+              ALM Nexus is a custom software engineering and AI automation agency. We deliver production Web &amp; SaaS Platforms, iOS &amp; Android Mobile Apps, AI Agents &amp; Automation, B2B Data Pipelines, and Security Audits, alongside our own SaaS products.
             </p>
 
             <div className="flex flex-wrap items-center gap-3 pt-2">

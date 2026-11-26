@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   BUDGET_RANGES,
   INQUIRY_CATEGORIES,
@@ -32,6 +32,38 @@ export const ContactPage: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [fallbackMailto, setFallbackMailto] = useState<string | null>(null);
+  const [attachedBlueprintTitle, setAttachedBlueprintTitle] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const paramCategory = params.get('category');
+    const paramService = params.get('service');
+    const paramBlueprint = params.get('blueprint');
+
+    if (
+      paramCategory &&
+      (INQUIRY_CATEGORIES as readonly string[]).includes(paramCategory)
+    ) {
+      setForm((prev) => ({
+        ...prev,
+        category: paramCategory as InquiryCategory
+      }));
+    }
+
+    if (paramBlueprint && paramBlueprint.trim().length > 0) {
+      setAttachedBlueprintTitle(paramService || 'Configured Technical Blueprint');
+      setForm((prev) => {
+        if (prev.message.trim().length > 0) {
+          return prev;
+        }
+        return {
+          ...prev,
+          message: `${paramBlueprint.trim()}\n\nAdditional project context / target launch date:\n`
+        };
+      });
+    }
+  }, []);
 
   const buildFallbackMailto = () => {
     const subject = `[almnexus.tech] [${form.category}] ${form.company.trim() || form.name.trim() || 'Project Inquiry'}`;
@@ -152,6 +184,26 @@ export const ContactPage: React.FC = () => {
               noValidate
               className="p-6 sm:p-8 rounded-[8px] border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] space-y-5"
             >
+              {attachedBlueprintTitle && (
+                <div className="p-3.5 rounded-[6px] border border-blue-200 dark:border-blue-900/60 bg-blue-50/70 dark:bg-blue-950/20 flex items-start justify-between gap-3 text-sm">
+                  <div className="space-y-0.5">
+                    <div className="font-semibold text-slate-900 dark:text-white">
+                      Attached Blueprint: {attachedBlueprintTitle}
+                    </div>
+                    <p className="text-xs text-slate-600 dark:text-slate-300">
+                      Your selected stack, layout, and modules have been pre-filled below.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setAttachedBlueprintTitle(null)}
+                    className="text-xs font-mono text-slate-500 hover:text-slate-900 dark:hover:text-white cursor-pointer shrink-0"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              )}
+
               {/* Bot honeypot field */}
               <div className="sr-only" aria-hidden="true">
                 <label htmlFor="contact-honeypot">Leave this field empty</label>

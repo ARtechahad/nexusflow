@@ -1,8 +1,19 @@
 import React, { useEffect } from 'react';
-import { PUBLIC_ROUTES, PublicRoutePath, ROUTE_SEO } from '../../data/studioData';
+import {
+  buildWebScraperJsonLdObjects,
+  PUBLIC_ROUTES,
+  PublicRoutePath,
+  ROUTE_SEO
+} from '../../data/studioData';
+import {
+  buildServiceRouteJsonLd,
+  SERVICE_STOREFRONT_CONFIGS,
+  ServiceStorefrontRoute
+} from '../../data/serviceStorefrontData';
 import { StudioLayout } from './StudioLayout';
 import { HomePage } from './HomePage';
 import { ServicesPage } from './ServicesPage';
+import { ServiceStorefrontPage } from './ServiceStorefrontPage';
 import { ProductsPage } from './ProductsPage';
 import { WorkPage } from './WorkPage';
 import { AboutPage } from './AboutPage';
@@ -66,8 +77,24 @@ export const StudioWebsite: React.FC<StudioWebsiteProps> = ({
     setMeta('meta[property="og:title"]', 'property', 'og:title', seo.title);
     setMeta('meta[property="og:description"]', 'property', 'og:description', seo.description);
     setMeta('meta[property="og:url"]', 'property', 'og:url', seo.canonical);
+    setMeta('meta[property="og:image"]', 'property', 'og:image', 'https://almnexus.tech/og-banner.png');
+    setMeta('meta[property="og:image:width"]', 'property', 'og:image:width', '1200');
+    setMeta('meta[property="og:image:height"]', 'property', 'og:image:height', '630');
+    setMeta(
+      'meta[property="og:image:alt"]',
+      'property',
+      'og:image:alt',
+      'ALM Nexus — AI, Web & Mobile Software Engineering Agency'
+    );
     setMeta('meta[name="twitter:title"]', 'name', 'twitter:title', seo.title);
     setMeta('meta[name="twitter:description"]', 'name', 'twitter:description', seo.description);
+    setMeta('meta[name="twitter:image"]', 'name', 'twitter:image', 'https://almnexus.tech/og-banner.png');
+    setMeta(
+      'meta[name="twitter:image:alt"]',
+      'name',
+      'twitter:image:alt',
+      'ALM Nexus — AI, Web & Mobile Software Engineering Agency'
+    );
     setMeta(
       'meta[name="robots"]',
       'name',
@@ -78,6 +105,33 @@ export const StudioWebsite: React.FC<StudioWebsiteProps> = ({
     const canonicalEl = document.querySelector<HTMLLinkElement>('link[rel="canonical"]');
     if (canonicalEl) {
       canonicalEl.setAttribute('href', seo.canonical);
+    }
+
+    const existingJsonLd = document.querySelectorAll<HTMLScriptElement>(
+      'script[data-route-jsonld="true"]'
+    );
+    existingJsonLd.forEach((node) => node.remove());
+
+    if (normalizedPath === '/tools/web-data-engine') {
+      buildWebScraperJsonLdObjects().forEach((schemaObj) => {
+        const script = document.createElement('script');
+        script.type = 'application/ld+json';
+        script.setAttribute('data-route-jsonld', 'true');
+        script.textContent = JSON.stringify(schemaObj);
+        document.head.appendChild(script);
+      });
+    } else if (
+      Object.prototype.hasOwnProperty.call(SERVICE_STOREFRONT_CONFIGS, normalizedPath)
+    ) {
+      buildServiceRouteJsonLd(normalizedPath as ServiceStorefrontRoute).forEach(
+        (schemaObj) => {
+          const script = document.createElement('script');
+          script.type = 'application/ld+json';
+          script.setAttribute('data-route-jsonld', 'true');
+          script.textContent = JSON.stringify(schemaObj);
+          document.head.appendChild(script);
+        }
+      );
     }
   }, [isKnown, normalizedPath]);
 
@@ -93,6 +147,17 @@ export const StudioWebsite: React.FC<StudioWebsiteProps> = ({
         );
       case '/services':
         return <ServicesPage onNavigate={onNavigate} />;
+      case '/services/app-development':
+      case '/services/web-development':
+      case '/services/ai-automation':
+      case '/services/data-intelligence':
+      case '/services/cybersecurity':
+        return (
+          <ServiceStorefrontPage
+            route={normalizedPath as ServiceStorefrontRoute}
+            onNavigate={onNavigate}
+          />
+        );
       case '/products':
         return <ProductsPage onNavigate={onNavigate} onOpenAuth={onOpenAuth} />;
       case '/tools/web-data-engine':

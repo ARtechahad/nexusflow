@@ -4,23 +4,29 @@ import {
   ArrowRight,
   Check,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Copy,
   Download,
   ExternalLink,
   FileJson,
   FileSpreadsheet,
+  FileText,
   Globe,
+  HelpCircle,
   Loader2,
   RefreshCw,
   Search,
   Sparkles
 } from 'lucide-react';
+import { WEB_SCRAPER_FAQS } from '../../data/studioData';
 import {
   buildUtf8CsvWithBom,
   checkEngineHealth,
   ENGINE_CATEGORIES,
   EngineCategoryId,
+  exportRecordsToPdf,
   formatCellValue,
   getCrawlJobStatus,
   InspectResponse,
@@ -82,6 +88,65 @@ const DEMO_PRESETS: DemoPreset[] = [
   }
 ];
 
+const QUICK_GUIDE_STEPS = [
+  {
+    step: '01',
+    title: 'Paste URL or Pick a Demo',
+    description: 'Enter any public website URL or click one of the built-in sample presets.'
+  },
+  {
+    step: '02',
+    title: 'Smart Inspect & Choose Data Fields',
+    description: 'Auto-detect emails, phones, socials, or catalog items, then toggle fields manually.'
+  },
+  {
+    step: '03',
+    title: 'Export CSV, JSON, or PDF',
+    description: 'Filter live results, copy contacts in one click, or download formatted reports.'
+  }
+];
+
+const CAPABILITY_OVERVIEW = [
+  {
+    title: 'Hybrid HTTP & Headless Browser Rendering',
+    description:
+      'Fetches static pages via lightweight HTTP requests first and automatically switches to headless Chromium with scroll execution when JavaScript-rendered content is detected.'
+  },
+  {
+    title: 'Deep Directory & Profile Crawling',
+    description:
+      'Discovers internal listing, shop, vendor, and profile detail URLs from directories and visits nested pages to capture complete contact records.'
+  },
+  {
+    title: 'Structured Contact & Social Discovery',
+    description:
+      'Separates business and personal email addresses, extracts phone numbers and WhatsApp links, identifies social networks, and parses product or catalog metadata.'
+  }
+];
+
+const USE_CASES = [
+  {
+    title: 'B2B Lead Generation',
+    description:
+      'Collect verified company emails, phone numbers, WhatsApp links, and LinkedIn pages directly from niche directories and agency partner lists.'
+  },
+  {
+    title: 'Competitor Research',
+    description:
+      'Audit competitor landing page metadata, messaging structure, visual assets, and public contact footprints across multiple pages.'
+  },
+  {
+    title: 'Directory Extraction',
+    description:
+      'Turn multi-page local business listings, member catalogs, and vendor registries into clean tabular spreadsheets in minutes.'
+  },
+  {
+    title: 'E-Commerce Catalog Monitoring',
+    description:
+      'Extract product titles, pricing with currency preservation (UTF-8 BOM CSV), stock status, ratings, and thumbnail links.'
+  }
+];
+
 const COLUMN_ORDER_PRIORITY = [
   'Category',
   'category',
@@ -123,57 +188,12 @@ const COLUMN_ORDER_PRIORITY = [
   'source_url'
 ];
 
+const COPYABLE_COLUMN_HINT = /(email|phone|whatsapp|website|url|instagram|linkedin|twitter|facebook|youtube|tiktok|link)/i;
+const EMAIL_OR_PHONE_VALUE = /(@|\+?\d[\d\s().-]{7,}\d)/;
+
 interface WebDataEnginePageProps {
   onNavigate?: (href: string) => void;
 }
-
-const renderSafeCellContent = (rawVal: unknown, textVal: string) => {
-  if (textVal === '') {
-    return <span className="text-slate-400 dark:text-slate-600">—</span>;
-  }
-
-  if (isSafeHttpUrl(rawVal)) {
-    return (
-      <a
-        href={rawVal.trim()}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-flex items-center gap-1 font-mono text-xs text-[var(--accent)] dark:text-blue-400 hover:underline break-all"
-      >
-        <span>{textVal}</span>
-        <ExternalLink className="w-3 h-3 shrink-0" strokeWidth={1.75} aria-hidden="true" />
-      </a>
-    );
-  }
-
-  if (typeof rawVal === 'string' && rawVal.includes(',') && rawVal.includes('http')) {
-    const parts = rawVal.split(',').map((s) => s.trim()).filter(Boolean);
-    if (parts.length > 1 && parts.every((part) => isSafeHttpUrl(part))) {
-      return (
-        <div className="flex flex-col gap-1">
-          {parts.map((part) => (
-            <a
-              key={part}
-              href={part}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 font-mono text-xs text-[var(--accent)] dark:text-blue-400 hover:underline break-all"
-            >
-              <span>{part}</span>
-              <ExternalLink className="w-3 h-3 shrink-0" strokeWidth={1.75} aria-hidden="true" />
-            </a>
-          ))}
-        </div>
-      );
-    }
-  }
-
-  return (
-    <span className={typeof rawVal === 'number' ? 'font-mono tabular-nums' : undefined}>
-      {textVal}
-    </span>
-  );
-};
 
 export const WebDataEnginePage: React.FC<WebDataEnginePageProps> = ({
   onNavigate = () => {}
@@ -197,6 +217,7 @@ export const WebDataEnginePage: React.FC<WebDataEnginePageProps> = ({
     'socials',
     'meta_info'
   ]);
+  const [activeTooltip, setActiveTooltip] = useState<'pages' | 'profiles' | null>(null);
 
   // Smart inspect state
   const [isInspecting, setIsInspecting] = useState<boolean>(false);
@@ -209,11 +230,16 @@ export const WebDataEnginePage: React.FC<WebDataEnginePageProps> = ({
   const pollTimerRef = useRef<number | null>(null);
   const isMountedRef = useRef<boolean>(true);
 
-  // Results table state
+  // Results table & export state
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [pageSize, setPageSize] = useState<number>(25);
   const [currentPage, setCurrentPage] = useState<number>(1);
+  const [copiedCellKey, setCopiedCellKey] = useState<string | null>(null);
+  const [isExportingPdf, setIsExportingPdf] = useState<boolean>(false);
+
+  // FAQ accordion state
+  const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
 
   const stopPolling = useCallback(() => {
     if (pollTimerRef.current !== null && typeof window !== 'undefined') {
@@ -480,29 +506,148 @@ export const WebDataEnginePage: React.FC<WebDataEnginePageProps> = ({
     return filteredResults.slice(start, start + pageSize);
   }, [filteredResults, safeCurrentPage, pageSize]);
 
+  const getExportSlug = () =>
+    (inspectResult?.domain || 'extraction')
+      .replace(/[^a-zA-Z0-9.-]+/g, '_')
+      .replace(/^_+|_+$/g, '') || 'web_data';
+
   const handleExportCsv = () => {
     if (filteredResults.length === 0 || dynamicColumns.length === 0) return;
     const csvContent = buildUtf8CsvWithBom(filteredResults, dynamicColumns);
-    const domainSlug = (inspectResult?.domain || 'extraction')
-      .replace(/[^a-zA-Z0-9.-]+/g, '_')
-      .replace(/^_+|_+$/g, '');
     triggerFileDownload(
       csvContent,
       'text/csv;charset=utf-8;',
-      `almnexus_${domainSlug || 'web_data'}_${Date.now()}.csv`
+      `almnexus_${getExportSlug()}_${Date.now()}.csv`
     );
   };
 
   const handleExportJson = () => {
     if (filteredResults.length === 0) return;
     const jsonContent = JSON.stringify(filteredResults, null, 2);
-    const domainSlug = (inspectResult?.domain || 'extraction')
-      .replace(/[^a-zA-Z0-9.-]+/g, '_')
-      .replace(/^_+|_+$/g, '');
     triggerFileDownload(
       jsonContent,
       'application/json;charset=utf-8;',
-      `almnexus_${domainSlug || 'web_data'}_${Date.now()}.json`
+      `almnexus_${getExportSlug()}_${Date.now()}.json`
+    );
+  };
+
+  const handleExportPdf = async () => {
+    if (filteredResults.length === 0 || dynamicColumns.length === 0) return;
+    setActionError(null);
+    setIsExportingPdf(true);
+    try {
+      await exportRecordsToPdf({
+        rows: filteredResults,
+        columns: dynamicColumns,
+        targetDomain: inspectResult?.domain || '',
+        targetUrl,
+        pagesCrawled: activeJob?.pages_crawled ?? 0,
+        totalExtracted: rawResults.length,
+        filename: `almnexus_${getExportSlug()}_${Date.now()}.pdf`
+      });
+    } catch (err: any) {
+      setActionError(err?.message || 'Unable to generate PDF export.');
+    } finally {
+      if (isMountedRef.current) {
+        setIsExportingPdf(false);
+      }
+    }
+  };
+
+  const handleCopyCell = async (cellKey: string, textToCopy: string) => {
+    if (typeof navigator === 'undefined' || !navigator.clipboard || !textToCopy) return;
+    try {
+      await navigator.clipboard.writeText(textToCopy);
+      setCopiedCellKey(cellKey);
+      window.setTimeout(() => {
+        setCopiedCellKey((current) => (current === cellKey ? null : current));
+      }, 1600);
+    } catch {
+      // Clipboard access denied silently ignored
+    }
+  };
+
+  const renderCellWithCopy = (
+    cellKey: string,
+    columnName: string,
+    rawVal: unknown,
+    textVal: string
+  ) => {
+    if (textVal === '') {
+      return <span className="text-slate-400 dark:text-slate-600">—</span>;
+    }
+
+    const isCopyable =
+      COPYABLE_COLUMN_HINT.test(columnName) ||
+      isSafeHttpUrl(rawVal) ||
+      EMAIL_OR_PHONE_VALUE.test(textVal);
+    const isCopied = copiedCellKey === cellKey;
+
+    let valueNode: React.ReactNode;
+
+    if (isSafeHttpUrl(rawVal)) {
+      valueNode = (
+        <a
+          href={rawVal.trim()}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 font-mono text-xs text-[var(--accent)] dark:text-blue-400 hover:underline break-all"
+        >
+          <span>{textVal}</span>
+          <ExternalLink className="w-3 h-3 shrink-0" strokeWidth={1.75} aria-hidden="true" />
+        </a>
+      );
+    } else if (typeof rawVal === 'string' && rawVal.includes(',') && rawVal.includes('http')) {
+      const parts = rawVal.split(',').map((s) => s.trim()).filter(Boolean);
+      if (parts.length > 1 && parts.every((part) => isSafeHttpUrl(part))) {
+        valueNode = (
+          <div className="flex flex-col gap-1">
+            {parts.map((part) => (
+              <a
+                key={part}
+                href={part}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 font-mono text-xs text-[var(--accent)] dark:text-blue-400 hover:underline break-all"
+              >
+                <span>{part}</span>
+                <ExternalLink className="w-3 h-3 shrink-0" strokeWidth={1.75} aria-hidden="true" />
+              </a>
+            ))}
+          </div>
+        );
+      } else {
+        valueNode = <span>{textVal}</span>;
+      }
+    } else {
+      valueNode = (
+        <span className={typeof rawVal === 'number' ? 'font-mono tabular-nums' : undefined}>
+          {textVal}
+        </span>
+      );
+    }
+
+    if (!isCopyable) {
+      return valueNode;
+    }
+
+    return (
+      <div className="flex items-start justify-between gap-2 group">
+        <div className="min-w-0 flex-1">{valueNode}</div>
+        <button
+          type="button"
+          onClick={() => handleCopyCell(cellKey, textVal)}
+          aria-label={`Copy ${columnName} value`}
+          title={isCopied ? 'Copied' : `Copy ${columnName}`}
+          className="inline-flex items-center justify-center w-6 h-6 rounded-[4px] border border-transparent hover:border-slate-300 dark:hover:border-slate-700 text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors cursor-pointer shrink-0"
+        >
+          {isCopied ? (
+            <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" strokeWidth={2} aria-hidden="true" />
+          ) : (
+            <Copy className="w-3.5 h-3.5" strokeWidth={1.75} aria-hidden="true" />
+          )}
+        </button>
+      </div>
     );
   };
 
@@ -514,19 +659,19 @@ export const WebDataEnginePage: React.FC<WebDataEnginePageProps> = ({
 
   return (
     <>
-      {/* Header Section */}
+      {/* Hero & Live Backend Telemetry */}
       <section className="py-12 md:py-16 border-b border-slate-200 dark:border-slate-800">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
           <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
             <div className="max-w-[68ch] space-y-3">
               <p className="text-xs font-mono uppercase tracking-wider text-[var(--accent)] dark:text-blue-400">
-                Tools · Data Extraction
+                FREE TOOL · AI WEB SCRAPER &amp; LEAD EXTRACTOR
               </p>
               <h1 className="text-[32px] sm:text-[42px] lg:text-[46px] font-bold tracking-[-0.025em] leading-[1.1] text-slate-900 dark:text-white">
-                ALM Nexus Web Data Engine
+                Free AI Web Scraper &amp; Lead Extractor
               </h1>
               <p className="text-[16px] sm:text-[17px] leading-[1.6] text-slate-600 dark:text-slate-300">
-                Inspect target domains, configure multi-page and directory-profile extraction jobs, track live crawler progress, and export structured UTF-8 CSV or JSON datasets.
+                Extract business emails, phone numbers, WhatsApp links, social profiles, directory listings, and structured catalogs from any public website. Export cleanly to CSV, JSON, or PDF.
               </p>
             </div>
 
@@ -631,6 +776,29 @@ export const WebDataEnginePage: React.FC<WebDataEnginePageProps> = ({
         </div>
       </section>
 
+      {/* 3-Step Quick Guide Strip */}
+      <section aria-label="How to use the web scraper" className="py-8 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0D131F]">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {QUICK_GUIDE_STEPS.map((item) => (
+              <div key={item.step} className="flex items-start gap-3.5">
+                <span className="font-mono text-xs font-semibold text-[var(--accent)] dark:text-blue-400 pt-0.5 shrink-0 tabular-nums">
+                  {item.step}
+                </span>
+                <div className="space-y-1">
+                  <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
+                    {item.title}
+                  </h2>
+                  <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+                    {item.description}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* Configuration & Live Status Workspace */}
       <section className="py-10 md:py-14 border-b border-slate-200 dark:border-slate-800">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
@@ -647,7 +815,7 @@ export const WebDataEnginePage: React.FC<WebDataEnginePageProps> = ({
                     Crawl Configuration
                   </h2>
                   <p className="text-sm text-slate-600 dark:text-slate-400">
-                    Load a sample preset or inspect a target site to detect categories automatically.
+                    Load a sample preset or inspect a target site to detect fields automatically.
                   </p>
                 </div>
                 {baseUrl && (
@@ -660,7 +828,7 @@ export const WebDataEnginePage: React.FC<WebDataEnginePageProps> = ({
               {/* Sample Preset Buttons */}
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs font-mono text-slate-500 dark:text-slate-400 mr-1">
-                  Sample presets:
+                  Try a sample:
                 </span>
                 {DEMO_PRESETS.map((preset) => {
                   const isActive = targetUrl === preset.url;
@@ -688,7 +856,7 @@ export const WebDataEnginePage: React.FC<WebDataEnginePageProps> = ({
                   htmlFor="engine-target-url"
                   className="block text-sm font-medium text-slate-900 dark:text-slate-100"
                 >
-                  Target URL
+                  Target Website URL
                 </label>
                 <div className="flex flex-col sm:flex-row gap-3">
                   <div className="relative flex-1">
@@ -749,7 +917,7 @@ export const WebDataEnginePage: React.FC<WebDataEnginePageProps> = ({
                     </span>
                     <span aria-hidden="true" className="hidden sm:inline">·</span>
                     <span>
-                      Suggested Categories:{' '}
+                      Suggested Fields:{' '}
                       <strong className="text-slate-900 dark:text-white tabular-nums">
                         {inspectResult.suggested_categories.length}
                       </strong>
@@ -792,16 +960,28 @@ export const WebDataEnginePage: React.FC<WebDataEnginePageProps> = ({
                 </div>
               )}
 
-              {/* Crawl Depth & Directory Profile Controls */}
+              {/* Crawl Depth & Directory Profile Controls with Helper Tooltips */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-2">
                 <div className="space-y-2.5">
                   <div className="flex items-center justify-between gap-2">
-                    <label
-                      htmlFor="engine-max-pages"
-                      className="text-sm font-medium text-slate-900 dark:text-slate-100"
-                    >
-                      Max Pages
-                    </label>
+                    <div className="inline-flex items-center gap-1.5">
+                      <label
+                        htmlFor="engine-max-pages"
+                        className="text-sm font-medium text-slate-900 dark:text-slate-100"
+                      >
+                        Max Pages
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTooltip((prev) => (prev === 'pages' ? null : 'pages'))}
+                        aria-expanded={activeTooltip === 'pages'}
+                        aria-label="Explain Max Pages setting"
+                        title="Follows up to 20 paginated listing pages (e.g., ?page=2 or /page/2/)."
+                        className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
+                      >
+                        <HelpCircle className="w-3.5 h-3.5" strokeWidth={1.75} aria-hidden="true" />
+                      </button>
+                    </div>
                     <span className="text-xs font-mono tabular-nums text-slate-600 dark:text-slate-300">
                       {maxPages} / 20
                     </span>
@@ -831,23 +1011,40 @@ export const WebDataEnginePage: React.FC<WebDataEnginePageProps> = ({
                       className="w-16 h-9 px-2 rounded-[6px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#0B0F17] text-sm font-mono tabular-nums text-center text-slate-900 dark:text-white"
                     />
                   </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                    {activeTooltip === 'pages'
+                      ? 'Crawls up to 20 paginated listing pages (such as ?page=2 or /catalogue/page-2.html) on static sites.'
+                      : 'Controls how many paginated pages to scan (1–20).'}
+                  </p>
                 </div>
 
                 <div className="space-y-2.5">
                   <div className="flex items-center justify-between gap-2">
-                    <label
-                      htmlFor="engine-crawl-profiles"
-                      className="inline-flex items-center gap-2 text-sm font-medium text-slate-900 dark:text-slate-100 cursor-pointer"
-                    >
-                      <input
-                        id="engine-crawl-profiles"
-                        type="checkbox"
-                        checked={crawlProfiles}
-                        onChange={(e) => setCrawlProfiles(e.target.checked)}
-                        className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 accent-[#2563EB] cursor-pointer"
-                      />
-                      <span>Deep Directory / Profile Crawl</span>
-                    </label>
+                    <div className="inline-flex items-center gap-1.5">
+                      <label
+                        htmlFor="engine-crawl-profiles"
+                        className="inline-flex items-center gap-2 text-sm font-medium text-slate-900 dark:text-slate-100 cursor-pointer"
+                      >
+                        <input
+                          id="engine-crawl-profiles"
+                          type="checkbox"
+                          checked={crawlProfiles}
+                          onChange={(e) => setCrawlProfiles(e.target.checked)}
+                          className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 accent-[#2563EB] cursor-pointer"
+                        />
+                        <span>Deep Directory / Profile Crawl</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTooltip((prev) => (prev === 'profiles' ? null : 'profiles'))}
+                        aria-expanded={activeTooltip === 'profiles'}
+                        aria-label="Explain Deep Directory / Profile Crawl setting"
+                        title="Visits linked business, shop, or directory detail pages (up to 25) to extract nested emails, phones, and external websites."
+                        className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
+                      >
+                        <HelpCircle className="w-3.5 h-3.5" strokeWidth={1.75} aria-hidden="true" />
+                      </button>
+                    </div>
                     <span className="text-xs font-mono tabular-nums text-slate-600 dark:text-slate-300">
                       {crawlProfiles ? `${maxProfiles} / 25` : 'Off'}
                     </span>
@@ -880,6 +1077,11 @@ export const WebDataEnginePage: React.FC<WebDataEnginePageProps> = ({
                       className="w-16 h-9 px-2 rounded-[6px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#0B0F17] text-sm font-mono tabular-nums text-center text-slate-900 dark:text-white disabled:opacity-40"
                     />
                   </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                    {activeTooltip === 'profiles'
+                      ? 'Automatically visits up to 25 inner profile, store, or directory detail links found on the target page to uncover hidden contact details.'
+                      : 'Visits inner listing/profile pages to capture emails & phones (1–25).'}
+                  </p>
                 </div>
               </div>
 
@@ -888,11 +1090,11 @@ export const WebDataEnginePage: React.FC<WebDataEnginePageProps> = ({
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <span className="text-sm font-medium text-slate-900 dark:text-slate-100">
-                      Extraction Categories
+                      Data Fields to Extract
                     </span>
                     <span className="ml-2 text-xs font-mono tabular-nums text-slate-500 dark:text-slate-400">
                       {selectedCategories.length === 0
-                        ? 'Auto-detect mode (backend chooses)'
+                        ? 'Auto-detect mode (all detected fields)'
                         : `${selectedCategories.length} selected`}
                     </span>
                   </div>
@@ -956,26 +1158,28 @@ export const WebDataEnginePage: React.FC<WebDataEnginePageProps> = ({
                 </div>
               </div>
 
-              {/* Submit Action */}
-              <div className="flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-slate-200 dark:border-slate-800">
+              {/* Prominent Submit Action */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-4 border-t border-slate-200 dark:border-slate-800">
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Polls <span className="font-mono">/api/v1/jobs/&#123;job_id&#125;</span> every 1.5s while queued or running.
+                  Only crawls publicly accessible pages. Results stream cleanly in your browser.
                 </p>
 
                 <button
                   type="submit"
                   disabled={isSubmittingCrawl || isJobRunning || healthStatus !== 'online'}
-                  className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-[6px] text-sm font-medium bg-[var(--accent)] hover:bg-[#1D4ED8] text-white transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                  className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-[6px] text-sm font-semibold bg-[var(--accent)] hover:bg-[#1D4ED8] text-white transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                 >
-                  {(isSubmittingCrawl || isJobRunning) && (
+                  {isSubmittingCrawl || isJobRunning ? (
                     <Loader2 className="w-4 h-4 animate-spin" strokeWidth={1.75} aria-hidden="true" />
+                  ) : (
+                    <ArrowRight className="w-4 h-4" strokeWidth={1.75} aria-hidden="true" />
                   )}
                   <span>
                     {isSubmittingCrawl
                       ? 'Queuing Job...'
                       : isJobRunning
                       ? 'Extraction Running...'
-                      : 'Start Deep Extraction'}
+                      : 'Extract Data Now'}
                   </span>
                 </button>
               </div>
@@ -1011,10 +1215,10 @@ export const WebDataEnginePage: React.FC<WebDataEnginePageProps> = ({
               {!activeJob ? (
                 <div className="py-6 space-y-3 text-sm text-slate-600 dark:text-slate-400">
                   <p>
-                    No active extraction job yet. Choose a preset or enter a URL, run <strong className="text-slate-900 dark:text-slate-200">Smart Inspect URL</strong>, then start extraction.
+                    No active extraction job yet. Pick a sample preset or enter any public URL, run <strong className="text-slate-900 dark:text-slate-200">Smart Inspect URL</strong>, and click <strong className="text-slate-900 dark:text-slate-200">Extract Data Now</strong>.
                   </p>
                   <p className="text-xs font-mono text-slate-500 dark:text-slate-400">
-                    Ready · Polling interval: 1.5s
+                    Ready · Live status updates every 1.5s
                   </p>
                 </div>
               ) : (
@@ -1080,7 +1284,7 @@ export const WebDataEnginePage: React.FC<WebDataEnginePageProps> = ({
                   {/* Empty / Failed Callout Inside Status Panel */}
                   {activeJob.status === 'completed' && rawResults.length === 0 && (
                     <div className="p-3 rounded-[6px] border border-amber-300 dark:border-amber-800/60 bg-amber-50 dark:bg-amber-950/30 text-xs text-amber-900 dark:text-amber-200">
-                      Extraction completed with 0 matching records. Try inspecting the URL or expanding selected categories.
+                      Extraction completed with 0 matching records. Try inspecting the URL or enabling additional fields.
                     </div>
                   )}
 
@@ -1096,8 +1300,8 @@ export const WebDataEnginePage: React.FC<WebDataEnginePageProps> = ({
         </div>
       </section>
 
-      {/* Results Table & Conversion Banner */}
-      <section className="py-10 md:py-14">
+      {/* Results Table & Export Section */}
+      <section className="py-10 md:py-14 border-b border-slate-200 dark:border-slate-800">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
           <div className="space-y-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -1131,6 +1335,20 @@ export const WebDataEnginePage: React.FC<WebDataEnginePageProps> = ({
                 >
                   <FileJson className="w-4 h-4 text-[var(--accent)] dark:text-blue-400" strokeWidth={1.75} aria-hidden="true" />
                   <span>Export JSON</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleExportPdf}
+                  disabled={filteredResults.length === 0 || isExportingPdf}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-[6px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#111827] hover:bg-slate-50 dark:hover:bg-slate-800/70 text-sm font-medium text-slate-900 dark:text-slate-100 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+                >
+                  {isExportingPdf ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-rose-600 dark:text-rose-400" strokeWidth={1.75} aria-hidden="true" />
+                  ) : (
+                    <FileText className="w-4 h-4 text-rose-600 dark:text-rose-400" strokeWidth={1.75} aria-hidden="true" />
+                  )}
+                  <span>{isExportingPdf ? 'Exporting PDF...' : 'Export PDF'}</span>
                 </button>
               </div>
             </div>
@@ -1192,7 +1410,7 @@ export const WebDataEnginePage: React.FC<WebDataEnginePageProps> = ({
                       : 'Run an extraction job to populate dynamic result columns here.'}
                   </p>
                   <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-                    Columns adapt automatically to the schema returned by the backend (books, quotes, emails, phone numbers, social links, or directory profiles).
+                    Columns adapt automatically to extracted fields (emails, phone numbers, WhatsApp links, social handles, directory profiles, or catalog records).
                   </p>
                 </div>
               ) : filteredResults.length === 0 ? (
@@ -1244,13 +1462,14 @@ export const WebDataEnginePage: React.FC<WebDataEnginePageProps> = ({
                               {dynamicColumns.map((col) => {
                                 const rawVal = row?.[col];
                                 const textVal = formatCellValue(rawVal);
+                                const cellKey = `${globalIndex}-${col}`;
 
                                 return (
                                   <td
                                     key={col}
-                                    className="py-2.5 px-3 text-xs sm:text-sm text-slate-800 dark:text-slate-200 align-top max-w-[280px] break-words"
+                                    className="py-2.5 px-3 text-xs sm:text-sm text-slate-800 dark:text-slate-200 align-top max-w-[300px] break-words"
                                   >
-                                    {renderSafeCellContent(rawVal, textVal)}
+                                    {renderCellWithCopy(cellKey, col, rawVal, textVal)}
                                   </td>
                                 );
                               })}
@@ -1299,7 +1518,7 @@ export const WebDataEnginePage: React.FC<WebDataEnginePageProps> = ({
           {/* Subtle Conversion Banner */}
           <div className="p-6 sm:p-8 rounded-[8px] border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <p className="text-[15px] sm:text-[16px] leading-[1.6] text-slate-700 dark:text-slate-200 max-w-[68ch]">
-              Need 10,000+ leads, automated CRM sync, or custom scheduled scraping pipelines?
+              Need 10,000+ rows, scheduled scraping, or custom CRM pipelines?
             </p>
             <StudioLink
               href="/contact"
@@ -1309,6 +1528,114 @@ export const WebDataEnginePage: React.FC<WebDataEnginePageProps> = ({
               <span>Scope a Custom Pipeline</span>
               <ArrowRight className="w-4 h-4" strokeWidth={1.75} aria-hidden="true" />
             </StudioLink>
+          </div>
+        </div>
+      </section>
+
+      {/* SEO Content Section: What This Tool Does, Use Cases & FAQs */}
+      <section className="py-14 md:py-20">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-16">
+          {/* What This Tool Does */}
+          <div className="space-y-8">
+            <div className="max-w-[68ch] space-y-2">
+              <p className="text-xs font-mono uppercase tracking-wider text-[var(--accent)] dark:text-blue-400">
+                Capabilities
+              </p>
+              <h2 className="text-[24px] sm:text-[28px] font-bold tracking-[-0.02em] leading-[1.2] text-slate-900 dark:text-white">
+                What this Free AI Web Scraper &amp; Lead Extractor does
+              </h2>
+              <p className="text-[16px] leading-[1.6] text-slate-600 dark:text-slate-300">
+                Built on the ALM Nexus extraction backend, this tool combines fast static parsing with headless browser automation to turn public web pages into clean, exportable datasets.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {CAPABILITY_OVERVIEW.map((item) => (
+                <article
+                  key={item.title}
+                  className="p-6 rounded-[8px] border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] space-y-2.5"
+                >
+                  <h3 className="text-base font-semibold text-slate-900 dark:text-white">
+                    {item.title}
+                  </h3>
+                  <p className="text-sm leading-[1.6] text-slate-600 dark:text-slate-300">
+                    {item.description}
+                  </p>
+                </article>
+              ))}
+            </div>
+          </div>
+
+          {/* Top Use Cases */}
+          <div className="space-y-8 pt-10 border-t border-slate-200 dark:border-slate-800">
+            <div className="max-w-[68ch] space-y-2">
+              <p className="text-xs font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Applications
+              </p>
+              <h2 className="text-[24px] sm:text-[28px] font-bold tracking-[-0.02em] leading-[1.2] text-slate-900 dark:text-white">
+                Top Use Cases
+              </h2>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              {USE_CASES.map((useCase) => (
+                <article
+                  key={useCase.title}
+                  className="p-6 rounded-[8px] border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] space-y-2"
+                >
+                  <h3 className="text-base font-semibold text-slate-900 dark:text-white">
+                    {useCase.title}
+                  </h3>
+                  <p className="text-sm leading-[1.6] text-slate-600 dark:text-slate-300">
+                    {useCase.description}
+                  </p>
+                </article>
+              ))}
+            </div>
+          </div>
+
+          {/* Frequently Asked Questions */}
+          <div className="space-y-8 pt-10 border-t border-slate-200 dark:border-slate-800">
+            <div className="max-w-[68ch] space-y-2">
+              <h2 className="text-[24px] sm:text-[28px] font-bold tracking-[-0.02em] leading-[1.2] text-slate-900 dark:text-white">
+                Frequently Asked Questions
+              </h2>
+              <p className="text-[16px] leading-[1.6] text-slate-600 dark:text-slate-300">
+                Technical answers on rendering, directory crawling, export formats, and enterprise pipelines.
+              </p>
+            </div>
+
+            <div className="divide-y divide-slate-200 dark:divide-slate-800 rounded-[8px] border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] overflow-hidden">
+              {WEB_SCRAPER_FAQS.map((faq, index) => {
+                const isOpen = openFaqIndex === index;
+                return (
+                  <div key={faq.question}>
+                    <button
+                      type="button"
+                      onClick={() => setOpenFaqIndex(isOpen ? null : index)}
+                      aria-expanded={isOpen}
+                      className="w-full px-6 py-4 text-left flex items-center justify-between gap-4 hover:bg-slate-50/70 dark:hover:bg-slate-800/30 transition-colors cursor-pointer"
+                    >
+                      <span className="text-sm sm:text-base font-medium text-slate-900 dark:text-white">
+                        {faq.question}
+                      </span>
+                      <ChevronDown
+                        className={`w-4 h-4 text-slate-500 dark:text-slate-400 shrink-0 transition-transform duration-150 ${
+                          isOpen ? 'rotate-180' : ''
+                        }`}
+                        strokeWidth={1.75}
+                        aria-hidden="true"
+                      />
+                    </button>
+                    {isOpen && (
+                      <div className="px-6 pb-5 text-sm leading-[1.6] text-slate-600 dark:text-slate-300 max-w-[75ch]">
+                        {faq.answer}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       </section>

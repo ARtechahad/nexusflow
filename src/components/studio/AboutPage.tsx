@@ -27,7 +27,7 @@ export const AboutPage: React.FC<StudioNavigationProps> = ({ onNavigate }) => {
                 What we build
               </h2>
               <p className="text-[16px] leading-[1.6] text-slate-600 dark:text-slate-300 max-w-[68ch]">
-                ALM Nexus operates as a small software studio and R&amp;D lab. We work with founders, small engineering teams, and agencies on production web and mobile applications, 2D and 3D games in Unity, fine-tuned AI agents and automation workflows, and Python data scraping with verified B2B lead datasets.
+                ALM Nexus is a custom software engineering and AI automation agency. We partner with founders, growth teams, and enterprises on Web &amp; SaaS Platforms, iOS &amp; Android Mobile Apps, AI Agents &amp; Automation, B2B Data Pipelines, and Security Audits.
               </p>
             </div>
 
@@ -53,7 +53,7 @@ export const AboutPage: React.FC<StudioNavigationProps> = ({ onNavigate }) => {
                   onNavigate={onNavigate}
                   className="inline-flex items-center gap-1.5 text-sm font-medium text-[var(--accent)] dark:text-blue-400 hover:underline"
                 >
-                  <span>View NexusFlow and R&amp;D products</span>
+                  <span>View NexusFlow and engineering tools</span>
                   <ArrowRight className="w-4 h-4" strokeWidth={1.75} aria-hidden="true" />
                 </StudioLink>
               </div>

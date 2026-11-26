@@ -13,6 +13,7 @@ export const ALLOWED_INQUIRY_CATEGORIES = [
   'Unity Game Development',
   'AI Bot / Model Fine-Tuning',
   'Data Scraping & Lead Gen',
+  'Cybersecurity & Audit',
   'NexusFlow SaaS'
 ] as const;
 

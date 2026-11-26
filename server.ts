@@ -419,6 +419,11 @@ async function startServer() {
   const PUBLIC_ROUTE_SET = new Set([
     '/',
     '/services',
+    '/services/app-development',
+    '/services/web-development',
+    '/services/ai-automation',
+    '/services/data-intelligence',
+    '/services/cybersecurity',
     '/products',
     '/tools/web-data-engine',
     '/work',

@@ -358,3 +358,125 @@ export function triggerFileDownload(
   document.body.removeChild(link);
   window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
 }
+
+export interface PdfExportOptions {
+  rows: Record<string, any>[];
+  columns: string[];
+  targetDomain: string;
+  targetUrl: string;
+  pagesCrawled: number;
+  totalExtracted: number;
+  filename: string;
+}
+
+export async function exportRecordsToPdf(options: PdfExportOptions): Promise<void> {
+  if (typeof window === 'undefined' || options.rows.length === 0 || options.columns.length === 0) {
+    return;
+  }
+
+  const [{ jsPDF }, { default: autoTable }] = await Promise.all([
+    import('jspdf'),
+    import('jspdf-autotable')
+  ]);
+
+  const doc = new jsPDF({
+    orientation: 'landscape',
+    unit: 'pt',
+    format: 'a4'
+  });
+
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const marginX = 36;
+  const timestamp = new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
+
+  // Header band
+  doc.setFillColor(15, 23, 42);
+  doc.rect(0, 0, pageWidth, 64, 'F');
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(14);
+  doc.text('ALM Nexus — AI Web Scraper & Lead Extraction Report', marginX, 28);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9.5);
+  doc.setTextColor(203, 213, 225);
+  doc.text(`almnexus.tech/tools/web-data-engine   |   Generated: ${timestamp}`, marginX, 46);
+
+  // Metadata summary block
+  doc.setTextColor(15, 23, 42);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.text(`Target: ${options.targetDomain || options.targetUrl || 'Custom Extraction'}`, marginX, 86);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9.5);
+  doc.setTextColor(71, 85, 105);
+  doc.text(
+    `Exported Records: ${options.rows.length} (of ${options.totalExtracted} extracted)   |   Pages Crawled: ${options.pagesCrawled}   |   Columns: ${options.columns.length}`,
+    marginX,
+    102
+  );
+
+  // Format table headers & rows safely
+  const head = [['#', ...options.columns]];
+  const body = options.rows.map((row, index) => [
+    String(index + 1),
+    ...options.columns.map((col) => {
+      const val = formatCellValue(row?.[col]);
+      return val.length > 180 ? `${val.slice(0, 177)}...` : val || '—';
+    })
+  ]);
+
+  const fontSize = options.columns.length > 8 ? 7 : options.columns.length > 5 ? 8 : 8.5;
+
+  autoTable(doc, {
+    startY: 116,
+    head,
+    body,
+    margin: { left: marginX, right: marginX, bottom: 36 },
+    theme: 'grid',
+    styles: {
+      font: 'helvetica',
+      fontSize,
+      cellPadding: 4,
+      overflow: 'linebreak',
+      textColor: [30, 41, 59],
+      lineColor: [226, 232, 240],
+      lineWidth: 0.5
+    },
+    headStyles: {
+      fillColor: [15, 23, 42],
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      fontSize
+    },
+    alternateRowStyles: {
+      fillColor: [248, 250, 252]
+    },
+    columnStyles: {
+      0: { cellWidth: 28, halign: 'right' }
+    },
+    didDrawPage: (hookData) => {
+      const pageNum = hookData.pageNumber;
+      const totalPages = (doc as any).internal.getNumberOfPages();
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(100, 116, 139);
+      doc.text(
+        `ALM Nexus · Free AI Web Scraper & Lead Extractor`,
+        marginX,
+        pageHeight - 16
+      );
+      doc.text(
+        `Page ${pageNum} of ${totalPages}`,
+        pageWidth - marginX,
+        pageHeight - 16,
+        { align: 'right' }
+      );
+    }
+  });
+
+  doc.save(options.filename);
+}

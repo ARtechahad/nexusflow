@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
-import { Menu, Moon, Sun, X } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { ChevronDown, Menu, Moon, Sun, X } from 'lucide-react';
 import {
   PRIMARY_NAV_ITEMS,
+  SERVICE_SUBNAV_ITEMS,
   SOCIAL_CHANNELS,
   STUDIO_BRAND
 } from '../../data/studioData';
@@ -69,7 +70,7 @@ export const AlmNexusLogo: React.FC<{ isDark: boolean }> = ({ isDark }) => {
     >
       <img
         src={STUDIO_BRAND.logoPath}
-        alt="ALM Nexus software studio logo"
+        alt="ALM Nexus logo"
         width={112}
         height={28}
         referrerPolicy="no-referrer"
@@ -88,13 +89,40 @@ export const StudioLayout: React.FC<StudioLayoutProps> = ({
   children
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [servicesDropdownOpen, setServicesDropdownOpen] = useState(false);
+  const servicesMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setMobileMenuOpen(false);
+    setServicesDropdownOpen(false);
   }, [currentPath]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined' || !servicesDropdownOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setServicesDropdownOpen(false);
+      }
+    };
+    const handlePointerDown = (e: MouseEvent) => {
+      if (
+        servicesMenuRef.current &&
+        !servicesMenuRef.current.contains(e.target as Node)
+      ) {
+        setServicesDropdownOpen(false);
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('mousedown', handlePointerDown);
+    };
+  }, [servicesDropdownOpen]);
 
   const handleNavClick = (href: string) => {
     setMobileMenuOpen(false);
+    setServicesDropdownOpen(false);
     onNavigate(href);
   };
 
@@ -123,6 +151,89 @@ export const StudioLayout: React.FC<StudioLayoutProps> = ({
             className="hidden md:flex items-center gap-7 text-[15px] font-medium"
           >
             {PRIMARY_NAV_ITEMS.map((item) => {
+              if (item.href === '/services') {
+                const isServicesActive =
+                  currentPath === '/services' || currentPath.startsWith('/services/');
+                return (
+                  <div
+                    key={item.href}
+                    ref={servicesMenuRef}
+                    onMouseEnter={() => setServicesDropdownOpen(true)}
+                    onMouseLeave={() => setServicesDropdownOpen(false)}
+                    className="relative flex items-center gap-1"
+                  >
+                    <StudioLink
+                      href={item.href}
+                      onNavigate={handleNavClick}
+                      aria-current={currentPath === '/services' ? 'page' : undefined}
+                      className={`whitespace-nowrap shrink-0 transition-colors ${
+                        isServicesActive
+                          ? 'text-[#0F172A] dark:text-white underline decoration-[var(--accent)] decoration-2 underline-offset-8'
+                          : 'text-slate-600 dark:text-slate-300 hover:text-[#0F172A] dark:hover:text-white'
+                      }`}
+                    >
+                      {item.label}
+                    </StudioLink>
+                    <button
+                      type="button"
+                      onClick={() => setServicesDropdownOpen((prev) => !prev)}
+                      aria-expanded={servicesDropdownOpen}
+                      aria-haspopup="true"
+                      aria-label="Toggle Services submenu"
+                      className="p-1 rounded-[4px] text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white cursor-pointer"
+                    >
+                      <ChevronDown
+                        className={`w-3.5 h-3.5 transition-transform ${
+                          servicesDropdownOpen ? 'rotate-180' : ''
+                        }`}
+                        strokeWidth={2}
+                        aria-hidden="true"
+                      />
+                    </button>
+
+                    {servicesDropdownOpen && (
+                      <div className="absolute left-0 top-full pt-2 w-72 z-50">
+                        <div className="p-2 rounded-[8px] border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] shadow-lg space-y-1">
+                          <StudioLink
+                            href="/services"
+                            onNavigate={handleNavClick}
+                            className={`block px-3 py-2 rounded-[6px] text-xs font-mono uppercase tracking-wider transition-colors ${
+                              currentPath === '/services'
+                                ? 'bg-blue-50 dark:bg-blue-950/40 text-[var(--accent)] dark:text-blue-400'
+                                : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/70'
+                            }`}
+                          >
+                            All Engineering Services →
+                          </StudioLink>
+                          <div className="border-t border-slate-200 dark:border-slate-800 my-1" />
+                          {SERVICE_SUBNAV_ITEMS.map((sub) => {
+                            const isSubActive = currentPath === sub.href;
+                            return (
+                              <StudioLink
+                                key={sub.href}
+                                href={sub.href}
+                                onNavigate={handleNavClick}
+                                aria-current={isSubActive ? 'page' : undefined}
+                                className={`block px-3 py-2 rounded-[6px] transition-colors ${
+                                  isSubActive
+                                    ? 'bg-blue-50 dark:bg-blue-950/40 text-[var(--accent)] dark:text-blue-400'
+                                    : 'hover:bg-slate-50 dark:hover:bg-slate-800/70 text-slate-900 dark:text-slate-100'
+                                }`}
+                              >
+                                <div className="text-sm font-semibold">{sub.label}</div>
+                                <div className="text-xs text-slate-500 dark:text-slate-400">
+                                  {sub.shortDesc}
+                                </div>
+                              </StudioLink>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+
               const isActive = currentPath === item.href;
               return (
                 <StudioLink
@@ -190,19 +301,39 @@ export const StudioLayout: React.FC<StudioLayoutProps> = ({
             {PRIMARY_NAV_ITEMS.map((item) => {
               const isActive = currentPath === item.href;
               return (
-                <StudioLink
-                  key={item.href}
-                  href={item.href}
-                  onNavigate={handleNavClick}
-                  aria-current={isActive ? 'page' : undefined}
-                  className={`block px-3 py-2.5 rounded-[6px] text-base font-medium ${
-                    isActive
-                      ? 'bg-white dark:bg-[#111827] text-[#0F172A] dark:text-white border border-slate-200 dark:border-slate-800'
-                      : 'text-slate-700 dark:text-slate-300'
-                  }`}
-                >
-                  {item.label}
-                </StudioLink>
+                <React.Fragment key={item.href}>
+                  <StudioLink
+                    href={item.href}
+                    onNavigate={handleNavClick}
+                    aria-current={isActive ? 'page' : undefined}
+                    className={`block px-3 py-2.5 rounded-[6px] text-base font-medium ${
+                      isActive
+                        ? 'bg-white dark:bg-[#111827] text-[#0F172A] dark:text-white border border-slate-200 dark:border-slate-800'
+                        : 'text-slate-700 dark:text-slate-300'
+                    }`}
+                  >
+                    {item.label}
+                  </StudioLink>
+                  {item.href === '/services' && (
+                    <div className="pl-4 pb-1 space-y-1">
+                      {SERVICE_SUBNAV_ITEMS.map((sub) => (
+                        <StudioLink
+                          key={sub.href}
+                          href={sub.href}
+                          onNavigate={handleNavClick}
+                          aria-current={currentPath === sub.href ? 'page' : undefined}
+                          className={`block px-3 py-1.5 rounded-[6px] text-sm ${
+                            currentPath === sub.href
+                              ? 'bg-white dark:bg-[#111827] text-[var(--accent)] dark:text-blue-400 font-medium border border-slate-200 dark:border-slate-800'
+                              : 'text-slate-600 dark:text-slate-400'
+                          }`}
+                        >
+                          {sub.label}
+                        </StudioLink>
+                      ))}
+                    </div>
+                  )}
+                </React.Fragment>
               );
             })}
             <div className="pt-2">
@@ -247,7 +378,7 @@ export const StudioLayout: React.FC<StudioLayoutProps> = ({
               </p>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-8 text-sm">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-8 text-sm">
               <div className="space-y-2.5">
                 <div className="font-semibold text-slate-900 dark:text-slate-100">Studio</div>
                 <ul className="space-y-2 text-slate-600 dark:text-slate-400">
@@ -263,7 +394,7 @@ export const StudioLayout: React.FC<StudioLayoutProps> = ({
                   </li>
                   <li>
                     <StudioLink href="/tools/web-data-engine" onNavigate={handleNavClick} className="hover:text-slate-900 dark:hover:text-white">
-                      Web Data Engine
+                      Free Web Scraper &amp; Lead Extractor
                     </StudioLink>
                   </li>
                   <li>
@@ -285,6 +416,23 @@ export const StudioLayout: React.FC<StudioLayoutProps> = ({
               </div>
 
               <div className="space-y-2.5">
+                <div className="font-semibold text-slate-900 dark:text-slate-100">Blueprints</div>
+                <ul className="space-y-2 text-slate-600 dark:text-slate-400">
+                  {SERVICE_SUBNAV_ITEMS.map((sub) => (
+                    <li key={sub.href}>
+                      <StudioLink
+                        href={sub.href}
+                        onNavigate={handleNavClick}
+                        className="hover:text-slate-900 dark:hover:text-white"
+                      >
+                        {sub.label}
+                      </StudioLink>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="space-y-2.5">
                 <div className="font-semibold text-slate-900 dark:text-slate-100">Legal</div>
                 <ul className="space-y-2 text-slate-600 dark:text-slate-400">
                   <li>
@@ -300,7 +448,7 @@ export const StudioLayout: React.FC<StudioLayoutProps> = ({
                 </ul>
               </div>
 
-              <div className="space-y-2.5 col-span-2 sm:col-span-1">
+              <div className="space-y-2.5">
                 <div className="font-semibold text-slate-900 dark:text-slate-100">Social</div>
                 <ul className="space-y-2 text-slate-600 dark:text-slate-400">
                   {SOCIAL_CHANNELS.map((channel) => (
