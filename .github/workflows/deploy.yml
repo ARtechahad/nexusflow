@@ -51,9 +51,10 @@ jobs:
           git fetch origin main
           git reset --hard origin/main
 
-          echo "[3/6] Installing Node dependencies and building frontend + SSR server..."
+          echo "[3/6] Freeing RAM via PM2 stop, installing dependencies, and building with 1.5GB Node heap..."
+          pm2 stop all || true
           npm install --no-audit --no-fund
-          npm run build
+          NODE_OPTIONS="--max-old-space-size=1536" npm run build
 
           echo "[4/6] Restarting main Node/Express site via PM2..."
           if pm2 describe almnexus >/dev/null 2>&1; then
