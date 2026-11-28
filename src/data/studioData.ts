@@ -141,6 +141,9 @@ export const STUDIO_BRAND = {
   logoPath: '/assets/aistudio/1771048398683_15e1bf38.jpg',
   emailPrimary: 'contact@almnexus.tech',
   emailDirect: 'ahad@almnexus.tech',
+  // EDITABLE: Update phoneDisplay and phoneHref with your direct WhatsApp / sales line
+  phoneDisplay: '+92 300 000 0000',
+  phoneHref: 'tel:+923000000000',
   locationRemote: 'Pakistan-based, working remotely with clients in the US, UK, UAE and EU.',
   contactAvailability: 'Pakistan-based, available remotely for clients in the US, UK, UAE and EU',
   oneLineSummary:
@@ -199,6 +202,414 @@ export const PRIMARY_NAV_ITEMS: NavItem[] = [
   { label: 'Web Scraper', href: '/tools/web-data-engine' },
   { label: 'Work', href: '/work' },
   { label: 'About', href: '/about' }
+];
+
+export interface HeaderNavItem {
+  label: string;
+  href: string;
+  matchPath?: string;
+}
+
+export const HEADER_NAV_ITEMS: HeaderNavItem[] = [
+  { label: 'Services', href: '/services', matchPath: '/services' },
+  { label: 'Solutions', href: '/#solutions' },
+  { label: 'Products', href: '/products', matchPath: '/products' },
+  { label: 'Tech Stack', href: '/#tech-stack' },
+  { label: 'Case Studies', href: '/work', matchPath: '/work' },
+  { label: 'Insights', href: '/#insights' },
+  { label: 'About', href: '/about', matchPath: '/about' },
+  { label: 'Pricing', href: '/#pricing' }
+];
+
+export const HERO_ROTATING_WORDS = [
+  'Startups',
+  'SaaS Founders',
+  'Agencies',
+  'Enterprises'
+] as const;
+
+export type AgencyServiceIconKey =
+  | 'bot'
+  | 'globe'
+  | 'cloud'
+  | 'layers'
+  | 'database'
+  | 'shield'
+  | 'rocket'
+  | 'smartphone'
+  | 'gamepad';
+
+export interface QuickServiceStripItem {
+  id: string;
+  title: string;
+  subtitle: string;
+  href: string;
+  icon: AgencyServiceIconKey;
+}
+
+export const QUICK_SERVICE_STRIP: QuickServiceStripItem[] = [
+  {
+    id: 'ai-agents',
+    title: 'AI Agents & Automation',
+    subtitle: 'RAG, n8n & voice bots',
+    href: '/services/ai-automation',
+    icon: 'bot'
+  },
+  {
+    id: 'web-mobile',
+    title: 'Web & Mobile Apps',
+    subtitle: 'Next.js, Flutter & React Native',
+    href: '/services/web-development',
+    icon: 'globe'
+  },
+  {
+    id: 'devops-cloud',
+    title: 'DevOps & Cloud',
+    subtitle: 'CI/CD, Terraform & K8s',
+    href: '/services/web-development',
+    icon: 'cloud'
+  },
+  {
+    id: 'enterprise-software',
+    title: 'Custom Enterprise Software',
+    subtitle: 'High-throughput backends',
+    href: '/services/web-development',
+    icon: 'layers'
+  },
+  {
+    id: 'data-pipelines',
+    title: 'Data & Lead Pipelines',
+    subtitle: 'Python ETL & SMTP checks',
+    href: '/services/data-intelligence',
+    icon: 'database'
+  },
+  {
+    id: 'cybersecurity',
+    title: 'Cybersecurity & Audits',
+    subtitle: 'Pentesting & OWASP hardening',
+    href: '/services/cybersecurity',
+    icon: 'shield'
+  }
+];
+
+export interface HomepageStatItem {
+  id: string;
+  displayValue: string;
+  targetNumber: number;
+  decimals?: number;
+  prefix?: string;
+  suffix?: string;
+  secondaryNumber?: number;
+  separator?: string;
+  label: string;
+  detail: string;
+}
+
+// ============================================================================
+// EDITABLE PLACEHOLDER STATS:
+// Update targetNumber / displayValue / suffix / label / detail anytime to match
+// your current production milestones without touching component logic.
+// ============================================================================
+export const HOMEPAGE_STATS: HomepageStatItem[] = [
+  {
+    id: 'shipped-systems',
+    displayValue: '50+',
+    targetNumber: 50,
+    suffix: '+',
+    label: 'Production Builds',
+    detail: 'Web platforms, mobile apps, AI agents & data tools'
+  },
+  {
+    id: 'uptime-sla',
+    displayValue: '99.9%',
+    targetNumber: 99.9,
+    decimals: 1,
+    suffix: '%',
+    label: 'Uptime Architecture',
+    detail: 'Automated CI/CD, health probes & cloud failover'
+  },
+  {
+    id: 'monitoring-coverage',
+    displayValue: '24/7',
+    targetNumber: 24,
+    separator: '/',
+    secondaryNumber: 7,
+    label: 'Pipeline Monitoring',
+    detail: 'Continuous scraper queues, webhooks & alerting'
+  },
+  {
+    id: 'code-ownership',
+    displayValue: '100%',
+    targetNumber: 100,
+    suffix: '%',
+    label: 'IP & Code Ownership',
+    detail: 'Direct Git repository transfer with zero lock-in'
+  }
+];
+
+export interface WhatWeBuildCard {
+  id: string;
+  title: string;
+  description: string;
+  bullets: [string, string, string, string];
+  href: string;
+  icon: AgencyServiceIconKey;
+}
+
+export const WHAT_WE_BUILD_SERVICES: WhatWeBuildCard[] = [
+  {
+    id: 'ai-agents',
+    title: 'AI Agents & Automation',
+    description: 'Autonomous task execution grounded in your private knowledge.',
+    bullets: [
+      'Custom AI agents & multi-agent orchestration',
+      'LLM integration & structured prompt engineering',
+      'Cited RAG pipelines & vector knowledge bases',
+      'Model fine-tuning, voice/chat agents, n8n & Python'
+    ],
+    href: '/services/ai-automation',
+    icon: 'bot'
+  },
+  {
+    id: 'product-mvp',
+    title: 'Product Development / MVP',
+    description: 'Go from technical spec to a testable v1 build in tight sprints.',
+    bullets: [
+      'Interactive architecture prototyping & scoping',
+      'Production MVP delivery in 2–4 week sprints',
+      'Typed REST/GraphQL API & microservices design',
+      'Relational database modeling & query optimization'
+    ],
+    href: '/services/web-development',
+    icon: 'rocket'
+  },
+  {
+    id: 'web-saas',
+    title: 'Web & SaaS Platforms',
+    description: 'Multi-tenant subscription products built for daily team workflows.',
+    bullets: [
+      'React, Next.js & TypeScript interfaces',
+      'Node.js Express & Python FastAPI backends',
+      'Multi-tenant PostgreSQL isolation & RBAC auth',
+      'Automated AWS, Railway & Oracle VM deployment'
+    ],
+    href: '/services/web-development',
+    icon: 'globe'
+  },
+  {
+    id: 'mobile-apps',
+    title: 'Mobile Apps',
+    description: 'Smooth iOS and Android applications engineered from one core spec.',
+    bullets: [
+      'Cross-platform iOS & Android (React Native & Flutter)',
+      'Native SwiftUI & Kotlin modules for hardware access',
+      '60fps UI polish, offline cache & push alerts',
+      'Full App Store & Google Play submission support'
+    ],
+    href: '/services/app-development',
+    icon: 'smartphone'
+  },
+  {
+    id: 'devops-cloud',
+    title: 'DevOps & Cloud',
+    description: 'Zero-downtime deployment infrastructure you own end to end.',
+    bullets: [
+      'Kubernetes cluster setup & container orchestration',
+      'GitHub Actions CI/CD release automation',
+      'Infrastructure as Code with Terraform modules',
+      'Prometheus telemetry, logging & uptime alerting'
+    ],
+    href: '/services/web-development',
+    icon: 'cloud'
+  },
+  {
+    id: 'enterprise-software',
+    title: 'Custom Enterprise Software',
+    description: 'Internal operations portals replacing disconnected spreadsheets.',
+    bullets: [
+      'Tailored B2B enterprise workflows & audit logs',
+      'Legacy system modernization & zero-loss migration',
+      'High-throughput event workers & async queues',
+      'Bi-directional CRM, ERP & payment API integrations'
+    ],
+    href: '/services/web-development',
+    icon: 'layers'
+  },
+  {
+    id: 'data-pipelines',
+    title: 'Data & Lead Pipelines',
+    description: 'Clean, verified web extraction engineered for outbound growth.',
+    bullets: [
+      'Hybrid Python HTTP & Playwright headless crawlers',
+      'Live DNS MX & SMTP mailbox verification checks',
+      'Entity deduplication & domain enrichment',
+      'Automated ETL exports to CSV, Postgres or CRM'
+    ],
+    href: '/services/data-intelligence',
+    icon: 'database'
+  },
+  {
+    id: 'cybersecurity',
+    title: 'Cybersecurity & Audits',
+    description: 'Uncover broken access controls and logic flaws before attackers do.',
+    bullets: [
+      'Manual Grey-Box & Black-Box web/API pentesting',
+      'OWASP Top 10 & tenant RBAC vulnerability checks',
+      'Server, Nginx TLS & cloud IAM hardening',
+      'Executive CVSS reports + 30-day patch re-test'
+    ],
+    href: '/services/cybersecurity',
+    icon: 'shield'
+  },
+  {
+    id: 'game-development',
+    title: 'Game Development',
+    description: 'Playable 2D and 3D worlds built with clean C# state systems.',
+    bullets: [
+      'Unity 2D & 3D gameplay architecture in C#',
+      'Custom physics, collision & AI pathing systems',
+      'Deterministic game-state & checkpoint tooling',
+      'Cross-platform desktop, WebGL & mobile builds'
+    ],
+    href: '/services#games',
+    icon: 'gamepad'
+  }
+];
+
+export interface TechStackCategory {
+  category: string;
+  items: string[];
+}
+
+export const HOMEPAGE_TECH_STACK: TechStackCategory[] = [
+  {
+    category: 'AI & Orchestration',
+    items: ['Python', 'OpenAI / Anthropic / Gemini', 'vLLM / Ollama', 'pgvector', 'Qdrant', 'n8n']
+  },
+  {
+    category: 'Web & Mobile',
+    items: ['React', 'Next.js', 'TypeScript', 'Flutter', 'React Native', 'Tailwind CSS']
+  },
+  {
+    category: 'Backend & Data',
+    items: ['Node.js', 'FastAPI', 'PostgreSQL', 'Redis', 'Playwright', 'Unity / C#']
+  },
+  {
+    category: 'Cloud & Security',
+    items: ['AWS', 'Kubernetes', 'Terraform', 'Docker', 'GitHub Actions', 'OWASP SAST']
+  }
+];
+
+export interface HomepageProcessStep {
+  number: string;
+  title: string;
+  summary: string;
+  deliverable: string;
+}
+
+export const HOMEPAGE_PROCESS_STEPS: HomepageProcessStep[] = [
+  {
+    number: '01',
+    title: 'Discovery',
+    summary: 'Audit workflows, define schema boundaries, and align on architecture before code.',
+    deliverable: 'Technical spec & milestone map'
+  },
+  {
+    number: '02',
+    title: 'Design',
+    summary: 'Prototype core user flows, API contracts, and tenant permissions with zero guesswork.',
+    deliverable: 'UI wireframes & data contract'
+  },
+  {
+    number: '03',
+    title: 'Build',
+    summary: 'Weekly staging releases you can open and test directly, backed by automated checks.',
+    deliverable: 'Interactive staging builds'
+  },
+  {
+    number: '04',
+    title: 'Launch',
+    summary: 'Deploy to your cloud, harden endpoints, and transfer full Git repo & code ownership.',
+    deliverable: 'Full Git repo, docs & IP handoff'
+  }
+];
+
+export interface HomepageInsightItem {
+  category: string;
+  title: string;
+  summary: string;
+  href: string;
+  ctaLabel: string;
+}
+
+export const HOMEPAGE_INSIGHTS: HomepageInsightItem[] = [
+  {
+    category: 'AI Architecture',
+    title: 'Eliminating RAG hallucinations with deterministic JSON routing',
+    summary: 'How strict citation prompts and SQL fallback guardrails keep enterprise bots factual.',
+    href: '/services/ai-automation',
+    ctaLabel: 'Explore AI systems'
+  },
+  {
+    category: 'Data Engineering',
+    title: 'Hybrid HTTP + Playwright crawling under strict memory budgets',
+    summary: 'Test our production Python FastAPI extractor live on public URLs with instant export.',
+    href: '/tools/web-data-engine',
+    ctaLabel: 'Launch Web Scraper'
+  },
+  {
+    category: 'Platform Engineering',
+    title: 'Multi-tenant RBAC and encrypted BYOK vaults inside NexusFlow',
+    summary: 'Inside the architecture of our client operations, pipeline, and Resend outreach suite.',
+    href: '/work',
+    ctaLabel: 'Read case studies'
+  }
+];
+
+export interface HomepagePricingTier {
+  id: string;
+  name: string;
+  cadence: string;
+  summary: string;
+  highlights: string[];
+  featured?: boolean;
+}
+
+export const HOMEPAGE_PRICING_MODELS: HomepagePricingTier[] = [
+  {
+    id: 'mvp-sprint',
+    name: 'Fixed-Scope MVP Sprint',
+    cadence: '2–4 Week Delivery',
+    summary: 'Scoped build for founders launching a focused web, mobile, or AI product.',
+    highlights: [
+      'Defined feature milestones & fixed budget',
+      'Weekly clickable staging deployments',
+      '100% Git repository & cloud handoff'
+    ]
+  },
+  {
+    id: 'dedicated-pod',
+    name: 'Dedicated Engineering Pod',
+    cadence: 'Monthly Retainer',
+    summary: 'Embedded full-stack, AI, and DevOps velocity for scaling SaaS teams.',
+    highlights: [
+      'Direct Slack & sprint sync with senior engineers',
+      'Continuous CI/CD, API & database scaling',
+      'Flexible backlog priority every 2 weeks'
+    ],
+    featured: true
+  },
+  {
+    id: 'audit-pipeline',
+    name: 'Audit or Data Pipeline',
+    cadence: '5–10 Business Days',
+    summary: 'Targeted OWASP pentesting or verified B2B scraping & enrichment delivery.',
+    highlights: [
+      'CVSS risk report & PoC findings or clean CSV/API',
+      'Live DNS/MX/SMTP verification or 30-day re-test',
+      'Mutual NDA & clear Rules of Engagement'
+    ]
+  }
 ];
 
 export interface HomeCapability {

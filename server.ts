@@ -571,6 +571,15 @@ async function startServer() {
       );
   });
 
+  app.get('/2cd0ffb4a91c4e6b816582f6f24d018b.txt', (_req: Request, res: Response) => {
+    const filePath = resolvePublicOrDistFile('2cd0ffb4a91c4e6b816582f6f24d018b.txt');
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    if (filePath) {
+      return res.send(fs.readFileSync(filePath, 'utf8'));
+    }
+    return res.status(200).send('2cd0ffb4a91c4e6b816582f6f24d018b\n');
+  });
+
   if (!isProd) {
     // Dynamic import of Vite ensures production builds never crash on missing Vite dependencies
     const { createServer: createViteServer } = await import('vite');

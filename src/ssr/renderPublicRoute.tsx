@@ -82,7 +82,7 @@ export function renderPublicRouteHtml(
   const renderedMarkup = renderToString(
     <StudioWebsite
       currentPath={normalized}
-      isDark={false}
+      isDark={true}
       onToggleTheme={() => {}}
       onNavigate={() => {}}
     />

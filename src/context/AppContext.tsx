@@ -346,7 +346,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         return legacy as ThemeMode;
       }
     }
-    return 'light';
+    return 'dark';
   });
 
   const [systemPrefersDark, setSystemPrefersDark] = useState<boolean>(() => {

@@ -107,6 +107,13 @@ const AppContent: React.FC = () => {
       setCurrentPath(normalizePathname(window.location.pathname));
     };
     window.addEventListener('popstate', checkPath);
+    if (window.location.hash) {
+      const targetId = window.location.hash.replace(/^#/, '');
+      window.setTimeout(() => {
+        const el = document.getElementById(targetId);
+        if (el) el.scrollIntoView({ behavior: 'smooth' });
+      }, 80);
+    }
     return () => window.removeEventListener('popstate', checkPath);
   }, []);
 
@@ -118,10 +125,17 @@ const AppContent: React.FC = () => {
     setCurrentPath(nextPath);
 
     if (hashPart) {
-      window.requestAnimationFrame(() => {
+      const scrollToTarget = () => {
         const el = document.getElementById(hashPart);
         if (el) {
           el.scrollIntoView({ behavior: 'smooth' });
+          return true;
+        }
+        return false;
+      };
+      window.requestAnimationFrame(() => {
+        if (!scrollToTarget()) {
+          window.setTimeout(scrollToTarget, 80);
         }
       });
     } else {

@@ -111,5 +111,30 @@ jobs:
             exit 1
           fi
 
+          echo "Submitting updated public URLs to IndexNow..."
+          curl -sS -m 15 -X POST "https://api.indexnow.org/indexnow" \
+            -H "Content-Type: application/json; charset=utf-8" \
+            -d '{
+              "host": "almnexus.tech",
+              "key": "2cd0ffb4a91c4e6b816582f6f24d018b",
+              "keyLocation": "https://almnexus.tech/2cd0ffb4a91c4e6b816582f6f24d018b.txt",
+              "urlList": [
+                "https://almnexus.tech/",
+                "https://almnexus.tech/services",
+                "https://almnexus.tech/services/app-development",
+                "https://almnexus.tech/services/web-development",
+                "https://almnexus.tech/services/ai-automation",
+                "https://almnexus.tech/services/data-intelligence",
+                "https://almnexus.tech/services/cybersecurity",
+                "https://almnexus.tech/products",
+                "https://almnexus.tech/tools/web-data-engine",
+                "https://almnexus.tech/work",
+                "https://almnexus.tech/about",
+                "https://almnexus.tech/contact",
+                "https://almnexus.tech/privacy",
+                "https://almnexus.tech/terms"
+              ]
+            }' >/dev/null 2>&1 || echo "Warning: IndexNow ping skipped or failed cleanly."
+
           echo "Deployment complete: almnexus (:3000) and alm-engine (:8000) are live and healthy."
           EOF
